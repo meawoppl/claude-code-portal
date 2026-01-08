@@ -1,3 +1,4 @@
+use crate::{db::DbPool, models::NewSession, AppState};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -6,12 +7,13 @@ use axum::{
     response::Response,
 };
 use dashmap::DashMap;
+use diesel::prelude::*;
 use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
-use crate::AppState;
+use uuid::Uuid;
 
 pub type SessionId = String;
 pub type ClientSender = mpsc::UnboundedSender<ProxyMessage>;
@@ -70,14 +72,20 @@ pub async fn handle_session_websocket(
     State(app_state): State<Arc<AppState>>,
 ) -> Response {
     let session_manager = app_state.session_manager.clone();
-    ws.on_upgrade(|socket| handle_session_socket(socket, session_manager))
+    let db_pool = app_state.db_pool.clone();
+    ws.on_upgrade(|socket| handle_session_socket(socket, session_manager, db_pool))
 }
 
-async fn handle_session_socket(socket: WebSocket, session_manager: SessionManager) {
+async fn handle_session_socket(
+    socket: WebSocket,
+    session_manager: SessionManager,
+    db_pool: DbPool,
+) {
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = mpsc::unbounded_channel::<ProxyMessage>();
 
     let mut session_key: Option<SessionId> = None;
+    let mut db_session_id: Option<Uuid> = None;
 
     // Spawn task to send messages to the WebSocket
     let send_task = tokio::spawn(async move {
@@ -98,21 +106,100 @@ async fn handle_session_socket(socket: WebSocket, session_manager: SessionManage
                     match proxy_msg {
                         ProxyMessage::Register {
                             session_name,
-                            auth_token: _,
-                            working_directory: _,
+                            auth_token,
+                            working_directory,
                         } => {
                             // Generate or use session key
                             let key = session_name.clone();
                             session_key = Some(key.clone());
 
-                            session_manager.register_session(key, tx.clone());
+                            // Register in memory
+                            session_manager.register_session(key.clone(), tx.clone());
+
+                            // Persist to database
+                            if let Ok(mut conn) = db_pool.get() {
+                                use crate::schema::sessions;
+
+                                // Try to find existing session with this key
+                                let existing: Option<crate::models::Session> = sessions::table
+                                    .filter(sessions::session_key.eq(&key))
+                                    .first(&mut conn)
+                                    .optional()
+                                    .unwrap_or(None);
+
+                                if let Some(existing_session) = existing {
+                                    // Update existing session to active
+                                    let _ =
+                                        diesel::update(sessions::table.find(existing_session.id))
+                                            .set((
+                                                sessions::status.eq("active"),
+                                                sessions::last_activity.eq(diesel::dsl::now),
+                                                sessions::working_directory.eq(
+                                                    if working_directory.is_empty() {
+                                                        None
+                                                    } else {
+                                                        Some(&working_directory)
+                                                    },
+                                                ),
+                                            ))
+                                            .execute(&mut conn);
+                                    db_session_id = Some(existing_session.id);
+                                    info!("Session reactivated in DB: {}", session_name);
+                                } else {
+                                    // Create new session - use a placeholder user_id for now
+                                    // In production, auth_token should be validated to get user_id
+                                    let user_id =
+                                        get_user_id_from_token(&db_pool, auth_token.as_deref());
+
+                                    if let Some(user_id) = user_id {
+                                        let new_session = NewSession {
+                                            user_id,
+                                            session_name: session_name.clone(),
+                                            session_key: key.clone(),
+                                            working_directory: if working_directory.is_empty() {
+                                                None
+                                            } else {
+                                                Some(working_directory.clone())
+                                            },
+                                            status: "active".to_string(),
+                                        };
+
+                                        match diesel::insert_into(sessions::table)
+                                            .values(&new_session)
+                                            .get_result::<crate::models::Session>(&mut conn)
+                                        {
+                                            Ok(session) => {
+                                                db_session_id = Some(session.id);
+                                                info!("Session persisted to DB: {}", session_name);
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to persist session: {}", e);
+                                            }
+                                        }
+                                    } else {
+                                        warn!("No valid user_id for session, not persisting to DB");
+                                    }
+                                }
+                            }
+
                             info!("Session registered: {}", session_name);
                         }
                         ProxyMessage::ClaudeOutput { content } => {
                             // Broadcast output to all web clients
                             if let Some(ref key) = session_key {
-                                session_manager
-                                    .broadcast_to_web_clients(key, ProxyMessage::ClaudeOutput { content });
+                                session_manager.broadcast_to_web_clients(
+                                    key,
+                                    ProxyMessage::ClaudeOutput { content },
+                                );
+                            }
+
+                            // Update last_activity in DB
+                            if let (Some(session_id), Ok(mut conn)) = (db_session_id, db_pool.get())
+                            {
+                                use crate::schema::sessions;
+                                let _ = diesel::update(sessions::table.find(session_id))
+                                    .set(sessions::last_activity.eq(diesel::dsl::now))
+                                    .execute(&mut conn);
                             }
                         }
                         ProxyMessage::Heartbeat => {
@@ -135,12 +222,39 @@ async fn handle_session_socket(socket: WebSocket, session_manager: SessionManage
         }
     }
 
-    // Cleanup
+    // Cleanup - mark session as disconnected in DB
+    if let Some(session_id) = db_session_id {
+        if let Ok(mut conn) = db_pool.get() {
+            use crate::schema::sessions;
+            let _ = diesel::update(sessions::table.find(session_id))
+                .set(sessions::status.eq("disconnected"))
+                .execute(&mut conn);
+        }
+    }
+
     if let Some(key) = session_key {
         session_manager.unregister_session(&key);
     }
 
     send_task.abort();
+}
+
+/// Get user_id from auth token or return first user (dev mode fallback)
+fn get_user_id_from_token(db_pool: &DbPool, auth_token: Option<&str>) -> Option<Uuid> {
+    let mut conn = db_pool.get().ok()?;
+    use crate::schema::users;
+
+    if let Some(_token) = auth_token {
+        // TODO: Implement proper token validation
+        // For now, fall through to dev mode behavior
+    }
+
+    // Dev mode fallback: use the test user
+    users::table
+        .filter(users::email.eq("testing@testing.local"))
+        .select(users::id)
+        .first::<Uuid>(&mut conn)
+        .ok()
 }
 
 pub async fn handle_web_client_websocket(

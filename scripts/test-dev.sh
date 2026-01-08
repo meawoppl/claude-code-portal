@@ -30,7 +30,7 @@ warn() {
 # Cleanup function
 cleanup() {
     log "Cleaning up..."
-    docker-compose -f docker-compose.test.yml down -v 2>/dev/null || true
+    docker compose -f docker-compose.test.yml down -v 2>/dev/null || true
     pkill -f "cargo run -p backend" 2>/dev/null || true
     pkill -f "cargo run -p proxy" 2>/dev/null || true
     pkill -f "trunk serve" 2>/dev/null || true
@@ -44,11 +44,11 @@ cleanup
 sleep 2
 
 log "🗄️  Starting PostgreSQL..."
-docker-compose -f docker-compose.test.yml up -d db
+docker compose -f docker-compose.test.yml up -d db
 
 log "⏳ Waiting for database to be ready..."
 for i in {1..30}; do
-    if docker-compose -f docker-compose.test.yml exec -T db pg_isready -U ccproxy > /dev/null 2>&1; then
+    if docker compose -f docker-compose.test.yml exec -T db pg_isready -U ccproxy > /dev/null 2>&1; then
         success "Database is ready"
         break
     fi

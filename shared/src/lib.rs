@@ -16,27 +16,19 @@ pub enum ProxyMessage {
     },
 
     /// Output from Claude Code to be displayed
-    ClaudeOutput {
-        content: serde_json::Value,
-    },
+    ClaudeOutput { content: serde_json::Value },
 
     /// Input to Claude Code from user
-    ClaudeInput {
-        content: serde_json::Value,
-    },
+    ClaudeInput { content: serde_json::Value },
 
     /// Heartbeat to keep connection alive
     Heartbeat,
 
     /// Error message
-    Error {
-        message: String,
-    },
+    Error { message: String },
 
     /// Session status update
-    SessionStatus {
-        status: SessionStatus,
-    },
+    SessionStatus { status: SessionStatus },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -56,11 +56,10 @@ impl ProxyConfig {
             return Ok(Self::default());
         }
 
-        let contents = fs::read_to_string(&path)
-            .context("Failed to read config file")?;
+        let contents = fs::read_to_string(&path).context("Failed to read config file")?;
 
-        let config: Self = serde_json::from_str(&contents)
-            .context("Failed to parse config file")?;
+        let config: Self =
+            serde_json::from_str(&contents).context("Failed to parse config file")?;
 
         Ok(config)
     }
@@ -70,15 +69,12 @@ impl ProxyConfig {
 
         // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .context("Failed to create config directory")?;
+            fs::create_dir_all(parent).context("Failed to create config directory")?;
         }
 
-        let contents = serde_json::to_string_pretty(self)
-            .context("Failed to serialize config")?;
+        let contents = serde_json::to_string_pretty(self).context("Failed to serialize config")?;
 
-        fs::write(&path, contents)
-            .context("Failed to write config file")?;
+        fs::write(&path, contents).context("Failed to write config file")?;
 
         Ok(())
     }

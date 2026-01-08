@@ -46,4 +46,8 @@ diesel::table! {
 diesel::joinable!(messages -> sessions (session_id));
 diesel::joinable!(sessions -> users (user_id));
 
-diesel::allow_tables_to_appear_in_same_query!(messages, sessions, users,);
+diesel::allow_tables_to_appear_in_same_query!(
+    messages,
+    sessions,
+    users,
+);

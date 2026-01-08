@@ -1,5 +1,6 @@
-use yew::prelude::*;
+use crate::utils;
 use gloo::console;
+use yew::prelude::*;
 
 #[function_component(SplashPage)]
 pub fn splash_page() -> Html {
@@ -8,7 +9,8 @@ pub fn splash_page() -> Html {
         // Redirect to backend OAuth endpoint
         let window = web_sys::window().expect("no global `window` exists");
         let location = window.location();
-        let _ = location.set_href("http://localhost:3000/auth/google");
+        let auth_url = utils::api_url("/auth/google");
+        let _ = location.set_href(&auth_url);
     });
 
     html! {

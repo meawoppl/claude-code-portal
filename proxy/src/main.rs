@@ -37,20 +37,22 @@ struct Args {
     #[arg(long)]
     logout: bool,
 
+    /// Development mode - skip authentication entirely
+    #[arg(long)]
+    dev: bool,
+
     /// All remaining arguments to forward to claude CLI
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     claude_args: Vec<String>,
 }
 
 fn default_session_name() -> String {
-    format!(
-        "{}@{}",
-        std::env::var("USER").unwrap_or_else(|_| "unknown".to_string()),
-        hostname::get()
-            .ok()
-            .and_then(|h| h.into_string().ok())
-            .unwrap_or_else(|| "unknown".to_string())
-    )
+    let hostname = hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .unwrap_or_else(|| "unknown".to_string());
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    format!("{}-{}", hostname, timestamp)
 }
 
 #[tokio::main]
@@ -71,14 +73,17 @@ async fn main() -> Result<()> {
         .to_string();
 
     // Load config
-    let mut config = ProxyConfig::load()
-        .context("Failed to load config file")?;
+    let mut config = ProxyConfig::load().context("Failed to load config file")?;
 
     // Handle logout
     if args.logout {
         if let Some(removed) = config.remove_session_auth(&cwd) {
             config.save()?;
-            println!("{} Logged out from {}", "✓".bright_green(), removed.user_email.unwrap_or_default());
+            println!(
+                "{} Logged out from {}",
+                "✓".bright_green(),
+                removed.user_email.unwrap_or_default()
+            );
         } else {
             println!("No cached authentication found for this directory");
         }
@@ -90,14 +95,24 @@ async fn main() -> Result<()> {
     info!("Backend URL: {}", args.backend_url);
 
     // Get or create auth token
-    let auth_token = if let Some(ref token) = args.auth_token {
+    let auth_token: Option<String> = if args.dev {
+        // Dev mode - skip authentication entirely
+        info!("Development mode - skipping authentication");
+        None
+    } else if let Some(ref token) = args.auth_token {
         // Explicit token provided via CLI
-        token.clone()
+        Some(token.clone())
     } else if !args.reauth {
         // Try to load from config
         if let Some(session_auth) = config.get_session_auth(&cwd) {
-            info!("Using cached authentication for {}", session_auth.user_email.as_ref().unwrap_or(&"unknown user".to_string()));
-            session_auth.auth_token.clone()
+            info!(
+                "Using cached authentication for {}",
+                session_auth
+                    .user_email
+                    .as_ref()
+                    .unwrap_or(&"unknown user".to_string())
+            );
+            Some(session_auth.auth_token.clone())
         } else {
             // No cached auth, need to authenticate
             let (token, user_id, user_email) = auth::device_flow_login(&args.backend_url).await?;
@@ -114,7 +129,7 @@ async fn main() -> Result<()> {
             );
             config.save()?;
 
-            token
+            Some(token)
         }
     } else {
         // Force re-authentication
@@ -133,7 +148,7 @@ async fn main() -> Result<()> {
         );
         config.save()?;
 
-        token
+        Some(token)
     };
 
     // Connect to backend WebSocket
@@ -149,7 +164,7 @@ async fn main() -> Result<()> {
     // Register session with backend
     let register_msg = ProxyMessage::Register {
         session_name: args.session_name.clone(),
-        auth_token: args.auth_token.clone(),
+        auth_token,
         working_directory: cwd.clone(),
     };
 

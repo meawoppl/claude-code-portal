@@ -1,8 +1,9 @@
 mod pages;
+pub mod utils;
 
+use pages::{dashboard::DashboardPage, splash::SplashPage, terminal::TerminalPage};
 use yew::prelude::*;
 use yew_router::prelude::*;
-use pages::{splash::SplashPage, dashboard::DashboardPage, terminal::TerminalPage};
 
 #[derive(Clone, Routable, PartialEq)]
 pub enum Route {
@@ -25,7 +26,7 @@ fn switch(routes: Route) -> Html {
 #[function_component(App)]
 fn app() -> Html {
     html! {
-        <BrowserRouter>
+        <BrowserRouter basename="/app">
             <Switch<Route> render={switch} />
         </BrowserRouter>
     }

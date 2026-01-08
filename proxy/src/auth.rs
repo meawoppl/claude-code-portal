@@ -46,7 +46,9 @@ pub async fn device_flow_login(backend_url: &str) -> Result<(String, String, Str
     let client = reqwest::Client::new();
 
     // Step 1: Request device code
-    let auth_base = backend_url.replace("ws://", "http://").replace("wss://", "https://");
+    let auth_base = backend_url
+        .replace("ws://", "http://")
+        .replace("wss://", "https://");
     let device_code_url = format!("{}/auth/device/code", auth_base);
 
     info!("Requesting device code from {}", device_code_url);
@@ -62,9 +64,18 @@ pub async fn device_flow_login(backend_url: &str) -> Result<(String, String, Str
 
     // Step 2: Display instructions to user
     println!();
-    println!("{}", "╔═══════════════════════════════════════════════════════╗".bright_blue());
-    println!("{}", "║           🔐 Authentication Required                 ║".bright_blue());
-    println!("{}", "╚═══════════════════════════════════════════════════════╝".bright_blue());
+    println!(
+        "{}",
+        "╔═══════════════════════════════════════════════════════╗".bright_blue()
+    );
+    println!(
+        "{}",
+        "║           🔐 Authentication Required                 ║".bright_blue()
+    );
+    println!(
+        "{}",
+        "╚═══════════════════════════════════════════════════════╝".bright_blue()
+    );
     println!();
     println!("  To authenticate this machine, please visit:");
     println!();
@@ -72,7 +83,10 @@ pub async fn device_flow_login(backend_url: &str) -> Result<(String, String, Str
     println!();
     println!("  And enter the code:");
     println!();
-    println!("    {}", response.user_code.bright_yellow().bold().underline());
+    println!(
+        "    {}",
+        response.user_code.bright_yellow().bold().underline()
+    );
     println!();
     println!("  {} Waiting for authentication...", "⏳".bright_cyan());
     println!();

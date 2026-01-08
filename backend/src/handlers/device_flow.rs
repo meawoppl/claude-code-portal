@@ -111,7 +111,9 @@ fn generate_access_token() -> String {
 pub async fn device_code(
     State(app_state): State<Arc<AppState>>,
 ) -> Result<Json<DeviceCodeResponse>, StatusCode> {
-    let store = app_state.device_flow_store.as_ref()
+    let store = app_state
+        .device_flow_store
+        .as_ref()
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
     let device_code = generate_device_code();
     let user_code = generate_user_code();
@@ -131,12 +133,12 @@ pub async fn device_code(
     let mut store_lock = store.write().await;
     store_lock.insert(device_code.clone(), state);
 
-    let verification_uri = "http://localhost:3000/auth/device";
+    let verification_uri = format!("{}/auth/device", app_state.public_url);
 
     Ok(Json(DeviceCodeResponse {
         device_code,
         user_code,
-        verification_uri: verification_uri.to_string(),
+        verification_uri,
         expires_in,
         interval: 5,
     }))
@@ -147,7 +149,9 @@ pub async fn device_poll(
     State(app_state): State<Arc<AppState>>,
     Json(req): Json<PollRequest>,
 ) -> Result<Json<PollResponse>, StatusCode> {
-    let store = app_state.device_flow_store.as_ref()
+    let store = app_state
+        .device_flow_store
+        .as_ref()
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
     let mut store_lock = store.write().await;
 
@@ -171,7 +175,10 @@ pub async fn device_poll(
 
             // Fetch user email from database
             use crate::schema::users::dsl::*;
-            let mut conn = app_state.db_pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let mut conn = app_state
+                .db_pool
+                .get()
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
             let user = users
                 .find(user_id)
@@ -211,7 +218,10 @@ pub async fn device_verify_page(
     drop(store_lock);
 
     if !valid {
-        return Redirect::temporary(&format!("/auth/device/error?message=Invalid+or+expired+code")).into_response();
+        return Redirect::temporary(&format!(
+            "/auth/device/error?message=Invalid+or+expired+code"
+        ))
+        .into_response();
     }
 
     // Redirect to Google OAuth with user_code in state

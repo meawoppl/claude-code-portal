@@ -5,16 +5,19 @@ use axum::{
     Json,
 };
 use diesel::prelude::*;
-use oauth2::{
-    basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    RedirectUrl, Scope, TokenResponse, TokenUrl,
-};
+use oauth2::{AuthorizationCode, CsrfToken, Scope, TokenResponse};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
+use tower_cookies::{Cookie, Cookies};
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::{AppState, models::{NewUser, User}, schema};
+use crate::{
+    models::{NewUser, User},
+    AppState,
+};
+
+const SESSION_COOKIE_NAME: &str = "cc_session";
 #[derive(Debug, Serialize)]
 pub struct AuthUrlResponse {
     pub auth_url: String,
@@ -37,8 +40,7 @@ pub async fn login(
 
     // If device_user_code is provided, include it in state
     if let Some(device_user_code) = query.get("device_user_code") {
-        auth_request = auth_request
-            .add_extra_param("state", device_user_code);
+        auth_request = auth_request.add_extra_param("state", device_user_code);
     }
 
     let (auth_url, _csrf_token) = auth_request.url();
@@ -62,13 +64,19 @@ struct GoogleUserInfo {
 
 pub async fn callback(
     State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
     Query(query): Query<AuthCallbackQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let client = app_state.oauth_basic_client.as_ref()
+    let client = app_state
+        .oauth_basic_client
+        .as_ref()
         .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
 
     // Exchange code for token
-    let token: oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType> = client
+    let token: oauth2::StandardTokenResponse<
+        oauth2::EmptyExtraTokenFields,
+        oauth2::basic::BasicTokenType,
+    > = client
         .exchange_code(AuthorizationCode::new(query.code))
         .request_async(oauth2::reqwest::async_http_client)
         .await
@@ -151,12 +159,13 @@ pub async fn callback(
         }
     }
 
-    // TODO: Set session cookie here
-    // For now, just redirect to the frontend with user info
-    Ok(Redirect::temporary(&format!(
-        "/app/?user_id={}",
-        user.id
-    )))
+    // Set session cookie with user ID
+    let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
+    cookie.set_path("/");
+    cookie.set_http_only(true);
+    cookies.signed(&app_state.cookie_key).add(cookie);
+
+    Ok(Redirect::temporary("/app/dashboard"))
 }
 
 #[derive(Debug, Serialize)]
@@ -168,18 +177,51 @@ pub struct UserResponse {
 }
 
 pub async fn me(
-    State(_app_state): State<Arc<AppState>>,
-    // TODO: Extract user ID from session
+    State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
 ) -> Result<Json<UserResponse>, StatusCode> {
-    // Placeholder - would extract user ID from session
-    Err(StatusCode::UNAUTHORIZED)
+    // Extract user ID from signed session cookie
+    let cookie = cookies
+        .signed(&app_state.cookie_key)
+        .get(SESSION_COOKIE_NAME)
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let user_id: Uuid = cookie
+        .value()
+        .parse()
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // Fetch user from database
+    use crate::schema::users::dsl::*;
+    let mut conn = app_state
+        .db_pool
+        .get()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let user = users
+        .find(user_id)
+        .first::<User>(&mut conn)
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    Ok(Json(UserResponse {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar_url: user.avatar_url,
+    }))
 }
 
 // Development mode handlers (bypass OAuth)
-pub async fn dev_login(State(app_state): State<Arc<AppState>>) -> Result<impl IntoResponse, StatusCode> {
+pub async fn dev_login(
+    State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
+) -> Result<impl IntoResponse, StatusCode> {
     use crate::schema::users::dsl::*;
 
-    let mut conn = app_state.db_pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut conn = app_state
+        .db_pool
+        .get()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let user = users
         .filter(email.eq("testing@testing.local"))
@@ -188,24 +230,12 @@ pub async fn dev_login(State(app_state): State<Arc<AppState>>) -> Result<impl In
 
     info!("Dev mode: auto-logged in as testing@testing.local");
 
-    // Redirect to dashboard (or frontend home)
-    Ok(Redirect::temporary("/app/?dev_user=true"))
-}
+    // Set session cookie with user ID
+    let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
+    cookie.set_path("/");
+    cookie.set_http_only(true);
+    cookies.signed(&app_state.cookie_key).add(cookie);
 
-pub async fn dev_me(State(app_state): State<Arc<AppState>>) -> Result<Json<UserResponse>, StatusCode> {
-    use crate::schema::users::dsl::*;
-
-    let mut conn = app_state.db_pool.get().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let user = users
-        .filter(email.eq("testing@testing.local"))
-        .first::<User>(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(Json(UserResponse {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        avatar_url: user.avatar_url,
-    }))
+    // Redirect to dashboard
+    Ok(Redirect::temporary("/app/dashboard"))
 }

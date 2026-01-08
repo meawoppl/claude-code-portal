@@ -65,3 +65,4 @@ dashmap = "6.1"
 
 # CLI arguments
 clap = { version = "4.5", features = ["derive"] }
+tower-cookies = { version = "0.10", features = ["signed"] }
