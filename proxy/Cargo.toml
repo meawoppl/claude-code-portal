@@ -1,0 +1,60 @@
+[package]
+name = "proxy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "claude-proxy"
+path = "src/main.rs"
+
+[dependencies]
+# Shared types
+shared = { path = "../shared" }
+
+# Claude Code integration
+claude-codes = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true }
+
+# WebSocket client
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util = "0.3"
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP client for registration
+reqwest = { version = "0.12", features = ["json"] }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# CLI argument parsing
+clap = { version = "4.5", features = ["derive"] }
+
+# Environment variables
+dotenvy = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Hostname
+hostname = "0.4"
+
+# Config file management
+directories = "5.0"
+
+# Terminal colors
+colored = "2.1"
+
+# Time
+chrono = { workspace = true }

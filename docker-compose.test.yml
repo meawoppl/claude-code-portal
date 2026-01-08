@@ -1,0 +1,28 @@
+# Simplified compose file for local testing
+# Only runs PostgreSQL - you run backend/frontend/proxy manually
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cc-proxy-test-db
+    environment:
+      POSTGRES_DB: ccproxy
+      POSTGRES_USER: ccproxy
+      POSTGRES_PASSWORD: dev_password_change_in_production
+    ports:
+      - "5432:5432"
+    volumes:
+      - test_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ccproxy"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  test_postgres_data:
+    driver: local
+
+networks:
+  default:
+    name: cc-proxy-test-network

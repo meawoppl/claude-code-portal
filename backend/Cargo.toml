@@ -1,0 +1,67 @@
+[package]
+name = "backend"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Shared types
+shared = { path = "../shared" }
+
+# Async runtime
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+
+# Web framework
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+# Database - using diesel with postgres
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+deadpool = "0.12"
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# OAuth for Google authentication
+oauth2 = { workspace = true }
+reqwest = { version = "0.12", features = ["json"] }
+
+# Environment variables
+dotenvy = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Claude Code integration
+claude-codes = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Session management
+axum-sessions = "0.6"
+async-trait = "0.1"
+
+# Secure random for session keys
+rand = "0.8"
+
+# WebSocket support
+futures-util = "0.3"
+
+# Shared state
+dashmap = "6.1"
+
+# CLI arguments
+clap = { version = "4.5", features = ["derive"] }

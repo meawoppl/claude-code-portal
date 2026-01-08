@@ -1,0 +1,49 @@
+// @generated automatically by Diesel CLI.
+
+diesel::table! {
+    messages (id) {
+        id -> Uuid,
+        session_id -> Uuid,
+        #[max_length = 50]
+        role -> Varchar,
+        content -> Text,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    sessions (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        #[max_length = 255]
+        session_name -> Varchar,
+        #[max_length = 255]
+        session_key -> Varchar,
+        working_directory -> Nullable<Text>,
+        #[max_length = 50]
+        status -> Varchar,
+        last_activity -> Timestamp,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    users (id) {
+        id -> Uuid,
+        #[max_length = 255]
+        google_id -> Varchar,
+        #[max_length = 255]
+        email -> Varchar,
+        #[max_length = 255]
+        name -> Nullable<Varchar>,
+        avatar_url -> Nullable<Text>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::joinable!(messages -> sessions (session_id));
+diesel::joinable!(sessions -> users (user_id));
+
+diesel::allow_tables_to_appear_in_same_query!(messages, sessions, users,);
