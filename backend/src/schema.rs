@@ -8,6 +8,7 @@ diesel::table! {
         role -> Varchar,
         content -> Text,
         created_at -> Timestamp,
+        user_id -> Uuid,
     }
 }
 
@@ -59,6 +60,7 @@ diesel::table! {
 }
 
 diesel::joinable!(messages -> sessions (session_id));
+diesel::joinable!(messages -> users (user_id));
 diesel::joinable!(proxy_auth_tokens -> users (user_id));
 diesel::joinable!(sessions -> users (user_id));
 

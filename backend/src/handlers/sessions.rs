@@ -121,9 +121,12 @@ pub struct SendMessageResponse {
 
 pub async fn send_message(
     State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
     Path(session_id): Path<Uuid>,
     Json(req): Json<SendMessageRequest>,
 ) -> Result<Json<SendMessageResponse>, StatusCode> {
+    let current_user_id = extract_user_id(&app_state, &cookies)?;
+
     let mut conn = app_state
         .db_pool
         .get()
@@ -132,9 +135,10 @@ pub async fn send_message(
     use crate::schema::messages;
 
     let new_message = NewMessage {
-        session_id: session_id,
+        session_id,
         role: "user".to_string(),
         content: req.content,
+        user_id: current_user_id,
     };
 
     let message = diesel::insert_into(messages::table)

@@ -1,4 +1,4 @@
-use crate::components::ProxyTokenSetup;
+use crate::components::{MessageRenderer, ProxyTokenSetup};
 use crate::utils;
 use crate::Route;
 use gloo_net::http::Request;
@@ -209,10 +209,58 @@ struct SessionPortalProps {
     on_delete: Callback<Uuid>,
 }
 
+/// Message data from the API
+#[derive(Clone, PartialEq, serde::Deserialize)]
+struct MessageData {
+    role: String,
+    content: String,
+}
+
+#[derive(Clone, PartialEq, serde::Deserialize)]
+struct MessagesResponse {
+    messages: Vec<MessageData>,
+}
+
 #[function_component(SessionPortal)]
 fn session_portal(props: &SessionPortalProps) -> Html {
     let navigator = use_navigator().unwrap();
     let session = &props.session;
+    let messages = use_state(|| Vec::<MessageData>::new());
+    let awaiting_input = use_state(|| false);
+
+    // Fetch messages for this session
+    {
+        let messages = messages.clone();
+        let awaiting_input = awaiting_input.clone();
+        let session_id = session.id;
+
+        use_effect_with(session_id, move |_| {
+            wasm_bindgen_futures::spawn_local(async move {
+                let api_endpoint = utils::api_url(&format!("/api/sessions/{}/messages", session_id));
+                match Request::get(&api_endpoint).send().await {
+                    Ok(response) => {
+                        if let Ok(data) = response.json::<MessagesResponse>().await {
+                            // Check if last message is a "result" type (Claude finished, awaiting input)
+                            let is_awaiting = data.messages.last().map_or(false, |msg| {
+                                // Try to parse the content as JSON and check if it's a result
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&msg.content) {
+                                    parsed.get("type").and_then(|t| t.as_str()) == Some("result")
+                                } else {
+                                    false
+                                }
+                            });
+                            awaiting_input.set(is_awaiting);
+                            messages.set(data.messages);
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to fetch messages for session {}: {:?}", session_id, e);
+                    }
+                }
+            });
+            || ()
+        });
+    }
 
     let handle_click = {
         let navigator = navigator.clone();
@@ -236,14 +284,13 @@ fn session_portal(props: &SessionPortalProps) -> Html {
     };
 
     let is_active = session.status.as_str() == "active";
-    let status_class = format!(
-        "status-indicator {}",
-        if is_active { "active" } else { "disconnected" }
-    );
-    let card_class = format!("session-portal {}", if is_active { "" } else { "inactive" });
+    let show_awaiting_glow = is_active && *awaiting_input;
 
-    // Format last activity time
-    let last_activity = format_time_ago(&session.last_activity);
+    let card_class = classes!(
+        "session-portal",
+        if !is_active { Some("inactive") } else { None },
+        if show_awaiting_glow { Some("awaiting-input") } else { None }
+    );
 
     html! {
         <div class={card_class} onclick={handle_click}>
@@ -251,30 +298,59 @@ fn session_portal(props: &SessionPortalProps) -> Html {
                 { "x" }
             </button>
             <div class="portal-terminal">
-                <div class="terminal-header">
-                    <span class={status_class}></span>
+                <div class="portal-terminal-header">
+                    <div class="terminal-dots">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                    </div>
                     <span class="session-name">{ &session.session_name }</span>
-                </div>
-                <div class="terminal-preview-content">
-                    <div class="terminal-line">
-                        <span class="muted">{ "Working directory:" }</span>
-                    </div>
-                    <div class="terminal-line">
-                        <span class="path">
-                            { session.working_directory.as_ref().unwrap_or(&"Unknown".to_string()) }
-                        </span>
-                    </div>
-                    <div class="terminal-line">
-                        <span class="muted">{ "Last activity: " }</span>
-                        <span>{ last_activity }</span>
-                    </div>
-                    if is_active {
-                        <div class="terminal-line">
-                            <span class="prompt">{ "$ " }</span>
-                            <span class="cursor blink">{ "▊" }</span>
-                        </div>
+                    {
+                        if is_active {
+                            html! { <span class="status-badge active">{ "LIVE" }</span> }
+                        } else {
+                            html! { <span class="status-badge">{ "offline" }</span> }
+                        }
                     }
                 </div>
+                <div class="portal-terminal-viewport">
+                    <div class="portal-terminal-content">
+                        {
+                            if messages.is_empty() {
+                                html! {
+                                    <div class="empty-terminal">
+                                        <span class="muted">{ "No messages yet..." }</span>
+                                    </div>
+                                }
+                            } else {
+                                // Use the same MessageRenderer as the full terminal
+                                html! {
+                                    <div class="messages">
+                                        {
+                                            messages.iter().map(|msg| {
+                                                html! {
+                                                    <MessageRenderer json={msg.content.clone()} />
+                                                }
+                                            }).collect::<Html>()
+                                        }
+                                    </div>
+                                }
+                            }
+                        }
+                    </div>
+                </div>
+                {
+                    if show_awaiting_glow {
+                        html! {
+                            <div class="portal-input-bar">
+                                <span class="prompt-symbol">{ ">" }</span>
+                                <span class="cursor blink">{ "▊" }</span>
+                            </div>
+                        }
+                    } else {
+                        html! {}
+                    }
+                }
             </div>
             <div class="portal-overlay">
                 <span class="portal-hint">
@@ -282,29 +358,5 @@ fn session_portal(props: &SessionPortalProps) -> Html {
                 </span>
             </div>
         </div>
-    }
-}
-
-fn format_time_ago(timestamp: &str) -> String {
-    // Use js_sys to get current time and parse timestamp
-    use js_sys::Date;
-
-    let now_ms = Date::now();
-    let parsed = Date::parse(timestamp);
-
-    if parsed.is_nan() {
-        return timestamp.to_string();
-    }
-
-    let diff_secs = ((now_ms - parsed) / 1000.0) as i64;
-
-    if diff_secs < 60 {
-        "just now".to_string()
-    } else if diff_secs < 3600 {
-        format!("{} min ago", diff_secs / 60)
-    } else if diff_secs < 86400 {
-        format!("{} hours ago", diff_secs / 3600)
-    } else {
-        format!("{} days ago", diff_secs / 86400)
     }
 }

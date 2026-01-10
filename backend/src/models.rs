@@ -62,7 +62,7 @@ pub struct NewSessionWithId {
     pub status: String,
 }
 
-#[derive(Debug, Queryable, Selectable, Serialize, Deserialize)]
+#[derive(Debug, Queryable, Selectable, Serialize, Deserialize, Clone)]
 #[diesel(table_name = crate::schema::messages)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Message {
@@ -71,6 +71,7 @@ pub struct Message {
     pub role: String,
     pub content: String,
     pub created_at: NaiveDateTime,
+    pub user_id: Uuid,
 }
 
 #[derive(Debug, Insertable)]
@@ -79,6 +80,7 @@ pub struct NewMessage {
     pub session_id: Uuid,
     pub role: String,
     pub content: String,
+    pub user_id: Uuid,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

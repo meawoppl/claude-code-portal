@@ -1038,3 +1038,169 @@ body {
 .result-message.error {
     border-left: 3px solid var(--error);
 }
+
+/* ==========================================================================
+   Portal Terminal (Session Cards - Scaled Down Terminal View)
+   ========================================================================== */
+
+.portal-terminal {
+    display: flex;
+    flex-direction: column;
+    height: 220px;
+    background: var(--bg-darker);
+    overflow: hidden;
+}
+
+.portal-terminal-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.terminal-dots {
+    display: flex;
+    gap: 4px;
+}
+
+.terminal-dots .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.terminal-dots .dot.red { background: var(--error); }
+.terminal-dots .dot.yellow { background: #e0af68; }
+.terminal-dots .dot.green { background: var(--success); }
+
+.portal-terminal-header .session-name {
+    flex: 1;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.status-badge {
+    font-size: 0.55rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    background: rgba(127, 132, 156, 0.3);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-badge.active {
+    background: rgba(158, 206, 106, 0.3);
+    color: var(--success);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Viewport that clips the scaled content */
+.portal-terminal-viewport {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Scaled content - renders at full size then scales down */
+.portal-terminal-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 200%;  /* Content is 2x wider */
+    height: 200%; /* Content is 2x taller */
+    transform: scale(0.5);
+    transform-origin: top left;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+/* Messages inside portal use same styles but are scaled */
+.portal-terminal-content .messages {
+    padding: 0;
+}
+
+.portal-terminal-content .claude-message {
+    margin-bottom: 0.5rem;
+}
+
+.empty-terminal {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: scale(2); /* Counter the parent scale */
+    transform-origin: center center;
+}
+
+/* Input prompt bar at bottom */
+.portal-input-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.5rem;
+    background: rgba(247, 118, 142, 0.15);
+    border-top: 1px solid rgba(247, 118, 142, 0.3);
+    flex-shrink: 0;
+}
+
+.portal-input-bar .prompt-symbol {
+    color: var(--error);
+    font-weight: bold;
+    font-size: 0.8rem;
+}
+
+.portal-input-bar .cursor {
+    color: var(--error);
+    font-size: 0.8rem;
+}
+
+/* Awaiting Input Glow Effect */
+.session-portal.awaiting-input {
+    box-shadow:
+        0 0 10px rgba(247, 118, 142, 0.3),
+        0 0 20px rgba(247, 118, 142, 0.2),
+        0 0 30px rgba(247, 118, 142, 0.1);
+    border-color: var(--error);
+    animation: awaitingGlow 2s ease-in-out infinite;
+}
+
+@keyframes awaitingGlow {
+    0%, 100% {
+        box-shadow:
+            0 0 10px rgba(247, 118, 142, 0.3),
+            0 0 20px rgba(247, 118, 142, 0.2),
+            0 0 30px rgba(247, 118, 142, 0.1);
+    }
+    50% {
+        box-shadow:
+            0 0 15px rgba(247, 118, 142, 0.5),
+            0 0 30px rgba(247, 118, 142, 0.3),
+            0 0 45px rgba(247, 118, 142, 0.15);
+    }
+}
+
+.session-portal.awaiting-input:hover {
+    border-color: var(--error);
+}
+
+/* Blink animation for cursor */
+.blink {
+    animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}

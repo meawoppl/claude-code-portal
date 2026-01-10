@@ -1,4 +1,4 @@
-use crate::{db::DbPool, models::{NewSession, NewSessionWithId}, AppState};
+use crate::{models::NewSessionWithId, AppState};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -220,14 +220,47 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             if let Some(ref key) = session_key {
                                 session_manager.broadcast_to_web_clients(
                                     key,
-                                    ProxyMessage::ClaudeOutput { content },
+                                    ProxyMessage::ClaudeOutput { content: content.clone() },
                                 );
                             }
 
-                            // Update last_activity in DB
+                            // Store message and update last_activity in DB
                             if let (Some(session_id), Ok(mut conn)) = (db_session_id, db_pool.get())
                             {
-                                use crate::schema::sessions;
+                                use crate::schema::{messages, sessions};
+
+                                // Get user_id from session
+                                if let Ok(session) = sessions::table
+                                    .find(session_id)
+                                    .first::<crate::models::Session>(&mut conn)
+                                {
+                                    // Determine role from content type
+                                    let role = content.get("type")
+                                        .and_then(|t| t.as_str())
+                                        .unwrap_or("assistant");
+
+                                    let new_message = crate::models::NewMessage {
+                                        session_id,
+                                        role: role.to_string(),
+                                        content: content.to_string(),
+                                        user_id: session.user_id,
+                                    };
+
+                                    if let Err(e) = diesel::insert_into(messages::table)
+                                        .values(&new_message)
+                                        .execute(&mut conn)
+                                    {
+                                        error!("Failed to store message: {}", e);
+                                    }
+
+                                    // Truncate to keep only last 100 messages
+                                    let _ = super::messages::truncate_session_messages_internal(
+                                        &mut conn,
+                                        session_id,
+                                    );
+                                }
+
+                                // Update last_activity
                                 let _ = diesel::update(sessions::table.find(session_id))
                                     .set(sessions::last_activity.eq(diesel::dsl::now))
                                     .execute(&mut conn);
@@ -305,11 +338,12 @@ pub async fn handle_web_client_websocket(
     ws: WebSocketUpgrade,
     State(app_state): State<Arc<AppState>>,
 ) -> Response {
-    let session_manager = app_state.session_manager.clone();
-    ws.on_upgrade(|socket| handle_web_client_socket(socket, session_manager))
+    ws.on_upgrade(|socket| handle_web_client_socket(socket, app_state))
 }
 
-async fn handle_web_client_socket(socket: WebSocket, session_manager: SessionManager) {
+async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>) {
+    let session_manager = app_state.session_manager.clone();
+    let db_pool = app_state.db_pool.clone();
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = mpsc::unbounded_channel::<ProxyMessage>();
 
@@ -343,14 +377,44 @@ async fn handle_web_client_socket(socket: WebSocket, session_manager: SessionMan
                             let key = session_id.to_string();
                             session_key = Some(key.clone());
 
+                            // Register this web client to receive new messages
                             session_manager.add_web_client(key, tx.clone());
                             info!("Web client connected to session: {} ({})", session_name, session_id);
+
+                            // Send existing messages from DB as history
+                            if let Ok(mut conn) = db_pool.get() {
+                                use crate::schema::messages;
+
+                                let history: Vec<crate::models::Message> = messages::table
+                                    .filter(messages::session_id.eq(session_id))
+                                    .order(messages::created_at.asc())
+                                    .load(&mut conn)
+                                    .unwrap_or_default();
+
+                                info!("Sending {} historical messages to web client", history.len());
+
+                                for msg in history {
+                                    // Convert stored message to ClaudeOutput format
+                                    // The content is stored as JSON string, parse it back
+                                    let content = match serde_json::from_str::<serde_json::Value>(&msg.content) {
+                                        Ok(json) => json,
+                                        Err(_) => {
+                                            // If not valid JSON, wrap as text
+                                            serde_json::json!({
+                                                "type": msg.role,
+                                                "content": msg.content
+                                            })
+                                        }
+                                    };
+
+                                    let _ = tx.send(ProxyMessage::ClaudeOutput { content });
+                                }
+                            }
                         }
                         ProxyMessage::ClaudeInput { content } => {
                             // Forward input to the actual session
                             if let Some(ref key) = session_key {
                                 info!("Web client sending ClaudeInput to session: {}", key);
-                                info!("Available sessions: {:?}", session_manager.sessions.iter().map(|r| r.key().clone()).collect::<Vec<_>>());
                                 if !session_manager
                                     .send_to_session(key, ProxyMessage::ClaudeInput { content })
                                 {
