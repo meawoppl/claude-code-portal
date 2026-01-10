@@ -202,7 +202,7 @@ async fn resolve_auth_token(
             session_prefix: None,
         },
     );
-    config.save()?;
+    config.atomic_save()?;
 
     Ok(Some(token))
 }

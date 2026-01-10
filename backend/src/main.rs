@@ -259,6 +259,15 @@ async fn main() -> anyhow::Result<()> {
             "/ws/client",
             get(handlers::websocket::handle_web_client_websocket),
         )
+        // Download routes for proxy binary and install script
+        .route(
+            "/api/download/install.sh",
+            get(handlers::downloads::install_script),
+        )
+        .route(
+            "/api/download/proxy",
+            get(handlers::downloads::proxy_binary),
+        )
         // Add single unified state
         .with_state(app_state.clone());
 

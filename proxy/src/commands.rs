@@ -9,7 +9,7 @@ use crate::util;
 /// Handle the --logout command
 pub fn handle_logout(config: &mut ProxyConfig, cwd: &str) -> Result<()> {
     if let Some(removed) = config.remove_session_auth(cwd) {
-        config.save()?;
+        config.atomic_save()?;
         ui::print_logout_success(&removed.user_email.unwrap_or_default());
     } else {
         ui::print_no_cached_auth();
@@ -54,7 +54,7 @@ pub fn handle_init(
         config.set_session_prefix(cwd, &prefix);
     }
 
-    config.save()?;
+    config.atomic_save()?;
 
     ui::print_init_complete(
         &user_email.unwrap_or_else(|| "this directory".to_string()),

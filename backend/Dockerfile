@@ -22,9 +22,10 @@ RUN apt-get update && \
 COPY Cargo.toml Cargo.lock ./
 COPY shared ./shared
 COPY backend ./backend
+COPY proxy ./proxy
 
-# Build release binary
-RUN cargo build --release -p backend
+# Build release binaries (backend and proxy)
+RUN cargo build --release -p backend -p proxy
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime
@@ -52,11 +53,16 @@ RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
     apt-get install -y 1password-cli && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy binary from builder
+# Create bin directory and copy binaries from builder
+RUN mkdir -p /app/bin
 COPY --from=builder /app/target/release/backend /app/backend
+COPY --from=builder /app/target/release/proxy /app/bin/claude-proxy
 
 # Copy .env template with 1Password references
 COPY .env.example /app/.env
+
+# Set proxy binary path for the download endpoint
+ENV PROXY_BINARY_PATH=/app/bin/claude-proxy
 
 # Create non-root user
 RUN useradd -m -u 1001 -s /bin/bash appuser && \

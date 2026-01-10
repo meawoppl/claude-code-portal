@@ -1,29 +1,60 @@
 use crate::components::{MessageRenderer, ProxyTokenSetup};
 use crate::utils;
-use crate::Route;
+use futures_util::{SinkExt, StreamExt};
 use gloo_net::http::Request;
-use shared::SessionInfo;
+use gloo_net::websocket::{futures::WebSocket, Message};
+use shared::{ProxyMessage, SessionInfo};
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
 use uuid::Uuid;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::spawn_local;
+use web_sys::{Element, HtmlInputElement, KeyboardEvent};
 use yew::prelude::*;
-use yew_router::prelude::*;
+
+/// Type alias for WebSocket sender to reduce type complexity
+type WsSender = Rc<RefCell<Option<futures_util::stream::SplitSink<WebSocket, Message>>>>;
+
+/// Message data from the API
+#[derive(Clone, PartialEq, serde::Deserialize)]
+struct MessageData {
+    #[allow(dead_code)]
+    role: String,
+    content: String,
+}
+
+#[derive(Clone, PartialEq, serde::Deserialize)]
+struct MessagesResponse {
+    messages: Vec<MessageData>,
+}
+
+// =============================================================================
+// Dashboard Page - Focus Flow Design
+// =============================================================================
 
 #[function_component(DashboardPage)]
 pub fn dashboard_page() -> Html {
-    let sessions = use_state(|| Vec::<SessionInfo>::new());
+    let sessions = use_state(Vec::<SessionInfo>::new);
     let loading = use_state(|| true);
     let refresh_trigger = use_state(|| 0u32);
     let show_new_session = use_state(|| false);
+    let focused_index = use_state(|| 0usize);
+    let awaiting_sessions = use_state(HashSet::<Uuid>::new);
 
-    // Fetch sessions function
+    // Fetch sessions
     let fetch_sessions = {
         let sessions = sessions.clone();
         let loading = loading.clone();
+        let focused_index = focused_index.clone();
 
         Callback::from(move |set_loading: bool| {
             let sessions = sessions.clone();
             let loading = loading.clone();
+            let focused_index = focused_index.clone();
 
-            wasm_bindgen_futures::spawn_local(async move {
+            spawn_local(async move {
                 let api_endpoint = utils::api_url("/api/sessions");
                 match Request::get(&api_endpoint).send().await {
                     Ok(response) => {
@@ -32,6 +63,10 @@ pub fn dashboard_page() -> Html {
                                 if let Ok(parsed) =
                                     serde_json::from_value::<Vec<SessionInfo>>(session_list.clone())
                                 {
+                                    // Ensure focused_index is within bounds
+                                    if *focused_index >= parsed.len() && !parsed.is_empty() {
+                                        focused_index.set(parsed.len() - 1);
+                                    }
                                     sessions.set(parsed);
                                 }
                             }
@@ -48,7 +83,7 @@ pub fn dashboard_page() -> Html {
         })
     };
 
-    // Initial fetch on mount
+    // Initial fetch
     {
         let fetch_sessions = fetch_sessions.clone();
         use_effect_with((), move |_| {
@@ -57,26 +92,22 @@ pub fn dashboard_page() -> Html {
         });
     }
 
-    // Polling interval for auto-refresh (every 5 seconds)
+    // Polling every 5 seconds
     {
         let fetch_sessions = fetch_sessions.clone();
         use_effect_with((), move |_| {
             let interval = gloo::timers::callback::Interval::new(5_000, move || {
                 fetch_sessions.emit(false);
             });
-
-            // Keep interval alive until component unmounts
             move || drop(interval)
         });
     }
 
-    // Manual refresh when refresh_trigger changes (e.g., after delete)
+    // Refresh trigger
     {
         let fetch_sessions = fetch_sessions.clone();
         let refresh = *refresh_trigger;
-
         use_effect_with(refresh, move |_| {
-            // Skip initial render (refresh == 0)
             if refresh > 0 {
                 fetch_sessions.emit(false);
             }
@@ -88,7 +119,7 @@ pub fn dashboard_page() -> Html {
         let refresh_trigger = refresh_trigger.clone();
         Callback::from(move |session_id: Uuid| {
             let refresh_trigger = refresh_trigger.clone();
-            wasm_bindgen_futures::spawn_local(async move {
+            spawn_local(async move {
                 let api_endpoint = utils::api_url(&format!("/api/sessions/{}", session_id));
                 match Request::delete(&api_endpoint).send().await {
                     Ok(response) if response.status() == 204 => {
@@ -112,34 +143,157 @@ pub fn dashboard_page() -> Html {
         })
     };
 
-    // Separate sessions by status
+    // Navigation callbacks
+    let on_select_session = {
+        let focused_index = focused_index.clone();
+        Callback::from(move |index: usize| {
+            focused_index.set(index);
+        })
+    };
+
+    let on_navigate = {
+        let focused_index = focused_index.clone();
+        let sessions = sessions.clone();
+        Callback::from(move |delta: i32| {
+            let len = sessions.len();
+            if len == 0 {
+                return;
+            }
+            let current = *focused_index as i32;
+            let new_index = (current + delta).rem_euclid(len as i32) as usize;
+            focused_index.set(new_index);
+        })
+    };
+
+    let on_next_waiting = {
+        let focused_index = focused_index.clone();
+        let sessions = sessions.clone();
+        let awaiting_sessions = awaiting_sessions.clone();
+        Callback::from(move |_| {
+            let len = sessions.len();
+            if len == 0 {
+                return;
+            }
+            let current = *focused_index;
+            // Find next waiting session after current
+            for i in 1..=len {
+                let idx = (current + i) % len;
+                if let Some(session) = sessions.get(idx) {
+                    if awaiting_sessions.contains(&session.id) {
+                        focused_index.set(idx);
+                        return;
+                    }
+                }
+            }
+        })
+    };
+
+    let on_awaiting_change = {
+        let awaiting_sessions = awaiting_sessions.clone();
+        Callback::from(move |(session_id, is_awaiting): (Uuid, bool)| {
+            let mut set = (*awaiting_sessions).clone();
+            if is_awaiting {
+                set.insert(session_id);
+            } else {
+                set.remove(&session_id);
+            }
+            awaiting_sessions.set(set);
+        })
+    };
+
+    // Auto-advance after sending message
+    let on_message_sent = {
+        let focused_index = focused_index.clone();
+        let sessions = sessions.clone();
+        let awaiting_sessions = awaiting_sessions.clone();
+        Callback::from(move |current_session_id: Uuid| {
+            // Remove current from awaiting since we just sent a message
+            let mut set = (*awaiting_sessions).clone();
+            set.remove(&current_session_id);
+            awaiting_sessions.set(set.clone());
+
+            // Find next waiting session
+            let len = sessions.len();
+            if len == 0 {
+                return;
+            }
+            let current = *focused_index;
+            for i in 1..=len {
+                let idx = (current + i) % len;
+                if let Some(session) = sessions.get(idx) {
+                    if set.contains(&session.id) {
+                        focused_index.set(idx);
+                        return;
+                    }
+                }
+            }
+        })
+    };
+
+    // Get active sessions only for the rail
     let active_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.status.as_str() == "active")
         .cloned()
         .collect();
-    let inactive_sessions: Vec<_> = sessions
-        .iter()
-        .filter(|s| s.status.as_str() != "active")
-        .cloned()
-        .collect();
+
+    let waiting_count = awaiting_sessions.len();
+    let current_session = active_sessions.get(*focused_index).cloned();
+
+    // Keyboard handling - use Shift+key to avoid conflicts with text input
+    let on_keydown = {
+        let on_navigate = on_navigate.clone();
+        let on_next_waiting = on_next_waiting.clone();
+        Callback::from(move |e: KeyboardEvent| {
+            // Only handle shortcuts with Shift held
+            if !e.shift_key() {
+                return;
+            }
+            match e.key().as_str() {
+                "ArrowLeft" => {
+                    e.prevent_default();
+                    on_navigate.emit(-1);
+                }
+                "ArrowRight" => {
+                    e.prevent_default();
+                    on_navigate.emit(1);
+                }
+                "Tab" => {
+                    e.prevent_default();
+                    on_next_waiting.emit(());
+                }
+                _ => {}
+            }
+        })
+    };
 
     html! {
-        <div class="dashboard-container">
-            <header class="dashboard-header">
-                <h1>{ "Your Claude Code Sessions" }</h1>
+        <div class="focus-flow-container" onkeydown={on_keydown} tabindex="0">
+            // Header with new session button
+            <header class="focus-flow-header">
+                <h1>{ "Claude Code Sessions" }</h1>
                 <div class="header-actions">
+                    {
+                        if waiting_count > 0 {
+                            html! {
+                                <span class="waiting-badge">
+                                    { format!("{} waiting", waiting_count) }
+                                </span>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                     <button
                         class={classes!("new-session-button", if *show_new_session { "active" } else { "" })}
                         onclick={toggle_new_session.clone()}
                     >
-                        { if *show_new_session { "− Close" } else { "+ New Session" } }
+                        { if *show_new_session { "-" } else { "+" } }
                     </button>
-                    <button class="logout-button">{ "Logout" }</button>
                 </div>
             </header>
 
-            // Modal overlay for new session
+            // New session modal
             if *show_new_session {
                 <div class="modal-overlay" onclick={toggle_new_session.clone()}>
                     <div class="modal-content" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
@@ -153,210 +307,426 @@ pub fn dashboard_page() -> Html {
                     <div class="spinner"></div>
                     <p>{ "Loading sessions..." }</p>
                 </div>
-            } else if sessions.is_empty() {
+            } else if active_sessions.is_empty() {
                 <div class="empty-state">
-                    <h2>{ "No Sessions Yet" }</h2>
-                    <p>{ "Click \"+ New Session\" above to connect a Claude proxy from your remote machine." }</p>
+                    <h2>{ "No Active Sessions" }</h2>
+                    <p>{ "Click \"+\" to connect a Claude proxy from your machine." }</p>
                 </div>
             } else {
                 <>
-                    if !active_sessions.is_empty() {
-                        <section class="session-section">
-                            <h2 class="section-title">{ "Active Sessions" }</h2>
-                            <div class="sessions-grid">
-                                {
-                                    active_sessions.iter().map(|session| {
-                                        html! {
-                                            <SessionPortal
-                                                key={session.id.to_string()}
-                                                session={session.clone()}
-                                                on_delete={on_delete.clone()}
-                                            />
-                                        }
-                                    }).collect::<Html>()
-                                }
-                            </div>
-                        </section>
+                    // Session Rail (horizontal carousel)
+                    <SessionRail
+                        sessions={active_sessions.clone()}
+                        focused_index={*focused_index}
+                        awaiting_sessions={(*awaiting_sessions).clone()}
+                        on_select={on_select_session.clone()}
+                        on_delete={on_delete.clone()}
+                    />
+
+                    // Main session view
+                    if let Some(ref session) = current_session {
+                        <SessionView
+                            key={session.id.to_string()}
+                            session={session.clone()}
+                            on_awaiting_change={on_awaiting_change.clone()}
+                            on_message_sent={on_message_sent.clone()}
+                        />
                     }
 
-                    if !inactive_sessions.is_empty() {
-                        <section class="session-section inactive-section">
-                            <h2 class="section-title muted">{ "Recent Sessions" }</h2>
-                            <div class="sessions-grid">
-                                {
-                                    inactive_sessions.iter().map(|session| {
-                                        html! {
-                                            <SessionPortal
-                                                key={session.id.to_string()}
-                                                session={session.clone()}
-                                                on_delete={on_delete.clone()}
-                                            />
-                                        }
-                                    }).collect::<Html>()
-                                }
-                            </div>
-                        </section>
-                    }
+                    // Keyboard hints
+                    <div class="keyboard-hints">
+                        <span>{ "Shift + <- -> navigate" }</span>
+                        <span>{ "Shift + Tab = next waiting" }</span>
+                        <span>{ "Enter = send" }</span>
+                    </div>
                 </>
             }
         </div>
     }
 }
 
-#[derive(Properties, PartialEq, Clone)]
-struct SessionPortalProps {
-    session: SessionInfo,
+// =============================================================================
+// Session Rail - Horizontal Carousel of Session Pills
+// =============================================================================
+
+#[derive(Properties, PartialEq)]
+struct SessionRailProps {
+    sessions: Vec<SessionInfo>,
+    focused_index: usize,
+    awaiting_sessions: HashSet<Uuid>,
+    on_select: Callback<usize>,
     on_delete: Callback<Uuid>,
 }
 
-/// Message data from the API
-#[derive(Clone, PartialEq, serde::Deserialize)]
-struct MessageData {
-    role: String,
-    content: String,
-}
+#[function_component(SessionRail)]
+fn session_rail(props: &SessionRailProps) -> Html {
+    let rail_ref = use_node_ref();
 
-#[derive(Clone, PartialEq, serde::Deserialize)]
-struct MessagesResponse {
-    messages: Vec<MessageData>,
-}
-
-#[function_component(SessionPortal)]
-fn session_portal(props: &SessionPortalProps) -> Html {
-    let navigator = use_navigator().unwrap();
-    let session = &props.session;
-    let messages = use_state(|| Vec::<MessageData>::new());
-    let awaiting_input = use_state(|| false);
-
-    // Fetch messages for this session
+    // Scroll focused session into view
     {
-        let messages = messages.clone();
-        let awaiting_input = awaiting_input.clone();
-        let session_id = session.id;
-
-        use_effect_with(session_id, move |_| {
-            wasm_bindgen_futures::spawn_local(async move {
-                let api_endpoint = utils::api_url(&format!("/api/sessions/{}/messages", session_id));
-                match Request::get(&api_endpoint).send().await {
-                    Ok(response) => {
-                        if let Ok(data) = response.json::<MessagesResponse>().await {
-                            // Check if last message is a "result" type (Claude finished, awaiting input)
-                            let is_awaiting = data.messages.last().map_or(false, |msg| {
-                                // Try to parse the content as JSON and check if it's a result
-                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&msg.content) {
-                                    parsed.get("type").and_then(|t| t.as_str()) == Some("result")
-                                } else {
-                                    false
-                                }
-                            });
-                            awaiting_input.set(is_awaiting);
-                            messages.set(data.messages);
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Failed to fetch messages for session {}: {:?}", session_id, e);
-                    }
+        let rail_ref = rail_ref.clone();
+        let focused_index = props.focused_index;
+        use_effect_with(focused_index, move |_| {
+            if let Some(rail) = rail_ref.cast::<Element>() {
+                if let Some(child) = rail.children().item(focused_index as u32) {
+                    // Use simple scroll into view - smooth scrolling via CSS
+                    child.scroll_into_view();
                 }
-            });
+            }
             || ()
         });
     }
 
-    let handle_click = {
-        let navigator = navigator.clone();
-        let session_id = session.id;
-
-        Callback::from(move |_| {
-            navigator.push(&Route::Terminal {
-                id: session_id.to_string(),
-            });
-        })
-    };
-
-    let handle_delete = {
-        let on_delete = props.on_delete.clone();
-        let session_id = session.id;
-
-        Callback::from(move |e: MouseEvent| {
-            e.stop_propagation();
-            on_delete.emit(session_id);
-        })
-    };
-
-    let is_active = session.status.as_str() == "active";
-    let show_awaiting_glow = is_active && *awaiting_input;
-
-    let card_class = classes!(
-        "session-portal",
-        if !is_active { Some("inactive") } else { None },
-        if show_awaiting_glow { Some("awaiting-input") } else { None }
-    );
-
     html! {
-        <div class={card_class} onclick={handle_click}>
-            <button class="delete-button" onclick={handle_delete} title="Remove session">
-                { "x" }
-            </button>
-            <div class="portal-terminal">
-                <div class="portal-terminal-header">
-                    <div class="terminal-dots">
-                        <span class="dot red"></span>
-                        <span class="dot yellow"></span>
-                        <span class="dot green"></span>
-                    </div>
-                    <span class="session-name">{ &session.session_name }</span>
-                    {
-                        if is_active {
-                            html! { <span class="status-badge active">{ "LIVE" }</span> }
-                        } else {
-                            html! { <span class="status-badge">{ "offline" }</span> }
-                        }
+        <div class="session-rail" ref={rail_ref}>
+            {
+                props.sessions.iter().enumerate().map(|(index, session)| {
+                    let is_focused = index == props.focused_index;
+                    let is_awaiting = props.awaiting_sessions.contains(&session.id);
+
+                    let on_click = {
+                        let on_select = props.on_select.clone();
+                        Callback::from(move |_| on_select.emit(index))
+                    };
+
+                    let on_delete = {
+                        let on_delete = props.on_delete.clone();
+                        let session_id = session.id;
+                        Callback::from(move |e: MouseEvent| {
+                            e.stop_propagation();
+                            on_delete.emit(session_id);
+                        })
+                    };
+
+                    let pill_class = classes!(
+                        "session-pill",
+                        if is_focused { Some("focused") } else { None },
+                        if is_awaiting { Some("awaiting") } else { None },
+                    );
+
+                    html! {
+                        <div class={pill_class} onclick={on_click}>
+                            <span class="pill-indicator">
+                                { if is_awaiting { "●" } else { "○" } }
+                            </span>
+                            <span class="pill-name">{ &session.session_name }</span>
+                            <button class="pill-delete" onclick={on_delete}>{ "×" }</button>
+                        </div>
                     }
-                </div>
-                <div class="portal-terminal-viewport">
-                    <div class="portal-terminal-content">
-                        {
-                            if messages.is_empty() {
-                                html! {
-                                    <div class="empty-terminal">
-                                        <span class="muted">{ "No messages yet..." }</span>
-                                    </div>
-                                }
-                            } else {
-                                // Use the same MessageRenderer as the full terminal
-                                html! {
-                                    <div class="messages">
-                                        {
-                                            messages.iter().map(|msg| {
-                                                html! {
-                                                    <MessageRenderer json={msg.content.clone()} />
-                                                }
-                                            }).collect::<Html>()
-                                        }
-                                    </div>
-                                }
-                            }
+                }).collect::<Html>()
+            }
+        </div>
+    }
+}
+
+// =============================================================================
+// Session View - Main Terminal View (inline, not modal)
+// =============================================================================
+
+#[derive(Properties, PartialEq)]
+pub struct SessionViewProps {
+    pub session: SessionInfo,
+    pub on_awaiting_change: Callback<(Uuid, bool)>,
+    pub on_message_sent: Callback<Uuid>,
+}
+
+pub enum SessionViewMsg {
+    SendInput,
+    UpdateInput(String),
+    ReceivedOutput(String),
+    WebSocketConnected(WsSender),
+    WebSocketError(String),
+    CheckAwaiting,
+}
+
+pub struct SessionView {
+    messages: Vec<String>,
+    input_value: String,
+    ws_connected: bool,
+    ws_sender: Option<WsSender>,
+    messages_ref: NodeRef,
+    input_ref: NodeRef,
+    should_autoscroll: Rc<RefCell<bool>>,
+    #[allow(dead_code)]
+    scroll_listener: Option<Closure<dyn Fn()>>,
+}
+
+impl Component for SessionView {
+    type Message = SessionViewMsg;
+    type Properties = SessionViewProps;
+
+    fn create(ctx: &Context<Self>) -> Self {
+        let link = ctx.link().clone();
+        let session_id = ctx.props().session.id;
+        let on_awaiting_change = ctx.props().on_awaiting_change.clone();
+
+        // Fetch existing messages
+        {
+            let link = link.clone();
+            let on_awaiting_change = on_awaiting_change.clone();
+            spawn_local(async move {
+                let api_endpoint = utils::api_url(&format!("/api/sessions/{}/messages", session_id));
+                if let Ok(response) = Request::get(&api_endpoint).send().await {
+                    if let Ok(data) = response.json::<MessagesResponse>().await {
+                        // Check if awaiting input
+                        let is_awaiting = data.messages.last().is_some_and(|msg| {
+                            serde_json::from_str::<serde_json::Value>(&msg.content)
+                                .ok()
+                                .and_then(|p| p.get("type").and_then(|t| t.as_str()).map(|t| t == "result"))
+                                .unwrap_or(false)
+                        });
+                        on_awaiting_change.emit((session_id, is_awaiting));
+
+                        for msg in data.messages {
+                            link.send_message(SessionViewMsg::ReceivedOutput(msg.content));
                         }
-                    </div>
-                </div>
-                {
-                    if show_awaiting_glow {
-                        html! {
-                            <div class="portal-input-bar">
-                                <span class="prompt-symbol">{ ">" }</span>
-                                <span class="cursor blink">{ "▊" }</span>
-                            </div>
-                        }
-                    } else {
-                        html! {}
                     }
                 }
+            });
+        }
+
+        // Connect WebSocket
+        spawn_local(async move {
+            let ws_endpoint = utils::ws_url("/ws/client");
+            match WebSocket::open(&ws_endpoint) {
+                Ok(ws) => {
+                    let (mut sender, mut receiver) = ws.split();
+
+                    let register_msg = ProxyMessage::Register {
+                        session_id,
+                        session_name: session_id.to_string(),
+                        auth_token: None,
+                        working_directory: String::new(),
+                        resuming: false,
+                    };
+
+                    if let Ok(json) = serde_json::to_string(&register_msg) {
+                        if sender.send(Message::Text(json)).await.is_err() {
+                            link.send_message(SessionViewMsg::WebSocketError(
+                                "Failed to send registration".to_string(),
+                            ));
+                            return;
+                        }
+                    }
+
+                    let sender = Rc::new(RefCell::new(Some(sender)));
+                    link.send_message(SessionViewMsg::WebSocketConnected(sender));
+
+                    while let Some(msg) = receiver.next().await {
+                        match msg {
+                            Ok(Message::Text(text)) => {
+                                if let Ok(proxy_msg) = serde_json::from_str::<ProxyMessage>(&text) {
+                                    match proxy_msg {
+                                        ProxyMessage::ClaudeOutput { content } => {
+                                            link.send_message(SessionViewMsg::ReceivedOutput(
+                                                content.to_string(),
+                                            ));
+                                            link.send_message(SessionViewMsg::CheckAwaiting);
+                                        }
+                                        ProxyMessage::Error { message } => {
+                                            let error_json = serde_json::json!({
+                                                "type": "error",
+                                                "message": message
+                                            });
+                                            link.send_message(SessionViewMsg::ReceivedOutput(
+                                                error_json.to_string(),
+                                            ));
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("WebSocket error: {:?}", e);
+                                link.send_message(SessionViewMsg::WebSocketError(format!("{:?}", e)));
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to connect WebSocket: {:?}", e);
+                    link.send_message(SessionViewMsg::WebSocketError(format!("{:?}", e)));
+                }
+            }
+        });
+
+        Self {
+            messages: vec![],
+            input_value: String::new(),
+            ws_connected: false,
+            ws_sender: None,
+            messages_ref: NodeRef::default(),
+            input_ref: NodeRef::default(),
+            should_autoscroll: Rc::new(RefCell::new(true)),
+            scroll_listener: None,
+        }
+    }
+
+    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
+        // Focus input on first render
+        if first_render {
+            if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
+                let _ = input.focus();
+            }
+        }
+
+        if let Some(element) = self.messages_ref.cast::<Element>() {
+            if first_render {
+                let should_autoscroll = self.should_autoscroll.clone();
+                let element_clone = element.clone();
+
+                let closure = Closure::new(move || {
+                    let scroll_top = element_clone.scroll_top();
+                    let scroll_height = element_clone.scroll_height();
+                    let client_height = element_clone.client_height();
+                    let at_bottom = scroll_height - scroll_top - client_height < 50;
+                    *should_autoscroll.borrow_mut() = at_bottom;
+                });
+
+                let _ = element.add_event_listener_with_callback(
+                    "scroll",
+                    closure.as_ref().unchecked_ref(),
+                );
+
+                self.scroll_listener = Some(closure);
+            }
+
+            if *self.should_autoscroll.borrow() {
+                element.set_scroll_top(element.scroll_height());
+            }
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            SessionViewMsg::UpdateInput(value) => {
+                self.input_value = value;
+                true
+            }
+            SessionViewMsg::SendInput => {
+                let input = self.input_value.trim().to_string();
+                if input.is_empty() {
+                    return false;
+                }
+
+                let user_msg = serde_json::json!({
+                    "type": "user",
+                    "content": input
+                });
+                self.messages.push(user_msg.to_string());
+                self.input_value.clear();
+
+                // Notify parent that message was sent (for auto-advance)
+                let session_id = ctx.props().session.id;
+                ctx.props().on_message_sent.emit(session_id);
+
+                if let Some(ref sender_rc) = self.ws_sender {
+                    let sender_rc = sender_rc.clone();
+                    let msg = ProxyMessage::ClaudeInput {
+                        content: serde_json::Value::String(input),
+                    };
+
+                    spawn_local(async move {
+                        if let Ok(json) = serde_json::to_string(&msg) {
+                            let maybe_sender = sender_rc.borrow_mut().take();
+                            if let Some(mut sender) = maybe_sender {
+                                let _ = sender.send(Message::Text(json)).await;
+                                *sender_rc.borrow_mut() = Some(sender);
+                            }
+                        }
+                    });
+                }
+                true
+            }
+            SessionViewMsg::ReceivedOutput(output) => {
+                self.messages.push(output);
+                true
+            }
+            SessionViewMsg::WebSocketConnected(sender) => {
+                self.ws_connected = true;
+                self.ws_sender = Some(sender);
+                true
+            }
+            SessionViewMsg::WebSocketError(err) => {
+                let error_msg = serde_json::json!({
+                    "type": "error",
+                    "message": format!("Connection error: {}", err)
+                });
+                self.messages.push(error_msg.to_string());
+                self.ws_connected = false;
+                true
+            }
+            SessionViewMsg::CheckAwaiting => {
+                // Check if last message is a result (awaiting input)
+                let is_awaiting = self.messages.last().is_some_and(|msg| {
+                    serde_json::from_str::<serde_json::Value>(msg)
+                        .ok()
+                        .and_then(|p| p.get("type").and_then(|t| t.as_str()).map(|t| t == "result"))
+                        .unwrap_or(false)
+                });
+                let session_id = ctx.props().session.id;
+                ctx.props().on_awaiting_change.emit((session_id, is_awaiting));
+                false
+            }
+        }
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let session = &ctx.props().session;
+
+        let handle_submit = link.callback(|e: SubmitEvent| {
+            e.prevent_default();
+            SessionViewMsg::SendInput
+        });
+
+        let handle_input = link.callback(|e: InputEvent| {
+            let input: HtmlInputElement = e.target_unchecked_into();
+            SessionViewMsg::UpdateInput(input.value())
+        });
+
+        html! {
+            <div class="session-view">
+                <div class="session-view-header">
+                    <span class="session-name">{ &session.session_name }</span>
+                    {
+                        if let Some(dir) = &session.working_directory {
+                            html! { <span class="session-path">{ dir }</span> }
+                        } else {
+                            html! {}
+                        }
+                    }
+                    <span class={if self.ws_connected { "status connected" } else { "status disconnected" }}>
+                        { if self.ws_connected { "● Connected" } else { "○ Disconnected" } }
+                    </span>
+                </div>
+
+                <div class="session-view-messages" ref={self.messages_ref.clone()}>
+                    {
+                        self.messages.iter().map(|json| {
+                            html! { <MessageRenderer json={json.clone()} /> }
+                        }).collect::<Html>()
+                    }
+                </div>
+
+                <form class="session-view-input" onsubmit={handle_submit}>
+                    <span class="input-prompt">{ ">" }</span>
+                    <input
+                        ref={self.input_ref.clone()}
+                        type="text"
+                        class="message-input"
+                        placeholder="Type your message..."
+                        value={self.input_value.clone()}
+                        oninput={handle_input}
+                        disabled={!self.ws_connected}
+                    />
+                    <button type="submit" class="send-button" disabled={!self.ws_connected}>
+                        { "Send" }
+                    </button>
+                </form>
             </div>
-            <div class="portal-overlay">
-                <span class="portal-hint">
-                    { if is_active { "Click to connect" } else { "Click to view history" } }
-                </span>
-            </div>
-        </div>
+        }
     }
 }

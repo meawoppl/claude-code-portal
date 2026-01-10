@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod device_flow;
+pub mod downloads;
 pub mod messages;
 pub mod proxy_tokens;
 pub mod sessions;

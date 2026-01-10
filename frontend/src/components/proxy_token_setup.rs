@@ -19,6 +19,11 @@ enum TokenState {
 pub fn proxy_token_setup() -> Html {
     let token_state = use_state(|| TokenState::Loading);
 
+    // Get the base URL for the install script
+    let base_url = web_sys::window()
+        .and_then(|w| w.location().origin().ok())
+        .unwrap_or_else(|| "http://localhost:3000".to_string());
+
     // Auto-generate token on mount
     {
         let token_state = token_state.clone();
@@ -75,46 +80,38 @@ pub fn proxy_token_setup() -> Html {
             }
         }
         TokenState::HasToken(token_response) => {
-            // Check if we're in dev mode (localhost)
-            let is_dev = web_sys::window()
-                .and_then(|w| w.location().hostname().ok())
-                .map(|h| h == "localhost" || h == "127.0.0.1")
-                .unwrap_or(false);
-
-            let (init_command, run_command) = if is_dev {
-                (
-                    format!("cargo run -p proxy -- --init \"{}\"", token_response.init_url),
-                    "cargo run -p proxy".to_string(),
-                )
-            } else {
-                (
-                    format!("claude-proxy --init \"{}\"", token_response.init_url),
-                    "claude-proxy".to_string(),
-                )
-            };
+            // URL-encode the init_url for the query parameter
+            let encoded_init_url = js_sys::encode_uri_component(&token_response.init_url);
+            let install_command = format!(
+                "curl -fsSL \"{}/api/download/install.sh?init_url={}\" | bash",
+                base_url, encoded_init_url
+            );
+            let run_command = "claude-proxy".to_string();
 
             html! {
                 <div class="proxy-setup has-token">
-                    <h3>{ "Setup Command Ready" }</h3>
-                    <p class="setup-description">
-                        { "Run this command on the machine where you want to use Claude:" }
-                    </p>
+                    <h3>{ "Quick Setup" }</h3>
 
-                    <CopyCommand
-                        command={init_command}
-                        label={Some("One-time setup:".to_string())}
-                    />
+                    <div class="setup-step">
+                        <span class="step-number">{ "1" }</span>
+                        <div class="step-content">
+                            <p class="step-label">{ "Install and initialize:" }</p>
+                            <CopyCommand command={install_command} />
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <span class="step-number">{ "2" }</span>
+                        <div class="step-content">
+                            <p class="step-label">{ "Start a session:" }</p>
+                            <CopyCommand command={run_command} />
+                        </div>
+                    </div>
 
                     <div class="setup-notes">
-                        <p class="note">
-                            <span class="note-icon">{ "i" }</span>
-                            { "After setup, just run " }
-                            <code>{ run_command }</code>
-                            { " to start a session." }
-                        </p>
                         <p class="note expiry">
                             <span class="note-icon">{ "!" }</span>
-                            { format!("This token expires: {}", format_expiry(&token_response.expires_at)) }
+                            { format!("Token expires: {}", format_expiry(&token_response.expires_at)) }
                         </p>
                     </div>
                 </div>

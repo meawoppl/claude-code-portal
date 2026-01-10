@@ -2,7 +2,7 @@ mod components;
 mod pages;
 pub mod utils;
 
-use pages::{dashboard::DashboardPage, splash::SplashPage, terminal::TerminalPage};
+use pages::{dashboard::DashboardPage, splash::SplashPage};
 use yew::prelude::*;
 use yew_router::prelude::*;
 
@@ -12,15 +12,12 @@ pub enum Route {
     Home,
     #[at("/dashboard")]
     Dashboard,
-    #[at("/terminal/:id")]
-    Terminal { id: String },
 }
 
 fn switch(routes: Route) -> Html {
     match routes {
         Route::Home => html! { <SplashPage /> },
         Route::Dashboard => html! { <DashboardPage /> },
-        Route::Terminal { id } => html! { <TerminalPage session_id={id} /> },
     }
 }
 
