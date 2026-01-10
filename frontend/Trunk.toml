@@ -1,3 +1,3 @@
 [build]
-# Assets are served under /app/ by the backend
-public_url = "/app/"
+# Assets are served at root
+public_url = "/"

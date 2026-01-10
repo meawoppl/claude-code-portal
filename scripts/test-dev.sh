@@ -191,31 +191,24 @@ for i in {1..30}; do
     sleep 1
 done
 
-log "🔌 Starting proxy..."
-cargo run -p proxy -- \
-    --backend-url ws://localhost:3000 \
-    --session-name "test-session" \
-    > /tmp/cc-proxy-proxy.log 2>&1 &
-PROXY_PID=$!
-
-sleep 3
-
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║          ✅ CC-Proxy Test Environment Running        ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
-echo "  🌐 Web Interface:  http://localhost:3000/app/"
-echo "  📊 Backend API:    http://localhost:3000/"
+echo "  🌐 Web Interface:  http://localhost:3000/"
+echo "  📊 Backend API:    http://localhost:3000/api/"
 echo "  🗄️  Database:       postgresql://ccproxy:***@localhost:5432/ccproxy"
 echo ""
 echo "  📝 Logs:"
 echo "     Backend: tail -f /tmp/cc-proxy-backend.log"
-echo "     Proxy:   tail -f /tmp/cc-proxy-proxy.log"
 echo ""
 echo "  🧪 Test Account:"
 echo "     Email: testing@testing.local"
-echo "     (automatically logged in)"
+echo ""
+echo "  🔌 To start a proxy session:"
+echo "     1. Open http://localhost:3000/ and generate a setup token"
+echo "     2. Run the setup command shown in the UI"
 echo ""
 echo "  ⚠️  DEV MODE ENABLED - OAuth bypassed"
 echo ""
@@ -223,4 +216,4 @@ echo "Press Ctrl+C to stop all services"
 echo ""
 
 # Wait for user interrupt
-wait $BACKEND_PID $PROXY_PID
+wait $BACKEND_PID

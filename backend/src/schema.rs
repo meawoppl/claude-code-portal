@@ -12,6 +12,21 @@ diesel::table! {
 }
 
 diesel::table! {
+    proxy_auth_tokens (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        #[max_length = 255]
+        name -> Varchar,
+        #[max_length = 64]
+        token_hash -> Varchar,
+        created_at -> Timestamp,
+        last_used_at -> Nullable<Timestamp>,
+        expires_at -> Timestamp,
+        revoked -> Bool,
+    }
+}
+
+diesel::table! {
     sessions (id) {
         id -> Uuid,
         user_id -> Uuid,
@@ -44,10 +59,7 @@ diesel::table! {
 }
 
 diesel::joinable!(messages -> sessions (session_id));
+diesel::joinable!(proxy_auth_tokens -> users (user_id));
 diesel::joinable!(sessions -> users (user_id));
 
-diesel::allow_tables_to_appear_in_same_query!(
-    messages,
-    sessions,
-    users,
-);
+diesel::allow_tables_to_appear_in_same_query!(messages, proxy_auth_tokens, sessions, users,);

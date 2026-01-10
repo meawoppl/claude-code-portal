@@ -81,9 +81,9 @@ pub async fn new_handler(
 - ✅ `serde`, `serde_json` with default features
 - ✅ `uuid` with `js` feature (for WASM random)
 - ✅ `chrono` with `wasmbind` feature
+- ✅ `claude-codes` with `default-features = false, features = ["types"]` (types only, no tokio)
 - ❌ NO `tokio` (has native networking)
 - ❌ NO `diesel` (native DB)
-- ❌ NO `claude-codes` (depends on tokio)
 - ❌ NO `std::fs`, `std::net`, or other native-only APIs
 
 **Example good dependency**:
@@ -260,7 +260,12 @@ pub enum ProxyMessage {
 
 ```bash
 # Development mode (fast iteration)
-./scripts/test-dev.sh        # All-in-one: DB + backend + frontend + proxy
+./scripts/dev.sh start        # Start DB + backend + frontend (background)
+./scripts/dev.sh status       # Show status of all services
+./scripts/dev.sh logs         # Tail backend logs
+./scripts/dev.sh stop         # Stop all services
+./scripts/dev.sh restart      # Restart all services
+./scripts/dev.sh build        # Rebuild frontend only
 
 # Individual components
 cargo build -p backend        # Build backend
@@ -548,9 +553,9 @@ When making changes, verify:
 - [ ] `cargo clippy --workspace` has no warnings
 - [ ] `cargo fmt` applied
 - [ ] `cargo build --target wasm32-unknown-unknown -p shared` succeeds
-- [ ] `./scripts/test-dev.sh` starts without errors
+- [ ] `./scripts/dev.sh start` starts without errors
 - [ ] Backend accessible at `http://localhost:3000/`
-- [ ] Frontend accessible at `http://localhost:3000/app/`
+- [ ] Frontend accessible at `http://localhost:3000/`
 - [ ] WebSocket connections work (check browser console)
 - [ ] Database migrations run successfully
 
@@ -621,7 +626,7 @@ use uuid::Uuid;
 ## When in Doubt
 
 1. Check existing code for similar patterns
-2. Run `./scripts/test-dev.sh` to verify changes
+2. Run `./scripts/dev.sh start` to verify changes
 3. Check `TROUBLESHOOTING.md` for common issues
 4. Ensure all tests pass before committing
 5. Ask human developer for architectural decisions
@@ -631,8 +636,8 @@ use uuid::Uuid;
 Your changes are ready when:
 - ✅ All four crates build successfully
 - ✅ Frontend compiles to WASM without errors
-- ✅ Test script starts all services
+- ✅ `./scripts/dev.sh start` starts all services
 - ✅ No clippy warnings
 - ✅ Code formatted with rustfmt
 - ✅ Existing functionality still works
-- ✅ New feature/fix is testable via `./scripts/test-dev.sh`
+- ✅ New feature/fix is testable at `http://localhost:3000/`

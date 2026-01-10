@@ -1,224 +1,327 @@
 #!/bin/bash
-# Development environment script
-# Usage:
-#   ./scripts/dev.sh start    - Start all services in background
-#   ./scripts/dev.sh stop     - Stop all services
-#   ./scripts/dev.sh restart  - Restart all services
-#   ./scripts/dev.sh status   - Show status of services
-#   ./scripts/dev.sh logs     - Tail all logs
-#   ./scripts/dev.sh          - Run in foreground (default, Ctrl+C to stop)
+# Development environment management script
+# Usage: ./scripts/dev.sh [start|stop|status|logs|restart]
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-cd "$PROJECT_DIR"
-
-# Config
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
-BACKEND_LOG="/tmp/cc-proxy-backend.log"
-PROXY_LOG="/tmp/cc-proxy-proxy.log"
-PID_FILE="/tmp/cc-proxy.pids"
-
-# Colors
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
-log() { echo -e "${BLUE}[cc-proxy]${NC} $1"; }
-success() { echo -e "${GREEN}✓${NC} $1"; }
-error() { echo -e "${RED}✗${NC} $1"; }
-warn() { echo -e "${YELLOW}⚠${NC} $1"; }
+# PID file locations
+PID_DIR="/tmp/cc-proxy-dev"
+BACKEND_PID_FILE="$PID_DIR/backend.pid"
+DB_CONTAINER="cc-proxy-db"
 
+# Log file locations
+BACKEND_LOG="/tmp/cc-proxy-backend.log"
+
+log() {
+    echo -e "${BLUE}[cc-proxy]${NC} $1"
+}
+
+success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+warn() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+# Ensure PID directory exists
+mkdir -p "$PID_DIR"
+
+# Get the script's directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_ROOT"
+
+# Check if a process is running
+is_running() {
+    local pid_file="$1"
+    if [ -f "$pid_file" ]; then
+        local pid=$(cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Check if database container is running
+is_db_running() {
+    docker ps --format '{{.Names}}' 2>/dev/null | grep -q "db"
+}
+
+# Start the database
 start_db() {
+    if is_db_running; then
+        success "Database already running"
+        return 0
+    fi
+
     log "Starting PostgreSQL..."
     docker compose -f docker-compose.test.yml up -d db
 
-    log "Waiting for database..."
+    log "Waiting for database to be ready..."
     for i in {1..30}; do
         if docker compose -f docker-compose.test.yml exec -T db pg_isready -U ccproxy > /dev/null 2>&1; then
-            success "Database ready"
+            success "Database is ready"
             return 0
         fi
         sleep 1
     done
+
     error "Database failed to start"
     return 1
 }
 
+# Run migrations
 run_migrations() {
-    log "Running migrations..."
+    export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+
+    if ! command -v diesel &> /dev/null; then
+        warn "diesel CLI not installed. Installing..."
+        cargo install diesel_cli --no-default-features --features postgres
+    fi
+
+    log "Running database migrations..."
     cd backend
-    if diesel migration run 2>/dev/null; then
+    if diesel migration run; then
         success "Migrations complete"
     else
-        warn "Migrations may have already run"
-    fi
-    cd ..
-}
-
-build_frontend() {
-    log "Building frontend..."
-    cd frontend
-    if trunk build 2>/dev/null; then
-        success "Frontend built"
-    else
-        error "Frontend build failed"
+        error "Migrations failed"
+        cd ..
         return 1
     fi
     cd ..
 }
 
-start_backend() {
-    local background=$1
-    log "Starting backend..."
-
-    if [ "$background" = "bg" ]; then
-        cargo run -p backend -- --dev-mode > "$BACKEND_LOG" 2>&1 &
-        echo $! >> "$PID_FILE"
-        sleep 3
-        if curl -sf http://localhost:3000/ > /dev/null; then
-            success "Backend running (PID: $(tail -1 "$PID_FILE"))"
-        else
-            error "Backend failed to start. Check: tail -f $BACKEND_LOG"
-            return 1
-        fi
-    else
-        cargo run -p backend -- --dev-mode
+# Build frontend
+build_frontend() {
+    if ! command -v trunk &> /dev/null; then
+        warn "trunk not installed. Installing..."
+        cargo install --locked trunk
     fi
+
+    log "Building frontend..."
+    cd frontend
+    if trunk build; then
+        success "Frontend built"
+    else
+        error "Frontend build failed"
+        cd ..
+        return 1
+    fi
+    cd ..
 }
 
+# Start the backend
+start_backend() {
+    if is_running "$BACKEND_PID_FILE"; then
+        success "Backend already running (PID: $(cat $BACKEND_PID_FILE))"
+        return 0
+    fi
+
+    export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+    export DEV_MODE=true
+
+    log "Starting backend in dev mode..."
+    cargo run -p backend -- --dev-mode > "$BACKEND_LOG" 2>&1 &
+    local pid=$!
+    echo $pid > "$BACKEND_PID_FILE"
+
+    log "Waiting for backend to start..."
+    for i in {1..30}; do
+        if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
+            success "Backend is ready (PID: $pid)"
+            return 0
+        fi
+        if ! kill -0 "$pid" 2>/dev/null; then
+            error "Backend process died. Check logs: tail -f $BACKEND_LOG"
+            rm -f "$BACKEND_PID_FILE"
+            return 1
+        fi
+        sleep 1
+    done
+
+    error "Backend failed to start. Check logs: tail -f $BACKEND_LOG"
+    return 1
+}
+
+# Stop everything
 stop_all() {
     log "Stopping services..."
 
-    # Kill tracked PIDs
-    if [ -f "$PID_FILE" ]; then
-        while read pid; do
-            kill "$pid" 2>/dev/null && echo "Killed PID $pid" || true
-        done < "$PID_FILE"
-        rm -f "$PID_FILE"
+    # Stop backend
+    if [ -f "$BACKEND_PID_FILE" ]; then
+        local pid=$(cat "$BACKEND_PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+            success "Backend stopped (PID: $pid)"
+        fi
+        rm -f "$BACKEND_PID_FILE"
     fi
 
-    # Kill by name as backup
+    # Also kill any stray backend processes
     pkill -f "target/debug/backend" 2>/dev/null || true
-    pkill -f "target/debug/claude-proxy" 2>/dev/null || true
 
     # Stop database
-    docker compose -f docker-compose.test.yml down 2>/dev/null || true
+    if is_db_running; then
+        docker compose -f docker-compose.test.yml down
+        success "Database stopped"
+    fi
 
     success "All services stopped"
 }
 
+# Show status
 show_status() {
     echo ""
-    echo "Service Status:"
-    echo "───────────────"
+    echo "CC-Proxy Development Environment Status"
+    echo "========================================"
+    echo ""
 
-    # Database
-    if docker compose -f docker-compose.test.yml exec -T db pg_isready -U ccproxy > /dev/null 2>&1; then
-        echo -e "  Database:  ${GREEN}●${NC} running"
+    # Database status
+    if is_db_running; then
+        echo -e "  Database:  ${GREEN}running${NC}"
     else
-        echo -e "  Database:  ${RED}○${NC} stopped"
+        echo -e "  Database:  ${RED}stopped${NC}"
     fi
 
-    # Backend
-    if curl -sf http://localhost:3000/ > /dev/null 2>&1; then
-        echo -e "  Backend:   ${GREEN}●${NC} running (http://localhost:3000)"
-    else
-        echo -e "  Backend:   ${RED}○${NC} stopped"
-    fi
+    # Backend status
+    if is_running "$BACKEND_PID_FILE"; then
+        local pid=$(cat "$BACKEND_PID_FILE")
+        echo -e "  Backend:   ${GREEN}running${NC} (PID: $pid)"
 
-    # Check for proxy
-    if pgrep -f "target/debug/claude-proxy" > /dev/null 2>&1; then
-        echo -e "  Proxy:     ${GREEN}●${NC} running"
+        # Check if it's actually responding
+        if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
+            echo -e "  API:       ${GREEN}healthy${NC}"
+        else
+            echo -e "  API:       ${YELLOW}not responding${NC}"
+        fi
     else
-        echo -e "  Proxy:     ${YELLOW}○${NC} not started"
+        echo -e "  Backend:   ${RED}stopped${NC}"
     fi
 
     echo ""
     echo "URLs:"
-    echo "  Frontend:  http://localhost:3000/app/"
-    echo "  Dashboard: http://localhost:3000/app/dashboard"
-    echo "  Dev Login: http://localhost:3000/auth/dev-login"
+    echo "  Web Interface:  http://localhost:3000/"
+    echo "  Backend API:    http://localhost:3000/api/"
+    echo ""
+    echo "Logs:"
+    echo "  Backend: tail -f $BACKEND_LOG"
     echo ""
 }
 
+# Show logs
 show_logs() {
-    echo "Tailing logs (Ctrl+C to stop)..."
-    tail -f "$BACKEND_LOG" "$PROXY_LOG" 2>/dev/null
+    local service="${1:-backend}"
+    case "$service" in
+        backend)
+            if [ -f "$BACKEND_LOG" ]; then
+                tail -f "$BACKEND_LOG"
+            else
+                error "No backend log file found"
+            fi
+            ;;
+        db|database)
+            docker compose -f docker-compose.test.yml logs -f db
+            ;;
+        *)
+            error "Unknown service: $service"
+            echo "Usage: $0 logs [backend|db]"
+            ;;
+    esac
 }
 
-run_foreground() {
-    # Cleanup on exit
-    trap stop_all EXIT INT TERM
+# Full start sequence
+do_start() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════╗"
+    echo "║       Starting CC-Proxy Development Environment      ║"
+    echo "╚══════════════════════════════════════════════════════╝"
+    echo ""
 
     start_db || exit 1
-    run_migrations
+    run_migrations || exit 1
     build_frontend || exit 1
+    start_backend || exit 1
 
     echo ""
     echo "╔══════════════════════════════════════════════════════╗"
-    echo "║          CC-Proxy Dev Environment                    ║"
+    echo "║          ✅ CC-Proxy Dev Environment Ready           ║"
     echo "╚══════════════════════════════════════════════════════╝"
     echo ""
-    echo "  Frontend:  http://localhost:3000/app/"
-    echo "  Dashboard: http://localhost:3000/app/dashboard"
-    echo "  Dev Login: http://localhost:3000/auth/dev-login"
+    echo "  🌐 Web Interface:  http://localhost:3000/"
+    echo "  📊 Backend API:    http://localhost:3000/api/"
     echo ""
-    echo "  Test user: testing@testing.local"
+    echo "  🧪 Test Account:   testing@testing.local"
+    echo "  ⚠️  DEV MODE:       OAuth bypassed"
     echo ""
-    echo "  Press Ctrl+C to stop all services"
+    echo "  🔌 To start a proxy session:"
+    echo "     1. Open http://localhost:3000/ and generate a setup token"
+    echo "     2. Run the setup command shown in the UI"
     echo ""
-
-    start_backend "fg"
+    echo "Commands:"
+    echo "  ./scripts/dev.sh status  - Show status"
+    echo "  ./scripts/dev.sh logs    - Tail backend logs"
+    echo "  ./scripts/dev.sh stop    - Stop all services"
+    echo "  ./scripts/dev.sh restart - Restart all services"
+    echo ""
 }
 
-run_background() {
-    start_db || exit 1
-    run_migrations
-    build_frontend || exit 1
-    start_backend "bg" || exit 1
-
+# Print usage
+usage() {
+    echo "Usage: $0 {start|stop|status|logs|restart|build}"
     echo ""
-    success "All services started in background"
-    show_status
-    echo "Run './scripts/dev.sh stop' to stop"
-    echo "Run './scripts/dev.sh logs' to view logs"
+    echo "Commands:"
+    echo "  start   - Start all services (db, backend)"
+    echo "  stop    - Stop all services"
+    echo "  status  - Show status of all services"
+    echo "  logs    - Tail backend logs (or: logs db)"
+    echo "  restart - Stop and start all services"
+    echo "  build   - Rebuild frontend only"
+    echo ""
 }
 
-# Main
+# Main command handler
 case "${1:-}" in
     start)
-        run_background
+        do_start
         ;;
     stop)
         stop_all
-        ;;
-    restart)
-        stop_all
-        sleep 2
-        run_background
         ;;
     status)
         show_status
         ;;
     logs)
-        show_logs
+        show_logs "${2:-backend}"
         ;;
-    ""|fg|foreground)
-        run_foreground
+    restart)
+        stop_all
+        sleep 2
+        do_start
+        ;;
+    build)
+        build_frontend
+        ;;
+    "")
+        # Default to start if no argument
+        do_start
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|status|logs|fg}"
-        echo ""
-        echo "  start   - Start all services in background"
-        echo "  stop    - Stop all services"
-        echo "  restart - Restart all services"
-        echo "  status  - Show service status"
-        echo "  logs    - Tail service logs"
-        echo "  fg      - Run in foreground (default)"
+        error "Unknown command: $1"
+        usage
         exit 1
         ;;
 esac

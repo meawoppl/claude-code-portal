@@ -1,3 +1,4 @@
+use crate::components::ProxyTokenSetup;
 use crate::utils;
 use crate::Route;
 use gloo_net::http::Request;
@@ -91,10 +92,8 @@ pub fn dashboard_page() -> Html {
             } else if sessions.is_empty() {
                 <div class="empty-state">
                     <h2>{ "No Sessions" }</h2>
-                    <p>{ "Start a Claude Code session on your remote machine:" }</p>
-                    <pre class="code-block">
-                        { "claude-proxy --backend-url ws://localhost:3000" }
-                    </pre>
+                    <p>{ "Connect the Claude proxy from your remote machine to get started." }</p>
+                    <ProxyTokenSetup />
                 </div>
             } else {
                 <>
@@ -154,11 +153,11 @@ fn session_portal(props: &SessionPortalProps) -> Html {
 
     let handle_click = {
         let navigator = navigator.clone();
-        let session_id = session.id;
+        let session_name = session.session_name.clone();
 
         Callback::from(move |_| {
             navigator.push(&Route::Terminal {
-                id: session_id.to_string(),
+                id: session_name.clone(),
             });
         })
     };

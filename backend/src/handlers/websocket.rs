@@ -71,16 +71,12 @@ pub async fn handle_session_websocket(
     ws: WebSocketUpgrade,
     State(app_state): State<Arc<AppState>>,
 ) -> Response {
-    let session_manager = app_state.session_manager.clone();
-    let db_pool = app_state.db_pool.clone();
-    ws.on_upgrade(|socket| handle_session_socket(socket, session_manager, db_pool))
+    ws.on_upgrade(|socket| handle_session_socket(socket, app_state))
 }
 
-async fn handle_session_socket(
-    socket: WebSocket,
-    session_manager: SessionManager,
-    db_pool: DbPool,
-) {
+async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
+    let session_manager = app_state.session_manager.clone();
+    let db_pool = app_state.db_pool.clone();
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = mpsc::unbounded_channel::<ProxyMessage>();
 
@@ -146,10 +142,9 @@ async fn handle_session_socket(
                                     db_session_id = Some(existing_session.id);
                                     info!("Session reactivated in DB: {}", session_name);
                                 } else {
-                                    // Create new session - use a placeholder user_id for now
-                                    // In production, auth_token should be validated to get user_id
+                                    // Create new session - validate JWT token to get user_id
                                     let user_id =
-                                        get_user_id_from_token(&db_pool, auth_token.as_deref());
+                                        get_user_id_from_token(&app_state, auth_token.as_deref());
 
                                     if let Some(user_id) = user_id {
                                         let new_session = NewSession {
@@ -239,22 +234,35 @@ async fn handle_session_socket(
     send_task.abort();
 }
 
-/// Get user_id from auth token or return first user (dev mode fallback)
-fn get_user_id_from_token(db_pool: &DbPool, auth_token: Option<&str>) -> Option<Uuid> {
-    let mut conn = db_pool.get().ok()?;
+/// Get user_id from auth token using JWT verification
+fn get_user_id_from_token(app_state: &AppState, auth_token: Option<&str>) -> Option<Uuid> {
+    let mut conn = app_state.db_pool.get().ok()?;
     use crate::schema::users;
 
-    if let Some(_token) = auth_token {
-        // TODO: Implement proper token validation
-        // For now, fall through to dev mode behavior
+    // Try to verify JWT token if provided
+    if let Some(token) = auth_token {
+        match super::proxy_tokens::verify_and_get_user(app_state, &mut conn, token) {
+            Ok((user_id, email)) => {
+                info!("JWT token verified for user: {}", email);
+                return Some(user_id);
+            }
+            Err(e) => {
+                warn!("JWT verification failed: {:?}, falling back to dev mode", e);
+            }
+        }
     }
 
     // Dev mode fallback: use the test user
-    users::table
-        .filter(users::email.eq("testing@testing.local"))
-        .select(users::id)
-        .first::<Uuid>(&mut conn)
-        .ok()
+    if app_state.dev_mode {
+        users::table
+            .filter(users::email.eq("testing@testing.local"))
+            .select(users::id)
+            .first::<Uuid>(&mut conn)
+            .ok()
+    } else {
+        // In production, require valid token
+        None
+    }
 }
 
 pub async fn handle_web_client_websocket(
@@ -303,11 +311,15 @@ async fn handle_web_client_socket(socket: WebSocket, session_manager: SessionMan
                         ProxyMessage::ClaudeInput { content } => {
                             // Forward input to the actual session
                             if let Some(ref key) = session_key {
+                                info!("Web client sending ClaudeInput to session: {}", key);
+                                info!("Available sessions: {:?}", session_manager.sessions.iter().map(|r| r.key().clone()).collect::<Vec<_>>());
                                 if !session_manager
                                     .send_to_session(key, ProxyMessage::ClaudeInput { content })
                                 {
-                                    warn!("Failed to send to session, session not found");
+                                    warn!("Failed to send to session '{}', session not found in SessionManager", key);
                                 }
+                            } else {
+                                warn!("Web client tried to send ClaudeInput but no session_key set (not registered?)");
                             }
                         }
                         _ => {}

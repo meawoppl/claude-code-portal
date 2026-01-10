@@ -133,7 +133,7 @@ pub async fn device_code(
     let mut store_lock = store.write().await;
     store_lock.insert(device_code.clone(), state);
 
-    let verification_uri = format!("{}/auth/device", app_state.public_url);
+    let verification_uri = format!("{}/api/auth/device", app_state.public_url);
 
     Ok(Json(DeviceCodeResponse {
         device_code,
@@ -219,13 +219,13 @@ pub async fn device_verify_page(
 
     if !valid {
         return Redirect::temporary(&format!(
-            "/auth/device/error?message=Invalid+or+expired+code"
+            "/api/auth/device/error?message=Invalid+or+expired+code"
         ))
         .into_response();
     }
 
     // Redirect to Google OAuth with user_code in state
-    Redirect::temporary(&format!("/auth/google?device_user_code={}", user_code)).into_response()
+    Redirect::temporary(&format!("/api/auth/google?device_user_code={}", user_code)).into_response()
 }
 
 // Called after OAuth success to complete device flow

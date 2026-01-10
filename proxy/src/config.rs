@@ -19,6 +19,10 @@ pub struct SessionAuth {
     pub auth_token: String,
     pub user_email: Option<String>,
     pub last_used: String,
+    #[serde(default)]
+    pub backend_url: Option<String>,
+    #[serde(default)]
+    pub session_prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -89,5 +93,29 @@ impl ProxyConfig {
 
     pub fn remove_session_auth(&mut self, working_dir: &str) -> Option<SessionAuth> {
         self.sessions.remove(working_dir)
+    }
+
+    pub fn set_backend_url(&mut self, working_dir: &str, url: &str) {
+        if let Some(auth) = self.sessions.get_mut(working_dir) {
+            auth.backend_url = Some(url.to_string());
+        }
+    }
+
+    pub fn set_session_prefix(&mut self, working_dir: &str, prefix: &str) {
+        if let Some(auth) = self.sessions.get_mut(working_dir) {
+            auth.session_prefix = Some(prefix.to_string());
+        }
+    }
+
+    pub fn get_backend_url(&self, working_dir: &str) -> Option<&str> {
+        self.sessions
+            .get(working_dir)
+            .and_then(|auth| auth.backend_url.as_deref())
+    }
+
+    pub fn get_session_prefix(&self, working_dir: &str) -> Option<&str> {
+        self.sessions
+            .get(working_dir)
+            .and_then(|auth| auth.session_prefix.as_deref())
     }
 }

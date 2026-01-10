@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+// Proxy token types in separate module
+pub mod proxy_tokens;
+pub use proxy_tokens::*;
+
 /// Message types for the WebSocket proxy protocol
 /// These are used to communicate between:
 /// - proxy <-> backend (session connection)
@@ -73,4 +77,32 @@ pub struct MessageInfo {
     pub role: String,
     pub content: String,
     pub created_at: String,
+}
+
+// ============================================================================
+// Device Flow Types (shared between backend and proxy)
+// ============================================================================
+
+/// Request to poll for device flow completion
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DevicePollRequest {
+    pub device_code: String,
+}
+
+/// Response from device flow polling
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum DevicePollResponse {
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "complete")]
+    Complete {
+        access_token: String,
+        user_id: String,
+        user_email: String,
+    },
+    #[serde(rename = "expired")]
+    Expired,
+    #[serde(rename = "denied")]
+    Denied,
 }

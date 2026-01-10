@@ -1,3 +1,4 @@
+mod components;
 mod pages;
 pub mod utils;
 
@@ -26,7 +27,7 @@ fn switch(routes: Route) -> Html {
 #[function_component(App)]
 fn app() -> Html {
     html! {
-        <BrowserRouter basename="/app">
+        <BrowserRouter>
             <Switch<Route> render={switch} />
         </BrowserRouter>
     }

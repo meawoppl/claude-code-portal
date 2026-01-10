@@ -26,6 +26,8 @@ web-sys = { workspace = true, features = [
     "HtmlElement",
     "Location",
     "Storage",
+    "Navigator",
+    "Clipboard",
 ] }
 
 # Utility libraries for WASM

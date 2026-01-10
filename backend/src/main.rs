@@ -1,5 +1,6 @@
 mod db;
 mod handlers;
+mod jwt;
 mod models;
 mod schema;
 
@@ -43,6 +44,7 @@ pub struct AppState {
     pub device_flow_store: Option<DeviceFlowStore>,
     pub public_url: String,
     pub cookie_key: Key,
+    pub jwt_secret: String,
 }
 
 #[tokio::main]
@@ -150,8 +152,9 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Create cookie signing key from SESSION_SECRET or generate random for dev
-    let cookie_key = match env::var("SESSION_SECRET") {
-        Ok(secret) => {
+    let session_secret = env::var("SESSION_SECRET").ok();
+    let cookie_key = match &session_secret {
+        Some(secret) => {
             let bytes = secret.as_bytes();
             if bytes.len() < 64 {
                 tracing::warn!("SESSION_SECRET should be at least 64 bytes, padding with zeros");
@@ -162,7 +165,7 @@ async fn main() -> anyhow::Result<()> {
                 Key::from(&bytes[..64])
             }
         }
-        Err(_) => {
+        None => {
             if args.dev_mode {
                 tracing::warn!("No SESSION_SECRET set, using random key (sessions won't persist across restarts)");
                 Key::generate()
@@ -171,6 +174,15 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     };
+
+    // JWT secret for proxy tokens (uses SESSION_SECRET or generates for dev)
+    let jwt_secret = session_secret.unwrap_or_else(|| {
+        if args.dev_mode {
+            "dev-mode-jwt-secret-not-for-production".to_string()
+        } else {
+            panic!("SESSION_SECRET must be set in production mode");
+        }
+    });
 
     // Create app state
     let app_state = Arc::new(AppState {
@@ -185,6 +197,7 @@ async fn main() -> anyhow::Result<()> {
         },
         public_url: public_url.clone(),
         cookie_key,
+        jwt_secret,
     });
 
     // Setup CORS
@@ -195,8 +208,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Build our application with routes
     let mut app = Router::new()
-        // Health check / root
-        .route("/", get(|| async { "Claude Code Proxy Backend" }))
+        // Health check endpoint
+        .route("/api/health", get(|| async { "OK" }))
         // Session API routes
         .route("/api/sessions", get(handlers::sessions::list_sessions))
         .route("/api/sessions/:id", get(handlers::sessions::get_session))
@@ -208,6 +221,34 @@ async fn main() -> anyhow::Result<()> {
             "/api/sessions/:id/messages",
             post(handlers::sessions::send_message),
         )
+        // Proxy token management endpoints
+        .route(
+            "/api/proxy-tokens",
+            get(handlers::proxy_tokens::list_tokens_handler)
+                .post(handlers::proxy_tokens::create_token_handler),
+        )
+        .route(
+            "/api/proxy-tokens/:id",
+            axum::routing::delete(handlers::proxy_tokens::revoke_token_handler),
+        )
+        // Auth routes (under /api/auth)
+        .route("/api/auth/google", get(handlers::auth::login))
+        .route("/api/auth/google/callback", get(handlers::auth::callback))
+        .route("/api/auth/me", get(handlers::auth::me))
+        .route("/api/auth/dev-login", get(handlers::auth::dev_login))
+        // Device flow endpoints for CLI (under /api/auth)
+        .route(
+            "/api/auth/device/code",
+            post(handlers::device_flow::device_code),
+        )
+        .route(
+            "/api/auth/device/poll",
+            post(handlers::device_flow::device_poll),
+        )
+        .route(
+            "/api/auth/device",
+            get(handlers::device_flow::device_verify_page),
+        )
         // WebSocket routes
         .route(
             "/ws/session",
@@ -217,34 +258,14 @@ async fn main() -> anyhow::Result<()> {
             "/ws/client",
             get(handlers::websocket::handle_web_client_websocket),
         )
-        // Auth routes
-        .route("/auth/google", get(handlers::auth::login))
-        .route("/auth/google/callback", get(handlers::auth::callback))
-        .route("/auth/me", get(handlers::auth::me))
-        // Device flow endpoints for CLI
-        .route(
-            "/auth/device/code",
-            post(handlers::device_flow::device_code),
-        )
-        .route(
-            "/auth/device/poll",
-            post(handlers::device_flow::device_poll),
-        )
-        .route(
-            "/auth/device",
-            get(handlers::device_flow::device_verify_page),
-        )
-        // Dev mode routes
-        .route("/auth/dev-login", get(handlers::auth::dev_login))
         // Add single unified state
         .with_state(app_state.clone());
 
-    // Serve frontend static files with SPA fallback
+    // Serve frontend static files at root with SPA fallback
     if std::path::Path::new(&args.frontend_dist).exists() {
         tracing::info!("Serving frontend from: {}", args.frontend_dist);
         let index_path = format!("{}/index.html", args.frontend_dist);
-        app = app.nest_service(
-            "/app",
+        app = app.fallback_service(
             ServeDir::new(&args.frontend_dist).fallback(ServeFile::new(&index_path)),
         );
     } else {

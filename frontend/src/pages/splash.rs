@@ -9,7 +9,7 @@ pub fn splash_page() -> Html {
         // Redirect to backend OAuth endpoint
         let window = web_sys::window().expect("no global `window` exists");
         let location = window.location();
-        let auth_url = utils::api_url("/auth/google");
+        let auth_url = utils::api_url("/api/auth/google");
         let _ = location.set_href(&auth_url);
     });
 

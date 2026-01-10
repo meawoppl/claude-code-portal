@@ -57,6 +57,13 @@ async-trait = "0.1"
 # Secure random for session keys
 rand = "0.8"
 
+# JWT for proxy token authentication
+jsonwebtoken = "9.3"
+
+# SHA256 for token hashing
+sha2 = "0.10"
+hex = "0.4"
+
 # WebSocket support
 futures-util = "0.3"
 

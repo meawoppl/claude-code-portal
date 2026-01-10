@@ -29,7 +29,7 @@ pub async fn login(
 ) -> impl IntoResponse {
     let client = match &app_state.oauth_basic_client {
         Some(c) => c,
-        None => return Redirect::temporary("/auth/dev-login").into_response(),
+        None => return Redirect::temporary("/api/auth/dev-login").into_response(),
     };
 
     let mut auth_request = client
@@ -154,7 +154,7 @@ pub async fn callback(
             .await
             {
                 info!("Device flow completed for user: {}", user.email);
-                return Ok(Redirect::temporary("/auth/device/success"));
+                return Ok(Redirect::temporary("/api/auth/device/success"));
             }
         }
     }
@@ -165,7 +165,7 @@ pub async fn callback(
     cookie.set_http_only(true);
     cookies.signed(&app_state.cookie_key).add(cookie);
 
-    Ok(Redirect::temporary("/app/dashboard"))
+    Ok(Redirect::temporary("/dashboard"))
 }
 
 #[derive(Debug, Serialize)]
@@ -237,5 +237,5 @@ pub async fn dev_login(
     cookies.signed(&app_state.cookie_key).add(cookie);
 
     // Redirect to dashboard
-    Ok(Redirect::temporary("/app/dashboard"))
+    Ok(Redirect::temporary("/dashboard"))
 }

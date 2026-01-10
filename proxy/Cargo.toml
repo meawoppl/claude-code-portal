@@ -50,6 +50,9 @@ uuid = { workspace = true }
 # Hostname
 hostname = "0.4"
 
+# URL parsing
+url = "2.5"
+
 # Config file management
 directories = "5.0"
 

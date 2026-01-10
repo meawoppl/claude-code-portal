@@ -85,7 +85,7 @@ This project consists of four Rust crates:
 
 ### Auto-Installed by Scripts
 
-These will be installed automatically when you run `./scripts/test-dev.sh`:
+These will be installed automatically when you run `./scripts/dev.sh`:
 
 - **diesel_cli** - Database migration tool
 - **trunk** - WASM build tool and dev server
@@ -113,7 +113,7 @@ git clone https://github.com/yourusername/cc-proxy.git
 cd cc-proxy
 
 # Start everything (auto-installs dependencies)
-./scripts/test-dev.sh
+./scripts/dev.sh start
 ```
 
 This will:
@@ -121,14 +121,20 @@ This will:
 2. ✅ Run database migrations
 3. ✅ Build the frontend
 4. ✅ Start the backend in dev mode (no OAuth needed)
-5. ✅ Start a test proxy session
-6. ✅ Auto-install diesel/trunk if missing
+5. ✅ Auto-install diesel/trunk if missing
 
-Then open: **http://localhost:3000/app/**
+Then open: **http://localhost:3000/**
 
 You'll be automatically logged in as `testing@testing.local`
 
-Press `Ctrl+C` to stop all services.
+**Development Commands:**
+```bash
+./scripts/dev.sh status   # Show status of all services
+./scripts/dev.sh logs     # Tail backend logs
+./scripts/dev.sh stop     # Stop all services
+./scripts/dev.sh restart  # Restart all services
+./scripts/dev.sh build    # Rebuild frontend only
+```
 
 ### Option 2: Manual Setup
 
@@ -403,7 +409,8 @@ cc-proxy/
 ├── scripts/                # Helper scripts
 │   ├── README.md
 │   ├── install-deps.sh     # Install build tools
-│   ├── test-dev.sh         # All-in-one dev mode
+│   ├── dev.sh              # Development environment (start/stop/status)
+│   ├── test-dev.sh         # Legacy: foreground dev mode
 │   ├── test-oauth.sh       # Test with real OAuth
 │   ├── clean.sh            # Clean up everything
 │   ├── db-shell.sh         # Open database shell
@@ -495,8 +502,9 @@ diesel database reset
 
 3. **Test locally**
    ```bash
-   ./scripts/test-dev.sh
-   # Verify changes work
+   ./scripts/dev.sh start
+   # Verify changes work at http://localhost:3000/
+   ./scripts/dev.sh stop
    ```
 
 4. **Run checks**
