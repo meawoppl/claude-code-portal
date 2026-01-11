@@ -82,9 +82,16 @@ pub fn proxy_token_setup() -> Html {
         TokenState::HasToken(token_response) => {
             // URL-encode the init_url for the query parameter
             let encoded_init_url = js_sys::encode_uri_component(&token_response.init_url);
+
+            // Derive WebSocket URL from current origin (http->ws, https->wss)
+            let ws_backend_url = base_url
+                .replace("https://", "wss://")
+                .replace("http://", "ws://");
+            let encoded_backend_url = js_sys::encode_uri_component(&ws_backend_url);
+
             let install_command = format!(
-                "curl -fsSL \"{}/api/download/install.sh?init_url={}\" | bash",
-                base_url, encoded_init_url
+                "curl -fsSL \"{}/api/download/install.sh?init_url={}&backend_url={}\" | bash",
+                base_url, encoded_init_url, encoded_backend_url
             );
             let run_command = "claude-proxy".to_string();
 

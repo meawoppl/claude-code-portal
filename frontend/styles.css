@@ -987,6 +987,93 @@ body {
     word-wrap: break-word;
 }
 
+/* Tool Use Styling */
+.tool-use {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(99, 102, 241, 0.1);
+    border-left: 3px solid var(--accent-color);
+    border-radius: 0 4px 4px 0;
+    margin: 0.5rem 0;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+.tool-name {
+    color: var(--accent-color);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.tool-input {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Tool Result Styling */
+.tool-result {
+    padding: 0.5rem 0.75rem;
+    background: rgba(34, 197, 94, 0.1);
+    border-left: 3px solid var(--success);
+    border-radius: 0 4px 4px 0;
+    margin: 0.5rem 0;
+    font-size: 0.85rem;
+}
+
+.tool-result.error {
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: var(--error);
+}
+
+.tool-result-content {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.tool-result-message {
+    padding: 0;
+}
+
+.tool-result-message .message-body {
+    padding: 0;
+}
+
+/* Thinking Block Styling */
+.thinking-block {
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem 0;
+    border-left: 2px solid var(--border-color);
+    opacity: 0.6;
+}
+
+.thinking-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 0.25rem;
+}
+
+.thinking-content {
+    font-style: italic;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
 /* Result Message - Compact stats bar */
 .result-message {
     margin-bottom: 0.5rem;
@@ -1680,12 +1767,36 @@ body {
    Session View - Main Terminal Area
    ========================================================================== */
 
+/* Container holds all session views stacked */
+.session-views-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Wrapper controls visibility of each session view */
+.session-view-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.session-view-wrapper.hidden {
+    display: none;
+}
+
+.session-view-wrapper.focused {
+    /* Focused session is visible */
+}
+
 .session-view {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    animation: slideIn 0.3s ease-out;
 }
 
 @keyframes slideIn {
@@ -1738,6 +1849,39 @@ body {
 .session-view-header .status.disconnected {
     background: rgba(247, 118, 142, 0.2);
     color: var(--error);
+}
+
+.session-view-header .session-cost {
+    font-size: 0.85rem;
+    font-family: monospace;
+    color: var(--success);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(158, 206, 106, 0.1);
+    transition: background 0.3s ease;
+}
+
+.session-view-header .session-cost.flash {
+    animation: cost-flash 0.5s ease-out, cost-shake 0.4s ease-in-out;
+}
+
+@keyframes cost-flash {
+    0% {
+        background: rgba(158, 206, 106, 0.6);
+    }
+    100% {
+        background: rgba(158, 206, 106, 0.1);
+    }
+}
+
+@keyframes cost-shake {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    15% { transform: translateX(-2px) rotate(-2deg); }
+    30% { transform: translateX(2px) rotate(2deg); }
+    45% { transform: translateX(-2px) rotate(-1deg); }
+    60% { transform: translateX(2px) rotate(1deg); }
+    75% { transform: translateX(-1px) rotate(-0.5deg); }
+    90% { transform: translateX(1px) rotate(0.5deg); }
 }
 
 .session-view-messages {

@@ -16,6 +16,8 @@ use crate::AppState;
 pub struct InstallScriptParams {
     /// Optional init URL to automatically initialize after install
     init_url: Option<String>,
+    /// Optional backend URL override (WebSocket URL for runtime connection)
+    backend_url: Option<String>,
 }
 
 /// Serve the install script that downloads and sets up the proxy
@@ -27,10 +29,15 @@ pub async fn install_script(
 
     // Generate the init section if an init_url was provided
     let init_section = if let Some(ref init_url) = params.init_url {
+        // Add --backend-url flag if explicitly provided
+        let backend_flag = params.backend_url.as_ref()
+            .map(|url| format!(r#" --backend-url "{url}""#))
+            .unwrap_or_default();
+
         format!(r##"
 # Initialize with provided token
 echo "Initializing claude-proxy..."
-"${{BIN_PATH}}" --init "{init_url}"
+"${{BIN_PATH}}" --init "{init_url}"{backend_flag}
 echo ""
 echo "Setup complete! Run 'claude-proxy' to start a session."
 "##)

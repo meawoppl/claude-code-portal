@@ -7,7 +7,7 @@ mod util;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use claude_codes::{AsyncClient, ClaudeCliBuilder};
+use claude_codes::AsyncClient;
 use config::{ProxyConfig, SessionAuth};
 use session::SessionConfig;
 use tokio::io::AsyncBufReadExt;
@@ -23,9 +23,9 @@ struct Args {
     #[arg(long)]
     init: Option<String>,
 
-    /// Backend server URL (auto-detected from --init URL if provided)
-    #[arg(long, default_value = "ws://localhost:3000")]
-    backend_url: String,
+    /// Backend server URL (overrides URL from --init if provided)
+    #[arg(long)]
+    backend_url: Option<String>,
 
     /// Session authentication token (skips OAuth if provided)
     #[arg(long)]
@@ -90,22 +90,29 @@ async fn main() -> Result<()> {
     }
 
     if let Some(ref init_value) = args.init {
-        return commands::handle_init(&mut config, &cwd, init_value, &args.backend_url);
+        return commands::handle_init(&mut config, &cwd, init_value, args.backend_url.as_deref());
     }
 
     // Resolve session (new or resume)
     let (session_id, session_name, resuming) = resolve_session(&args, &cwd)?;
 
+    // Resolve backend URL: CLI arg > config (required, no default)
+    let backend_url = args.backend_url.clone()
+        .or_else(|| config.get_backend_url(&cwd).map(|s| s.to_string()))
+        .ok_or_else(|| anyhow::anyhow!(
+            "No backend URL configured. Run with --init <URL> first, or specify --backend-url explicitly."
+        ))?;
+
     // Print startup info
     ui::print_startup_banner();
-    ui::print_session_info(&session_name, &session_id.to_string(), &args.backend_url, resuming);
+    ui::print_session_info(&session_name, &session_id.to_string(), &backend_url, resuming);
 
     // Resolve auth token
-    let auth_token = resolve_auth_token(&args, &mut config, &cwd).await?;
+    let auth_token = resolve_auth_token(&args, &mut config, &cwd, &backend_url).await?;
 
     // Build session config
     let session_config = SessionConfig {
-        backend_url: args.backend_url.clone(),
+        backend_url,
         session_id,
         session_name,
         auth_token,
@@ -168,6 +175,7 @@ async fn resolve_auth_token(
     args: &Args,
     config: &mut ProxyConfig,
     cwd: &str,
+    backend_url: &str,
 ) -> Result<Option<String>> {
     if args.dev {
         ui::print_dev_mode();
@@ -189,7 +197,7 @@ async fn resolve_auth_token(
 
     // Need to authenticate
     info!("Authenticating via device flow");
-    let (token, user_id, user_email) = auth::device_flow_login(&args.backend_url).await?;
+    let (token, user_id, user_email) = auth::device_flow_login(backend_url).await?;
 
     config.set_session_auth(
         cwd.to_string(),
@@ -243,33 +251,38 @@ async fn run_proxy_session(config: SessionConfig) -> Result<()> {
 
 /// Create the Claude async client
 async fn create_claude_client(config: &SessionConfig) -> Result<AsyncClient> {
-    // IMPORTANT: The claude-codes crate's ClaudeCliBuilder always adds --session-id,
-    // which conflicts with --resume. When resuming, we spawn claude directly.
-    if config.resuming {
+    let base_args = [
+        "--print",
+        "--verbose",
+        "--output-format", "stream-json",
+        "--input-format", "stream-json",
+        "--replay-user-messages",
+    ];
+
+    let child = if config.resuming {
         info!("Using --resume {} to resume Claude session", config.session_id);
 
-        let child = tokio::process::Command::new("claude")
-            .args([
-                "--print",
-                "--verbose",
-                "--output-format", "stream-json",
-                "--input-format", "stream-json",
-                "--resume", &config.session_id.to_string(),
-            ])
+        tokio::process::Command::new("claude")
+            .args(base_args)
+            .args(["--resume", &config.session_id.to_string()])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .context("Failed to spawn Claude process for resume")?;
-
-        AsyncClient::new(child)
-            .map_err(|e| anyhow::anyhow!("Failed to create AsyncClient: {}", e))
+            .context("Failed to spawn Claude process for resume")?
     } else {
         info!("Starting fresh Claude session with ID {}", config.session_id);
-        let builder = ClaudeCliBuilder::new().session_id(config.session_id);
 
-        AsyncClient::from_builder(builder)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to start Claude client: {}", e))
-    }
+        tokio::process::Command::new("claude")
+            .args(base_args)
+            .args(["--session-id", &config.session_id.to_string()])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .context("Failed to spawn Claude process")?
+    };
+
+    AsyncClient::new(child)
+        .map_err(|e| anyhow::anyhow!("Failed to create AsyncClient: {}", e))
 }

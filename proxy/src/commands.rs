@@ -22,9 +22,17 @@ pub fn handle_init(
     config: &mut ProxyConfig,
     cwd: &str,
     init_value: &str,
-    default_backend_url: &str,
+    backend_url_override: Option<&str>,
 ) -> Result<()> {
-    let (backend_url, token, session_prefix) = util::parse_init_value(init_value)?;
+    let (parsed_backend_url, token, session_prefix) = util::parse_init_value(init_value)?;
+
+    // Resolve backend URL: CLI override > parsed from init value (required)
+    let backend_url = backend_url_override
+        .map(|s| s.to_string())
+        .or(parsed_backend_url)
+        .ok_or_else(|| anyhow::anyhow!(
+            "No backend URL found in init value. Specify --backend-url explicitly."
+        ))?;
 
     // Extract user info from JWT (basic parsing without verification)
     let user_email = util::extract_email_from_jwt(&token);
@@ -39,15 +47,13 @@ pub fn handle_init(
             auth_token: token,
             user_email: user_email.clone(),
             last_used: chrono::Utc::now().to_rfc3339(),
-            backend_url: backend_url.clone(),
+            backend_url: Some(backend_url.clone()),
             session_prefix: session_prefix.clone(),
         },
     );
 
-    // Also save the backend URL
-    if let Some(ref url) = backend_url {
-        config.set_backend_url(cwd, url);
-    }
+    // Save the backend URL to directory config
+    config.set_backend_url(cwd, &backend_url);
 
     // Save session name prefix if provided
     if let Some(prefix) = session_prefix {
@@ -58,7 +64,7 @@ pub fn handle_init(
 
     ui::print_init_complete(
         &user_email.unwrap_or_else(|| "this directory".to_string()),
-        backend_url.as_deref().unwrap_or(default_backend_url),
+        &backend_url,
     );
 
     Ok(())

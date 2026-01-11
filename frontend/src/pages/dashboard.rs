@@ -238,7 +238,6 @@ pub fn dashboard_page() -> Html {
         .collect();
 
     let waiting_count = awaiting_sessions.len();
-    let current_session = active_sessions.get(*focused_index).cloned();
 
     // Keyboard handling - use Shift+key to avoid conflicts with text input
     let on_keydown = {
@@ -323,15 +322,28 @@ pub fn dashboard_page() -> Html {
                         on_delete={on_delete.clone()}
                     />
 
-                    // Main session view
-                    if let Some(ref session) = current_session {
-                        <SessionView
-                            key={session.id.to_string()}
-                            session={session.clone()}
-                            on_awaiting_change={on_awaiting_change.clone()}
-                            on_message_sent={on_message_sent.clone()}
-                        />
-                    }
+                    // Render ALL session views - keep them alive for instant switching
+                    // Only the focused one is visible, others are hidden via CSS
+                    <div class="session-views-container">
+                        {
+                            active_sessions.iter().enumerate().map(|(index, session)| {
+                                let is_focused = index == *focused_index;
+                                html! {
+                                    <div
+                                        key={session.id.to_string()}
+                                        class={classes!("session-view-wrapper", if is_focused { "focused" } else { "hidden" })}
+                                    >
+                                        <SessionView
+                                            session={session.clone()}
+                                            focused={is_focused}
+                                            on_awaiting_change={on_awaiting_change.clone()}
+                                            on_message_sent={on_message_sent.clone()}
+                                        />
+                                    </div>
+                                }
+                            }).collect::<Html>()
+                        }
+                    </div>
 
                     // Keyboard hints
                     <div class="keyboard-hints">
@@ -426,6 +438,7 @@ fn session_rail(props: &SessionRailProps) -> Html {
 #[derive(Properties, PartialEq)]
 pub struct SessionViewProps {
     pub session: SessionInfo,
+    pub focused: bool,
     pub on_awaiting_change: Callback<(Uuid, bool)>,
     pub on_message_sent: Callback<Uuid>,
 }
@@ -433,10 +446,14 @@ pub struct SessionViewProps {
 pub enum SessionViewMsg {
     SendInput,
     UpdateInput(String),
+    /// Bulk load historical messages (no per-message scroll)
+    LoadHistory(Vec<String>),
+    /// Single new message from WebSocket (triggers scroll)
     ReceivedOutput(String),
     WebSocketConnected(WsSender),
     WebSocketError(String),
     CheckAwaiting,
+    ClearCostFlash,
 }
 
 pub struct SessionView {
@@ -449,6 +466,9 @@ pub struct SessionView {
     should_autoscroll: Rc<RefCell<bool>>,
     #[allow(dead_code)]
     scroll_listener: Option<Closure<dyn Fn()>>,
+    was_focused: bool,
+    total_cost: f64,
+    cost_flash: bool,
 }
 
 impl Component for SessionView {
@@ -477,9 +497,9 @@ impl Component for SessionView {
                         });
                         on_awaiting_change.emit((session_id, is_awaiting));
 
-                        for msg in data.messages {
-                            link.send_message(SessionViewMsg::ReceivedOutput(msg.content));
-                        }
+                        // Bulk load all historical messages at once
+                        let messages: Vec<String> = data.messages.into_iter().map(|m| m.content).collect();
+                        link.send_message(SessionViewMsg::LoadHistory(messages));
                     }
                 }
             });
@@ -561,12 +581,30 @@ impl Component for SessionView {
             input_ref: NodeRef::default(),
             should_autoscroll: Rc::new(RefCell::new(true)),
             scroll_listener: None,
+            was_focused: ctx.props().focused,
+            total_cost: 0.0,
+            cost_flash: false,
         }
     }
 
-    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
-        // Focus input on first render
-        if first_render {
+    fn changed(&mut self, ctx: &Context<Self>, _old_props: &Self::Properties) -> bool {
+        let now_focused = ctx.props().focused;
+        let became_focused = now_focused && !self.was_focused;
+        self.was_focused = now_focused;
+
+        // Focus input when this session becomes visible
+        if became_focused {
+            if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
+                let _ = input.focus();
+            }
+        }
+
+        true
+    }
+
+    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
+        // Focus input on first render only if this session is focused
+        if first_render && ctx.props().focused {
             if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
                 let _ = input.focus();
             }
@@ -611,11 +649,8 @@ impl Component for SessionView {
                     return false;
                 }
 
-                let user_msg = serde_json::json!({
-                    "type": "user",
-                    "content": input
-                });
-                self.messages.push(user_msg.to_string());
+                // Don't add to messages here - wait for it to come back via WebSocket
+                // (with --replay-user-messages flag, Claude echoes user input back)
                 self.input_value.clear();
 
                 // Notify parent that message was sent (for auto-advance)
@@ -640,8 +675,35 @@ impl Component for SessionView {
                 }
                 true
             }
+            SessionViewMsg::LoadHistory(messages) => {
+                // Bulk load - set all at once, no per-message renders
+                self.messages = messages;
+                true
+            }
             SessionViewMsg::ReceivedOutput(output) => {
+                // Extract cost from result messages
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
+                    if parsed.get("type").and_then(|t| t.as_str()) == Some("result") {
+                        if let Some(cost) = parsed.get("total_cost_usd").and_then(|c| c.as_f64()) {
+                            if cost > 0.0 {
+                                self.total_cost += cost;
+                                self.cost_flash = true;
+
+                                // Clear flash after animation
+                                let link = ctx.link().clone();
+                                spawn_local(async move {
+                                    gloo::timers::future::TimeoutFuture::new(600).await;
+                                    link.send_message(SessionViewMsg::ClearCostFlash);
+                                });
+                            }
+                        }
+                    }
+                }
                 self.messages.push(output);
+                true
+            }
+            SessionViewMsg::ClearCostFlash => {
+                self.cost_flash = false;
                 true
             }
             SessionViewMsg::WebSocketConnected(sender) => {
@@ -698,6 +760,18 @@ impl Component for SessionView {
                             html! {}
                         }
                     }
+                    {
+                        if self.total_cost > 0.0 {
+                            let cost_class = if self.cost_flash { "session-cost flash" } else { "session-cost" };
+                            html! {
+                                <span class={cost_class}>
+                                    { format_cost(self.total_cost) }
+                                </span>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                     <span class={if self.ws_connected { "status connected" } else { "status disconnected" }}>
                         { if self.ws_connected { "● Connected" } else { "○ Disconnected" } }
                     </span>
@@ -728,5 +802,15 @@ impl Component for SessionView {
                 </form>
             </div>
         }
+    }
+}
+
+fn format_cost(cost: f64) -> String {
+    if cost < 0.01 {
+        format!("${:.4}", cost)
+    } else if cost < 1.0 {
+        format!("${:.3}", cost)
+    } else {
+        format!("${:.2}", cost)
     }
 }

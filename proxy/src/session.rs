@@ -4,11 +4,12 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
+use claude_codes::io::ContentBlock;
 use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use tracing::{error, info};
+use tracing::{error, info, debug};
 use uuid::Uuid;
 
 use crate::ui;
@@ -273,7 +274,8 @@ where
 {
     tokio::spawn(async move {
         while let Some(output) = output_rx.recv().await {
-            info!("Claude output [{}]", output.message_type());
+            // Log detailed info about the message
+            log_claude_output(&output);
 
             let content = serde_json::to_value(&output)
                 .unwrap_or(serde_json::Value::String(format!("{:?}", output)));
@@ -289,6 +291,178 @@ where
         }
         info!("Output forwarder ended");
     })
+}
+
+/// Log detailed information about Claude output
+fn log_claude_output(output: &ClaudeOutput) {
+    match output {
+        ClaudeOutput::System(sys) => {
+            info!("← [system] subtype={}", sys.subtype);
+            if sys.subtype == "init" {
+                if let Some(model) = sys.data.get("model").and_then(|v| v.as_str()) {
+                    info!("  model: {}", model);
+                }
+                if let Some(cwd) = sys.data.get("cwd").and_then(|v| v.as_str()) {
+                    info!("  cwd: {}", truncate(cwd, 60));
+                }
+                if let Some(tools) = sys.data.get("tools").and_then(|v| v.as_array()) {
+                    info!("  tools: {} available", tools.len());
+                }
+            }
+        }
+        ClaudeOutput::Assistant(asst) => {
+            let msg = &asst.message;
+            let stop = msg.stop_reason.as_deref().unwrap_or("none");
+
+            // Count content blocks by type
+            let mut text_count = 0;
+            let mut tool_count = 0;
+            let mut thinking_count = 0;
+
+            for block in &msg.content {
+                match block {
+                    ContentBlock::Text(t) => {
+                        text_count += 1;
+                        let preview = truncate(&t.text, 80);
+                        info!("← [assistant] text: {}", preview);
+                    }
+                    ContentBlock::ToolUse(tu) => {
+                        tool_count += 1;
+                        let input_preview = format_tool_input(&tu.name, &tu.input);
+                        info!("← [assistant] tool_use: {} {}", tu.name, input_preview);
+                    }
+                    ContentBlock::Thinking(th) => {
+                        thinking_count += 1;
+                        let preview = truncate(&th.thinking, 60);
+                        debug!("← [assistant] thinking: {}", preview);
+                    }
+                    ContentBlock::ToolResult(tr) => {
+                        let status = if tr.is_error.unwrap_or(false) { "error" } else { "ok" };
+                        info!("← [assistant] tool_result: {} ({})", tr.tool_use_id, status);
+                    }
+                    ContentBlock::Image(_) => {
+                        info!("← [assistant] image block");
+                    }
+                }
+            }
+
+            if text_count + tool_count + thinking_count > 1 {
+                info!("  stop_reason={}, blocks: {} text, {} tools, {} thinking",
+                    stop, text_count, tool_count, thinking_count);
+            } else if tool_count > 0 || stop != "none" {
+                info!("  stop_reason={}", stop);
+            }
+        }
+        ClaudeOutput::User(user) => {
+            for block in &user.message.content {
+                match block {
+                    ContentBlock::Text(t) => {
+                        info!("← [user] text: {}", truncate(&t.text, 80));
+                    }
+                    ContentBlock::ToolResult(tr) => {
+                        let status = if tr.is_error.unwrap_or(false) { "ERROR" } else { "ok" };
+                        let content_preview = tr.content.as_ref()
+                            .map(|c| {
+                                let s = format!("{:?}", c);
+                                if s.len() > 60 { format!("{}...", &s[..60]) } else { s }
+                            })
+                            .unwrap_or_default();
+                        info!("← [user] tool_result [{}]: {}", status, content_preview);
+                    }
+                    _ => {
+                        info!("← [user] other block");
+                    }
+                }
+            }
+        }
+        ClaudeOutput::Result(res) => {
+            let status = if res.is_error { "ERROR" } else { "success" };
+            let duration = format_duration(res.duration_ms);
+            let api_duration = format_duration(res.duration_api_ms);
+            info!("← [result] {} | {} total | {} API | {} turns",
+                status, duration, api_duration, res.num_turns);
+            if res.total_cost_usd > 0.0 {
+                info!("  cost: ${:.4}", res.total_cost_usd);
+            }
+        }
+    }
+}
+
+/// Format tool input for logging
+fn format_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
+    match tool_name {
+        "Bash" => {
+            input.get("command")
+                .and_then(|v| v.as_str())
+                .map(|s| format!("$ {}", truncate(s, 70)))
+                .unwrap_or_default()
+        }
+        "Read" | "Edit" | "Write" => {
+            input.get("file_path")
+                .and_then(|v| v.as_str())
+                .map(|s| truncate(s, 70).to_string())
+                .unwrap_or_default()
+        }
+        "Glob" | "Grep" => {
+            let pattern = input.get("pattern")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let path = input.get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or(".");
+            format!("'{}' in {}", truncate(pattern, 40), truncate(path, 30))
+        }
+        "Task" => {
+            input.get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| truncate(s, 60).to_string())
+                .unwrap_or_default()
+        }
+        "WebFetch" | "WebSearch" => {
+            input.get("url")
+                .or_else(|| input.get("query"))
+                .and_then(|v| v.as_str())
+                .map(|s| truncate(s, 60).to_string())
+                .unwrap_or_default()
+        }
+        _ => {
+            // Generic: show first string field
+            if let Some(obj) = input.as_object() {
+                obj.iter()
+                    .find_map(|(k, v)| v.as_str().map(|s| format!("{}={}", k, truncate(s, 50))))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            }
+        }
+    }
+}
+
+/// Truncate a string to max length, adding "..." if truncated
+fn truncate(s: &str, max_len: usize) -> &str {
+    if s.len() <= max_len {
+        s
+    } else {
+        // Find a safe UTF-8 boundary
+        let mut end = max_len;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        &s[..end]
+    }
+}
+
+/// Format duration in ms to human readable
+fn format_duration(ms: u64) -> String {
+    if ms < 1000 {
+        format!("{}ms", ms)
+    } else if ms < 60000 {
+        format!("{:.1}s", ms as f64 / 1000.0)
+    } else {
+        let mins = ms / 60000;
+        let secs = (ms % 60000) / 1000;
+        format!("{}m{}s", mins, secs)
+    }
 }
 
 /// Spawn the WebSocket reader task
@@ -337,10 +511,7 @@ where
     S: SinkExt<Message> + Unpin + Send,
     S::Error: std::fmt::Display,
 {
-    info!(
-        "Received WebSocket message: {}",
-        &text[..std::cmp::min(text.len(), 200)]
-    );
+    debug!("ws recv: {}", truncate(text, 200));
 
     let proxy_msg = match serde_json::from_str::<ProxyMessage>(text) {
         Ok(msg) => msg,
@@ -353,18 +524,22 @@ where
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
+            info!("→ [input] {}", truncate(&text, 80));
             if input_tx.send(text).is_err() {
                 error!("Failed to send input to channel");
                 return false;
             }
         }
         ProxyMessage::Heartbeat => {
+            debug!("heartbeat");
             let mut ws = ws_write.lock().await;
             if let Ok(json) = serde_json::to_string(&ProxyMessage::Heartbeat) {
                 let _ = ws.send(Message::Text(json)).await;
             }
         }
-        _ => {}
+        _ => {
+            debug!("ws msg: {:?}", proxy_msg);
+        }
     }
 
     true
@@ -387,7 +562,7 @@ async fn run_main_loop(
             }
 
             Some(text) = input_rx.recv() => {
-                info!("Sending to Claude: {}", text);
+                debug!("sending to claude process: {}", truncate(&text, 100));
                 let input = ClaudeInput::user_message(&text, session_id);
 
                 if let Err(e) = claude_client.send(&input).await {
@@ -420,7 +595,7 @@ fn handle_claude_output(
                 return Some(ConnectionResult::Disconnected(connection_start.elapsed()));
             }
             if is_result {
-                info!("Received Result message, ready for next query");
+                info!("--- ready for input ---");
             }
             None
         }
