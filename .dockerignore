@@ -2,8 +2,8 @@
 target/
 **/target/
 
-# Frontend build artifacts
-frontend/dist/
+# Frontend build artifacts (commented out to include pre-built dist)
+# frontend/dist/
 
 # Git
 .git/

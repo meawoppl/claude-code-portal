@@ -273,8 +273,9 @@ async fn get_user_id_from_session(
         return Ok(user.id);
     }
 
-    // Get session cookie
+    // Get signed session cookie
     let session_cookie = cookies
+        .signed(&app_state.cookie_key)
         .get("cc_session")
         .ok_or(StatusCode::UNAUTHORIZED)?;
 

@@ -1,5 +1,5 @@
 [workspace]
-members = ["shared", "backend", "frontend", "proxy", "cli-tools"]
+members = ["shared", "backend", "frontend", "proxy"]
 resolver = "2"
 
 [workspace.package]

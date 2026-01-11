@@ -58,6 +58,13 @@ pub fn dashboard_page() -> Html {
                 let api_endpoint = utils::api_url("/api/sessions");
                 match Request::get(&api_endpoint).send().await {
                     Ok(response) => {
+                        if response.status() == 401 {
+                            // Session invalid - redirect to logout
+                            if let Some(window) = web_sys::window() {
+                                let _ = window.location().set_href("/api/auth/logout");
+                            }
+                            return;
+                        }
                         if let Ok(data) = response.json::<serde_json::Value>().await {
                             if let Some(session_list) = data.get("sessions") {
                                 if let Ok(parsed) =
@@ -289,6 +296,9 @@ pub fn dashboard_page() -> Html {
                     >
                         { if *show_new_session { "-" } else { "+" } }
                     </button>
+                    <a href="/api/auth/logout" class="logout-button">
+                        { "Logout" }
+                    </a>
                 </div>
             </header>
 

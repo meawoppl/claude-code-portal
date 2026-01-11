@@ -8,7 +8,7 @@ use diesel::prelude::*;
 use oauth2::{AuthorizationCode, CsrfToken, Scope, TokenResponse};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
-use tower_cookies::{Cookie, Cookies};
+use tower_cookies::{cookie::SameSite, Cookie, Cookies};
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -163,6 +163,8 @@ pub async fn callback(
     let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
     cookie.set_path("/");
     cookie.set_http_only(true);
+    cookie.set_secure(true);
+    cookie.set_same_site(SameSite::Lax);
     cookies.signed(&app_state.cookie_key).add(cookie);
 
     Ok(Redirect::temporary("/dashboard"))
@@ -211,6 +213,23 @@ pub async fn me(
     }))
 }
 
+pub async fn logout(
+    State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
+) -> impl IntoResponse {
+    // Remove session cookie by setting it with empty value and immediate expiry
+    let mut cookie = Cookie::new(SESSION_COOKIE_NAME, "");
+    cookie.set_path("/");
+    cookie.set_http_only(true);
+    cookie.set_secure(true);
+    cookie.set_same_site(SameSite::Lax);
+    cookie.set_max_age(tower_cookies::cookie::time::Duration::ZERO);
+    cookies.signed(&app_state.cookie_key).add(cookie);
+
+    info!("User logged out");
+    Redirect::temporary("/")
+}
+
 // Development mode handlers (bypass OAuth)
 pub async fn dev_login(
     State(app_state): State<Arc<AppState>>,
@@ -234,6 +253,8 @@ pub async fn dev_login(
     let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
     cookie.set_path("/");
     cookie.set_http_only(true);
+    cookie.set_secure(true);
+    cookie.set_same_site(SameSite::Lax);
     cookies.signed(&app_state.cookie_key).add(cookie);
 
     // Redirect to dashboard

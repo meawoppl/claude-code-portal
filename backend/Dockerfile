@@ -6,7 +6,7 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Builder
 # -----------------------------------------------------------------------------
-FROM rust:1.75-slim as builder
+FROM rust:1.85-slim AS builder
 
 WORKDIR /app
 
@@ -22,7 +22,11 @@ RUN apt-get update && \
 COPY Cargo.toml Cargo.lock ./
 COPY shared ./shared
 COPY backend ./backend
+COPY frontend ./frontend
 COPY proxy ./proxy
+
+# Remove cli-tools from workspace (not needed for backend build)
+RUN sed -i 's/, "cli-tools"//' Cargo.toml
 
 # Build release binaries (backend and proxy)
 RUN cargo build --release -p backend -p proxy
@@ -56,10 +60,13 @@ RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
 # Create bin directory and copy binaries from builder
 RUN mkdir -p /app/bin
 COPY --from=builder /app/target/release/backend /app/backend
-COPY --from=builder /app/target/release/proxy /app/bin/claude-proxy
+COPY --from=builder /app/target/release/claude-proxy /app/bin/claude-proxy
 
 # Copy .env template with 1Password references
 COPY .env.example /app/.env
+
+# Copy pre-built frontend dist (built locally with trunk)
+COPY frontend/dist /app/frontend/dist
 
 # Set proxy binary path for the download endpoint
 ENV PROXY_BINARY_PATH=/app/bin/claude-proxy

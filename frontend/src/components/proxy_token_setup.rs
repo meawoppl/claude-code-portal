@@ -56,6 +56,11 @@ pub fn proxy_token_setup() -> Html {
                             } else {
                                 token_state.set(TokenState::Error("Failed to parse response".to_string()));
                             }
+                        } else if response.status() == 401 {
+                            // Session invalid - redirect to logout
+                            if let Some(window) = web_sys::window() {
+                                let _ = window.location().set_href("/api/auth/logout");
+                            }
                         } else {
                             token_state.set(TokenState::Error(format!("Server error: {}", response.status())));
                         }

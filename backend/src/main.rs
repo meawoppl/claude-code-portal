@@ -236,6 +236,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/google", get(handlers::auth::login))
         .route("/api/auth/google/callback", get(handlers::auth::callback))
         .route("/api/auth/me", get(handlers::auth::me))
+        .route("/api/auth/logout", get(handlers::auth::logout))
         .route("/api/auth/dev-login", get(handlers::auth::dev_login))
         // Device flow endpoints for CLI (under /api/auth)
         .route(
