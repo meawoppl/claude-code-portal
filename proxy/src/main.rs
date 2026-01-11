@@ -257,6 +257,7 @@ async fn create_claude_client(config: &SessionConfig) -> Result<AsyncClient> {
         "--output-format", "stream-json",
         "--input-format", "stream-json",
         "--replay-user-messages",
+        "--permission-prompt-tool", "stdio",
     ];
 
     let child = if config.resuming {

@@ -443,6 +443,15 @@ pub struct SessionViewProps {
     pub on_message_sent: Callback<Uuid>,
 }
 
+/// Pending permission request
+#[derive(Clone, Debug)]
+pub struct PendingPermission {
+    pub request_id: String,
+    pub tool_name: String,
+    pub input: serde_json::Value,
+    pub permission_suggestions: Vec<serde_json::Value>,
+}
+
 pub enum SessionViewMsg {
     SendInput,
     UpdateInput(String),
@@ -454,6 +463,19 @@ pub enum SessionViewMsg {
     WebSocketError(String),
     CheckAwaiting,
     ClearCostFlash,
+    /// Permission request received
+    PermissionRequest(PendingPermission),
+    /// User approved permission (one-time)
+    ApprovePermission,
+    /// User approved and wants to remember for similar future requests
+    ApprovePermissionAndRemember,
+    /// User denied permission
+    DenyPermission,
+    /// Navigate permission options
+    PermissionSelectUp,
+    PermissionSelectDown,
+    /// Confirm current permission selection
+    PermissionConfirm,
 }
 
 pub struct SessionView {
@@ -463,12 +485,15 @@ pub struct SessionView {
     ws_sender: Option<WsSender>,
     messages_ref: NodeRef,
     input_ref: NodeRef,
+    permission_ref: NodeRef,
     should_autoscroll: Rc<RefCell<bool>>,
     #[allow(dead_code)]
     scroll_listener: Option<Closure<dyn Fn()>>,
     was_focused: bool,
     total_cost: f64,
     cost_flash: bool,
+    pending_permission: Option<PendingPermission>,
+    permission_selected: usize,
 }
 
 impl Component for SessionView {
@@ -543,6 +568,11 @@ impl Component for SessionView {
                                             ));
                                             link.send_message(SessionViewMsg::CheckAwaiting);
                                         }
+                                        ProxyMessage::PermissionRequest { request_id, tool_name, input, permission_suggestions } => {
+                                            link.send_message(SessionViewMsg::PermissionRequest(
+                                                PendingPermission { request_id, tool_name, input, permission_suggestions }
+                                            ));
+                                        }
                                         ProxyMessage::Error { message } => {
                                             let error_json = serde_json::json!({
                                                 "type": "error",
@@ -579,11 +609,14 @@ impl Component for SessionView {
             ws_sender: None,
             messages_ref: NodeRef::default(),
             input_ref: NodeRef::default(),
+            permission_ref: NodeRef::default(),
             should_autoscroll: Rc::new(RefCell::new(true)),
             scroll_listener: None,
             was_focused: ctx.props().focused,
             total_cost: 0.0,
             cost_flash: false,
+            pending_permission: None,
+            permission_selected: 0,
         }
     }
 
@@ -607,6 +640,13 @@ impl Component for SessionView {
         if first_render && ctx.props().focused {
             if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
                 let _ = input.focus();
+            }
+        }
+
+        // Auto-focus permission prompt when it appears
+        if self.pending_permission.is_some() && ctx.props().focused {
+            if let Some(el) = self.permission_ref.cast::<web_sys::HtmlElement>() {
+                let _ = el.focus();
             }
         }
 
@@ -706,6 +746,143 @@ impl Component for SessionView {
                 self.cost_flash = false;
                 true
             }
+            SessionViewMsg::PermissionRequest(perm) => {
+                self.pending_permission = Some(perm);
+                self.permission_selected = 0; // Default to "Allow"
+                // Focus the permission prompt after render
+                if let Some(el) = self.permission_ref.cast::<web_sys::HtmlElement>() {
+                    let _ = el.focus();
+                }
+                true
+            }
+            SessionViewMsg::PermissionSelectUp => {
+                if self.pending_permission.is_some() {
+                    let max = if self.pending_permission.as_ref().map(|p| !p.permission_suggestions.is_empty()).unwrap_or(false) {
+                        2 // Allow, Allow & Remember, Deny
+                    } else {
+                        1 // Allow, Deny
+                    };
+                    if self.permission_selected > 0 {
+                        self.permission_selected -= 1;
+                    } else {
+                        self.permission_selected = max;
+                    }
+                }
+                true
+            }
+            SessionViewMsg::PermissionSelectDown => {
+                if self.pending_permission.is_some() {
+                    let max = if self.pending_permission.as_ref().map(|p| !p.permission_suggestions.is_empty()).unwrap_or(false) {
+                        2 // Allow, Allow & Remember, Deny
+                    } else {
+                        1 // Allow, Deny
+                    };
+                    if self.permission_selected < max {
+                        self.permission_selected += 1;
+                    } else {
+                        self.permission_selected = 0;
+                    }
+                }
+                true
+            }
+            SessionViewMsg::PermissionConfirm => {
+                if self.pending_permission.is_some() {
+                    let has_suggestions = self.pending_permission.as_ref().map(|p| !p.permission_suggestions.is_empty()).unwrap_or(false);
+                    let msg = match (self.permission_selected, has_suggestions) {
+                        (0, _) => SessionViewMsg::ApprovePermission,
+                        (1, true) => SessionViewMsg::ApprovePermissionAndRemember,
+                        (1, false) => SessionViewMsg::DenyPermission,
+                        (2, true) => SessionViewMsg::DenyPermission,
+                        _ => SessionViewMsg::ApprovePermission,
+                    };
+                    ctx.link().send_message(msg);
+                }
+                false // Don't re-render, the delegated message will handle it
+            }
+            SessionViewMsg::ApprovePermission => {
+                if let Some(perm) = self.pending_permission.take() {
+                    if let Some(ref sender_rc) = self.ws_sender {
+                        let sender_rc = sender_rc.clone();
+                        let msg = ProxyMessage::PermissionResponse {
+                            request_id: perm.request_id,
+                            allow: true,
+                            input: Some(perm.input),
+                            permissions: vec![],
+                            reason: None,
+                        };
+                        spawn_local(async move {
+                            if let Ok(json) = serde_json::to_string(&msg) {
+                                let maybe_sender = sender_rc.borrow_mut().take();
+                                if let Some(mut sender) = maybe_sender {
+                                    let _ = sender.send(Message::Text(json)).await;
+                                    *sender_rc.borrow_mut() = Some(sender);
+                                }
+                            }
+                        });
+                    }
+                    // Focus back to input
+                    if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
+                        let _ = input.focus();
+                    }
+                }
+                true
+            }
+            SessionViewMsg::ApprovePermissionAndRemember => {
+                if let Some(perm) = self.pending_permission.take() {
+                    if let Some(ref sender_rc) = self.ws_sender {
+                        let sender_rc = sender_rc.clone();
+                        let msg = ProxyMessage::PermissionResponse {
+                            request_id: perm.request_id,
+                            allow: true,
+                            input: Some(perm.input),
+                            permissions: perm.permission_suggestions,
+                            reason: None,
+                        };
+                        spawn_local(async move {
+                            if let Ok(json) = serde_json::to_string(&msg) {
+                                let maybe_sender = sender_rc.borrow_mut().take();
+                                if let Some(mut sender) = maybe_sender {
+                                    let _ = sender.send(Message::Text(json)).await;
+                                    *sender_rc.borrow_mut() = Some(sender);
+                                }
+                            }
+                        });
+                    }
+                    // Focus back to input
+                    if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
+                        let _ = input.focus();
+                    }
+                }
+                true
+            }
+            SessionViewMsg::DenyPermission => {
+                if let Some(perm) = self.pending_permission.take() {
+                    if let Some(ref sender_rc) = self.ws_sender {
+                        let sender_rc = sender_rc.clone();
+                        let msg = ProxyMessage::PermissionResponse {
+                            request_id: perm.request_id,
+                            allow: false,
+                            input: None,
+                            permissions: vec![],
+                            reason: Some("User denied".to_string()),
+                        };
+                        spawn_local(async move {
+                            if let Ok(json) = serde_json::to_string(&msg) {
+                                let maybe_sender = sender_rc.borrow_mut().take();
+                                if let Some(mut sender) = maybe_sender {
+                                    let _ = sender.send(Message::Text(json)).await;
+                                    *sender_rc.borrow_mut() = Some(sender);
+                                }
+                            }
+                        });
+                    }
+                    // Focus back to input
+                    if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
+                        let _ = input.focus();
+                    }
+                }
+                true
+            }
             SessionViewMsg::WebSocketConnected(sender) => {
                 self.ws_connected = true;
                 self.ws_sender = Some(sender);
@@ -785,6 +962,93 @@ impl Component for SessionView {
                     }
                 </div>
 
+                {
+                    if let Some(ref perm) = self.pending_permission {
+                        let input_preview = format_permission_input(&perm.tool_name, &perm.input);
+                        let has_suggestions = !perm.permission_suggestions.is_empty();
+                        let selected = self.permission_selected;
+
+                        let onkeydown = link.callback(|e: KeyboardEvent| {
+                            match e.key().as_str() {
+                                "ArrowUp" | "k" => {
+                                    e.prevent_default();
+                                    SessionViewMsg::PermissionSelectUp
+                                }
+                                "ArrowDown" | "j" => {
+                                    e.prevent_default();
+                                    SessionViewMsg::PermissionSelectDown
+                                }
+                                "Enter" | " " => {
+                                    e.prevent_default();
+                                    SessionViewMsg::PermissionConfirm
+                                }
+                                _ => SessionViewMsg::CheckAwaiting, // No-op
+                            }
+                        });
+
+                        // Build options list
+                        let options: Vec<(&str, &str)> = if has_suggestions {
+                            vec![
+                                ("allow", "Allow"),
+                                ("remember", "Allow & Remember"),
+                                ("deny", "Deny"),
+                            ]
+                        } else {
+                            vec![
+                                ("allow", "Allow"),
+                                ("deny", "Deny"),
+                            ]
+                        };
+
+                        html! {
+                            <div
+                                class="permission-prompt"
+                                ref={self.permission_ref.clone()}
+                                tabindex="0"
+                                onkeydown={onkeydown}
+                            >
+                                <div class="permission-header">
+                                    <span class="permission-icon">{ "⚠️" }</span>
+                                    <span class="permission-title">{ "Permission Required" }</span>
+                                </div>
+                                <div class="permission-body">
+                                    <div class="permission-tool">
+                                        <span class="tool-label">{ "Tool:" }</span>
+                                        <span class="tool-name">{ &perm.tool_name }</span>
+                                    </div>
+                                    <div class="permission-input">
+                                        <pre>{ input_preview }</pre>
+                                    </div>
+                                </div>
+                                <div class="permission-options">
+                                    {
+                                        options.iter().enumerate().map(|(i, (class, label))| {
+                                            let is_selected = i == selected;
+                                            let cursor = if is_selected { ">" } else { " " };
+                                            let item_class = if is_selected {
+                                                format!("permission-option selected {}", class)
+                                            } else {
+                                                format!("permission-option {}", class)
+                                            };
+                                            html! {
+                                                <div class={item_class}>
+                                                    <span class="option-cursor">{ cursor }</span>
+                                                    <span class="option-label">{ *label }</span>
+                                                </div>
+                                            }
+                                        }).collect::<Html>()
+                                    }
+                                </div>
+                                <div class="permission-hint">
+                                    { "↑↓ to select, Enter to confirm" }
+                                </div>
+                            </div>
+                        }
+                    } else {
+                        html! {}
+                    }
+                }
+
                 <form class="session-view-input" onsubmit={handle_submit}>
                     <span class="input-prompt">{ ">" }</span>
                     <input
@@ -812,5 +1076,25 @@ fn format_cost(cost: f64) -> String {
         format!("${:.3}", cost)
     } else {
         format!("${:.2}", cost)
+    }
+}
+
+fn format_permission_input(tool_name: &str, input: &serde_json::Value) -> String {
+    match tool_name {
+        "Bash" => {
+            input.get("command")
+                .and_then(|v| v.as_str())
+                .map(|s| format!("$ {}", s))
+                .unwrap_or_else(|| serde_json::to_string_pretty(input).unwrap_or_default())
+        }
+        "Read" | "Edit" | "Write" => {
+            input.get("file_path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| serde_json::to_string_pretty(input).unwrap_or_default())
+        }
+        _ => {
+            serde_json::to_string_pretty(input).unwrap_or_else(|_| format!("{:?}", input))
+        }
     }
 }

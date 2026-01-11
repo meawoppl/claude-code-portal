@@ -270,6 +270,16 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             // Respond to heartbeat
                             let _ = tx.send(ProxyMessage::Heartbeat);
                         }
+                        ProxyMessage::PermissionRequest { request_id, tool_name, input, permission_suggestions } => {
+                            // Forward permission request to all web clients
+                            if let Some(ref key) = session_key {
+                                info!("Permission request from proxy for tool: {} (request_id: {}, suggestions: {})", tool_name, request_id, permission_suggestions.len());
+                                session_manager.broadcast_to_web_clients(
+                                    key,
+                                    ProxyMessage::PermissionRequest { request_id, tool_name, input, permission_suggestions },
+                                );
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -422,6 +432,21 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                 }
                             } else {
                                 warn!("Web client tried to send ClaudeInput but no session_key set (not registered?)");
+                            }
+                        }
+                        ProxyMessage::PermissionResponse { request_id, allow, input, permissions, reason } => {
+                            // Forward permission response to the proxy session
+                            if let Some(ref key) = session_key {
+                                info!("Web client sending PermissionResponse: {} -> {} (permissions: {}, reason: {:?})",
+                                      request_id, if allow { "allow" } else { "deny" }, permissions.len(), reason);
+                                if !session_manager.send_to_session(
+                                    key,
+                                    ProxyMessage::PermissionResponse { request_id, allow, input, permissions, reason },
+                                ) {
+                                    warn!("Failed to send PermissionResponse to session '{}', session not connected", key);
+                                }
+                            } else {
+                                warn!("Web client tried to send PermissionResponse but no session_key set");
                             }
                         }
                         _ => {}

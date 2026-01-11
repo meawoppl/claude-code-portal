@@ -143,7 +143,7 @@ fn render_user_message(msg: &UserMessage) -> Html {
                     <span class="message-type-badge user">{ "You" }</span>
                 </div>
                 <div class="message-body">
-                    <div class="user-text">{ text }</div>
+                    <div class="user-text">{ linkify_text(text) }</div>
                 </div>
             </div>
         }
@@ -181,7 +181,7 @@ fn render_user_message(msg: &UserMessage) -> Html {
                         <span class="message-type-badge user">{ "You" }</span>
                     </div>
                     <div class="message-body">
-                        <div class="user-text">{ text_content }</div>
+                        <div class="user-text">{ linkify_text(&text_content) }</div>
                     </div>
                 </div>
             }
@@ -299,14 +299,17 @@ fn render_content_blocks(blocks: &[ContentBlock]) -> Html {
                 blocks.iter().map(|block| {
                     match block {
                         ContentBlock::Text { text } => {
-                            html! { <div class="assistant-text">{ text }</div> }
+                            html! { <div class="assistant-text">{ linkify_text(text) }</div> }
                         }
                         ContentBlock::ToolUse { id: _, name, input } => {
                             let input_preview = format_tool_input(name, input);
                             html! {
                                 <div class="tool-use">
-                                    <span class="tool-name">{ name }</span>
-                                    <span class="tool-input">{ input_preview }</span>
+                                    <div class="tool-use-header">
+                                        <span class="tool-icon">{ "⚡" }</span>
+                                        <span class="tool-name">{ name }</span>
+                                    </div>
+                                    <pre class="tool-args">{ input_preview }</pre>
                                 </div>
                             }
                         }
@@ -346,50 +349,124 @@ fn format_tool_input(tool_name: &str, input: &Value) -> String {
         "Bash" => {
             input.get("command")
                 .and_then(|v| v.as_str())
-                .map(|s| format!("$ {}", truncate_str(s, 100)))
-                .unwrap_or_else(|| "...".to_string())
+                .map(|s| format!("$ {}", s))
+                .unwrap_or_else(|| format_generic_input(input))
         }
         "Read" => {
-            input.get("file_path")
+            let path = input.get("file_path")
                 .and_then(|v| v.as_str())
-                .map(|s| truncate_str(s, 80).to_string())
-                .unwrap_or_else(|| "...".to_string())
+                .unwrap_or("?");
+            let mut result = path.to_string();
+            if let Some(offset) = input.get("offset").and_then(|v| v.as_i64()) {
+                if let Some(limit) = input.get("limit").and_then(|v| v.as_i64()) {
+                    result.push_str(&format!(" [lines {}-{}]", offset, offset + limit));
+                }
+            }
+            result
         }
         "Edit" => {
-            input.get("file_path")
+            let path = input.get("file_path")
                 .and_then(|v| v.as_str())
-                .map(|s| truncate_str(s, 80).to_string())
-                .unwrap_or_else(|| "...".to_string())
+                .unwrap_or("?");
+            let old_len = input.get("old_string")
+                .and_then(|v| v.as_str())
+                .map(|s| s.len())
+                .unwrap_or(0);
+            let new_len = input.get("new_string")
+                .and_then(|v| v.as_str())
+                .map(|s| s.len())
+                .unwrap_or(0);
+            format!("{}\n-{} chars +{} chars", path, old_len, new_len)
         }
         "Write" => {
-            input.get("file_path")
+            let path = input.get("file_path")
                 .and_then(|v| v.as_str())
-                .map(|s| truncate_str(s, 80).to_string())
-                .unwrap_or_else(|| "...".to_string())
-        }
-        "Glob" | "Grep" => {
-            input.get("pattern")
+                .unwrap_or("?");
+            let content_len = input.get("content")
                 .and_then(|v| v.as_str())
-                .map(|s| truncate_str(s, 60).to_string())
-                .unwrap_or_else(|| "...".to_string())
+                .map(|s| s.len())
+                .unwrap_or(0);
+            format!("{} ({} bytes)", path, content_len)
         }
-        "Task" => {
-            input.get("description")
+        "Glob" => {
+            let pattern = input.get("pattern")
                 .and_then(|v| v.as_str())
-                .map(|s| truncate_str(s, 80).to_string())
-                .unwrap_or_else(|| "...".to_string())
-        }
-        _ => {
-            // Generic: try to show first string value
-            if let Some(obj) = input.as_object() {
-                obj.values()
-                    .find_map(|v| v.as_str())
-                    .map(|s| truncate_str(s, 60).to_string())
-                    .unwrap_or_else(|| "...".to_string())
-            } else {
-                "...".to_string()
+                .unwrap_or("?");
+            let path = input.get("path")
+                .and_then(|v| v.as_str());
+            match path {
+                Some(p) => format!("{} in {}", pattern, p),
+                None => pattern.to_string(),
             }
         }
+        "Grep" => {
+            let pattern = input.get("pattern")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let path = input.get("path")
+                .and_then(|v| v.as_str());
+            let glob = input.get("glob")
+                .and_then(|v| v.as_str());
+            let mut result = format!("/{}/", pattern);
+            if let Some(g) = glob {
+                result.push_str(&format!(" --glob={}", g));
+            }
+            if let Some(p) = path {
+                result.push_str(&format!(" in {}", p));
+            }
+            result
+        }
+        "Task" => {
+            let desc = input.get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let agent = input.get("subagent_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("agent");
+            format!("[{}] {}", agent, desc)
+        }
+        "WebFetch" => {
+            input.get("url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format_generic_input(input))
+        }
+        "WebSearch" => {
+            input.get("query")
+                .and_then(|v| v.as_str())
+                .map(|s| format!("\"{}\"", s))
+                .unwrap_or_else(|| format_generic_input(input))
+        }
+        "TodoWrite" => {
+            input.get("todos")
+                .and_then(|v| v.as_array())
+                .map(|arr| format!("{} items", arr.len()))
+                .unwrap_or_else(|| format_generic_input(input))
+        }
+        _ => format_generic_input(input),
+    }
+}
+
+fn format_generic_input(input: &Value) -> String {
+    if let Some(obj) = input.as_object() {
+        let parts: Vec<String> = obj.iter()
+            .filter(|(_, v)| v.is_string() || v.is_number() || v.is_boolean())
+            .take(3)
+            .map(|(k, v)| {
+                let val = match v {
+                    Value::String(s) => truncate_str(s, 40).to_string(),
+                    other => other.to_string(),
+                };
+                format!("{}={}", k, val)
+            })
+            .collect();
+        if parts.is_empty() {
+            "...".to_string()
+        } else {
+            parts.join(", ")
+        }
+    } else {
+        "...".to_string()
     }
 }
 
@@ -504,12 +581,438 @@ fn format_duration(ms: u64) -> String {
     }
 }
 
-fn format_cost(cost: f64) -> String {
-    if cost < 0.01 {
-        format!("${:.4}", cost)
-    } else if cost < 1.0 {
-        format!("${:.3}", cost)
+/// Represents a segment of text that may or may not be a URL
+#[derive(Debug, Clone, PartialEq)]
+pub enum TextSegment {
+    Text(String),
+    Url(String),
+}
+
+/// Characters that can appear in a URL path/query but shouldn't end a URL
+const URL_END_CHARS: &[char] = &['.', ',', ')', ']', '>', ';', ':', '!', '?', '"', '\''];
+
+/// Parse text and extract URLs, returning segments of plain text and URLs
+pub fn parse_urls(text: &str) -> Vec<TextSegment> {
+    let mut segments = Vec::new();
+    let mut remaining = text;
+
+    while !remaining.is_empty() {
+        // Find the next URL start
+        let url_start = find_url_start(remaining);
+
+        match url_start {
+            Some((prefix, url_begin)) => {
+                // Add any text before the URL
+                if !prefix.is_empty() {
+                    segments.push(TextSegment::Text(prefix.to_string()));
+                }
+
+                // Extract the URL
+                let after_prefix = &remaining[prefix.len()..];
+                let url_end = find_url_end(after_prefix);
+                let url = &after_prefix[..url_end];
+
+                // Trim trailing punctuation that's likely not part of the URL
+                let url = trim_url_end(url);
+
+                if !url.is_empty() && is_valid_url(url) {
+                    segments.push(TextSegment::Url(url.to_string()));
+                    remaining = &remaining[prefix.len() + url.len()..];
+                } else {
+                    // Not a valid URL, treat as text
+                    segments.push(TextSegment::Text(url_begin.to_string()));
+                    remaining = &remaining[prefix.len() + url_begin.len()..];
+                }
+            }
+            None => {
+                // No more URLs, add remaining text
+                segments.push(TextSegment::Text(remaining.to_string()));
+                break;
+            }
+        }
+    }
+
+    // Merge adjacent text segments
+    merge_text_segments(segments)
+}
+
+/// Find the start of a URL in text, returns (prefix_before_url, url_start_pattern)
+fn find_url_start(text: &str) -> Option<(&str, &str)> {
+    let patterns = ["https://", "http://"];
+
+    let mut earliest: Option<(usize, &str)> = None;
+
+    for pattern in patterns {
+        if let Some(pos) = text.find(pattern) {
+            match earliest {
+                None => earliest = Some((pos, pattern)),
+                Some((earliest_pos, _)) if pos < earliest_pos => {
+                    earliest = Some((pos, pattern));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    earliest.map(|(pos, pattern)| (&text[..pos], pattern))
+}
+
+/// Find the end of a URL (where it stops being URL-like)
+fn find_url_end(text: &str) -> usize {
+    let mut end = 0;
+    let mut chars = text.chars().peekable();
+    let mut paren_depth = 0;
+    let mut bracket_depth = 0;
+
+    while let Some(c) = chars.next() {
+        match c {
+            // Whitespace ends URL
+            ' ' | '\t' | '\n' | '\r' => break,
+            // Track parentheses for URLs like Wikipedia links
+            '(' => {
+                paren_depth += 1;
+                end += c.len_utf8();
+            }
+            ')' => {
+                if paren_depth > 0 {
+                    paren_depth -= 1;
+                    end += c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            // Track brackets
+            '[' => {
+                bracket_depth += 1;
+                end += c.len_utf8();
+            }
+            ']' => {
+                if bracket_depth > 0 {
+                    bracket_depth -= 1;
+                    end += c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            // Common URL-safe characters
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' | '/' | '?' | '#' | '&'
+            | '=' | '+' | '%' | '@' | ':' | '!' | '$' | '\'' | '*' | ',' | ';' => {
+                end += c.len_utf8();
+            }
+            // Stop on other characters
+            _ => break,
+        }
+    }
+
+    end
+}
+
+/// Trim trailing punctuation that's commonly not part of URLs
+/// Handles balanced parentheses (e.g., Wikipedia links)
+fn trim_url_end(url: &str) -> &str {
+    let mut url = url;
+
+    while let Some(c) = url.chars().last() {
+        // For closing parens/brackets, only trim if unbalanced
+        if c == ')' {
+            let open_count = url.chars().filter(|&ch| ch == '(').count();
+            let close_count = url.chars().filter(|&ch| ch == ')').count();
+            if close_count > open_count {
+                url = &url[..url.len() - c.len_utf8()];
+                continue;
+            } else {
+                break;
+            }
+        }
+        if c == ']' {
+            let open_count = url.chars().filter(|&ch| ch == '[').count();
+            let close_count = url.chars().filter(|&ch| ch == ']').count();
+            if close_count > open_count {
+                url = &url[..url.len() - c.len_utf8()];
+                continue;
+            } else {
+                break;
+            }
+        }
+        // Trim other trailing punctuation
+        if URL_END_CHARS.contains(&c) && c != ')' && c != ']' {
+            url = &url[..url.len() - c.len_utf8()];
+        } else {
+            break;
+        }
+    }
+    url
+}
+
+/// Check if a string looks like a valid URL
+fn is_valid_url(url: &str) -> bool {
+    // Must start with http:// or https://
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return false;
+    }
+
+    // Must have something after the protocol
+    let after_protocol = if url.starts_with("https://") {
+        &url[8..]
     } else {
-        format!("${:.2}", cost)
+        &url[7..]
+    };
+
+    // Must have at least a domain-like part
+    if after_protocol.is_empty() {
+        return false;
+    }
+
+    // Should have at least one dot in domain (or be localhost)
+    let domain_end = after_protocol.find('/').unwrap_or(after_protocol.len());
+    let domain = &after_protocol[..domain_end];
+
+    domain.contains('.') || domain.starts_with("localhost")
+}
+
+/// Merge adjacent Text segments
+fn merge_text_segments(segments: Vec<TextSegment>) -> Vec<TextSegment> {
+    let mut result = Vec::new();
+    let mut current_text = String::new();
+
+    for segment in segments {
+        match segment {
+            TextSegment::Text(t) => {
+                current_text.push_str(&t);
+            }
+            TextSegment::Url(u) => {
+                if !current_text.is_empty() {
+                    result.push(TextSegment::Text(std::mem::take(&mut current_text)));
+                }
+                result.push(TextSegment::Url(u));
+            }
+        }
+    }
+
+    if !current_text.is_empty() {
+        result.push(TextSegment::Text(current_text));
+    }
+
+    result
+}
+
+/// Render text with URLs converted to clickable links
+pub fn linkify_text(text: &str) -> Html {
+    let segments = parse_urls(text);
+
+    html! {
+        <>
+            {
+                segments.into_iter().map(|segment| {
+                    match segment {
+                        TextSegment::Text(t) => html! { <>{ t }</> },
+                        TextSegment::Url(url) => html! {
+                            <a href={url.clone()} target="_blank" rel="noopener noreferrer" class="message-link">
+                                { &url }
+                            </a>
+                        },
+                    }
+                }).collect::<Html>()
+            }
+        </>
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_no_urls() {
+        let result = parse_urls("Hello world, no links here!");
+        assert_eq!(result, vec![TextSegment::Text("Hello world, no links here!".to_string())]);
+    }
+
+    #[test]
+    fn test_single_https_url() {
+        let result = parse_urls("Check out https://example.com for more info.");
+        assert_eq!(result, vec![
+            TextSegment::Text("Check out ".to_string()),
+            TextSegment::Url("https://example.com".to_string()),
+            TextSegment::Text(" for more info.".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_single_http_url() {
+        let result = parse_urls("Visit http://example.com today");
+        assert_eq!(result, vec![
+            TextSegment::Text("Visit ".to_string()),
+            TextSegment::Url("http://example.com".to_string()),
+            TextSegment::Text(" today".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_with_path() {
+        let result = parse_urls("See https://example.com/path/to/page.html for details");
+        assert_eq!(result, vec![
+            TextSegment::Text("See ".to_string()),
+            TextSegment::Url("https://example.com/path/to/page.html".to_string()),
+            TextSegment::Text(" for details".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_with_query_params() {
+        let result = parse_urls("Link: https://example.com/search?q=test&page=1");
+        assert_eq!(result, vec![
+            TextSegment::Text("Link: ".to_string()),
+            TextSegment::Url("https://example.com/search?q=test&page=1".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_with_fragment() {
+        let result = parse_urls("Go to https://example.com/page#section");
+        assert_eq!(result, vec![
+            TextSegment::Text("Go to ".to_string()),
+            TextSegment::Url("https://example.com/page#section".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_at_start() {
+        let result = parse_urls("https://example.com is the site");
+        assert_eq!(result, vec![
+            TextSegment::Url("https://example.com".to_string()),
+            TextSegment::Text(" is the site".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_at_end() {
+        let result = parse_urls("The site is https://example.com");
+        assert_eq!(result, vec![
+            TextSegment::Text("The site is ".to_string()),
+            TextSegment::Url("https://example.com".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_multiple_urls() {
+        let result = parse_urls("Check https://one.com and https://two.com for info");
+        assert_eq!(result, vec![
+            TextSegment::Text("Check ".to_string()),
+            TextSegment::Url("https://one.com".to_string()),
+            TextSegment::Text(" and ".to_string()),
+            TextSegment::Url("https://two.com".to_string()),
+            TextSegment::Text(" for info".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_with_trailing_period() {
+        let result = parse_urls("Visit https://example.com.");
+        assert_eq!(result, vec![
+            TextSegment::Text("Visit ".to_string()),
+            TextSegment::Url("https://example.com".to_string()),
+            TextSegment::Text(".".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_with_trailing_comma() {
+        let result = parse_urls("See https://example.com, or https://other.com");
+        assert_eq!(result, vec![
+            TextSegment::Text("See ".to_string()),
+            TextSegment::Url("https://example.com".to_string()),
+            TextSegment::Text(", or ".to_string()),
+            TextSegment::Url("https://other.com".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_in_parentheses() {
+        let result = parse_urls("More info (https://example.com) here");
+        assert_eq!(result, vec![
+            TextSegment::Text("More info (".to_string()),
+            TextSegment::Url("https://example.com".to_string()),
+            TextSegment::Text(") here".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_wikipedia_url_with_parens() {
+        let result = parse_urls("See https://en.wikipedia.org/wiki/Rust_(programming_language) for info");
+        assert_eq!(result, vec![
+            TextSegment::Text("See ".to_string()),
+            TextSegment::Url("https://en.wikipedia.org/wiki/Rust_(programming_language)".to_string()),
+            TextSegment::Text(" for info".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_with_port() {
+        let result = parse_urls("Server at https://localhost:8080/api");
+        assert_eq!(result, vec![
+            TextSegment::Text("Server at ".to_string()),
+            TextSegment::Url("https://localhost:8080/api".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_with_encoded_chars() {
+        let result = parse_urls("Link: https://example.com/path%20with%20spaces");
+        assert_eq!(result, vec![
+            TextSegment::Text("Link: ".to_string()),
+            TextSegment::Url("https://example.com/path%20with%20spaces".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_invalid_url_no_domain() {
+        let result = parse_urls("Not valid: https://");
+        assert_eq!(result, vec![
+            TextSegment::Text("Not valid: https://".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_localhost_url() {
+        let result = parse_urls("Dev server: http://localhost:3000");
+        assert_eq!(result, vec![
+            TextSegment::Text("Dev server: ".to_string()),
+            TextSegment::Url("http://localhost:3000".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_url_followed_by_newline() {
+        let result = parse_urls("Link: https://example.com\nNext line");
+        assert_eq!(result, vec![
+            TextSegment::Text("Link: ".to_string()),
+            TextSegment::Url("https://example.com".to_string()),
+            TextSegment::Text("\nNext line".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_only_url() {
+        let result = parse_urls("https://example.com");
+        assert_eq!(result, vec![
+            TextSegment::Url("https://example.com".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn test_empty_string() {
+        let result = parse_urls("");
+        assert_eq!(result, Vec::<TextSegment>::new());
+    }
+
+    #[test]
+    fn test_url_with_subdomain() {
+        let result = parse_urls("API docs: https://api.example.com/v1/docs");
+        assert_eq!(result, vec![
+            TextSegment::Text("API docs: ".to_string()),
+            TextSegment::Url("https://api.example.com/v1/docs".to_string()),
+        ]);
+    }
+}
+

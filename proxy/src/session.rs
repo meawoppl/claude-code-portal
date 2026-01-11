@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
-use claude_codes::io::ContentBlock;
+use claude_codes::io::{ContentBlock, ControlRequestPayload};
 use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
 use tokio::sync::mpsc;
@@ -213,6 +213,16 @@ where
     Ok(())
 }
 
+/// Permission response data
+#[derive(Debug)]
+pub struct PermissionResponseData {
+    pub request_id: String,
+    pub allow: bool,
+    pub input: Option<serde_json::Value>,
+    pub permissions: Vec<serde_json::Value>,
+    pub reason: Option<String>,
+}
+
 /// Run the main message forwarding loop
 async fn run_message_loop<S, R>(
     config: &SessionConfig,
@@ -233,6 +243,9 @@ where
     // Channel for Claude outputs
     let (output_tx, output_rx) = mpsc::unbounded_channel::<ClaudeOutput>();
 
+    // Channel for permission responses from frontend
+    let (perm_tx, mut perm_rx) = mpsc::unbounded_channel::<PermissionResponseData>();
+
     // Wrap ws_write for sharing
     let ws_write = std::sync::Arc::new(tokio::sync::Mutex::new(ws_write));
 
@@ -243,12 +256,13 @@ where
     let output_task = spawn_output_forwarder(output_rx, ws_write.clone());
 
     // Spawn WebSocket reader task
-    let reader_task = spawn_ws_reader(ws_read, input_tx, ws_write.clone(), disconnect_tx);
+    let reader_task = spawn_ws_reader(ws_read, input_tx, perm_tx, ws_write.clone(), disconnect_tx);
 
     // Main loop
     let result = run_main_loop(
         claude_client,
         input_rx,
+        &mut perm_rx,
         &output_tx,
         &mut disconnect_rx,
         session_id,
@@ -277,9 +291,36 @@ where
             // Log detailed info about the message
             log_claude_output(&output);
 
-            let content = serde_json::to_value(&output)
-                .unwrap_or(serde_json::Value::String(format!("{:?}", output)));
-            let msg = ProxyMessage::ClaudeOutput { content };
+            // Handle ControlRequest specially - convert to PermissionRequest
+            let msg = match &output {
+                ClaudeOutput::ControlRequest(req) => {
+                    match &req.request {
+                        ControlRequestPayload::CanUseTool(tool_req) => {
+                            ProxyMessage::PermissionRequest {
+                                request_id: req.request_id.clone(),
+                                tool_name: tool_req.tool_name.clone(),
+                                input: tool_req.input.clone(),
+                                permission_suggestions: tool_req.permission_suggestions.clone(),
+                            }
+                        }
+                        _ => {
+                            // For other control requests, forward as raw output
+                            let content = serde_json::to_value(&output)
+                                .unwrap_or(serde_json::Value::String(format!("{:?}", output)));
+                            ProxyMessage::ClaudeOutput { content }
+                        }
+                    }
+                }
+                ClaudeOutput::ControlResponse(_) => {
+                    // Don't forward control responses (they're acks from Claude)
+                    continue;
+                }
+                _ => {
+                    let content = serde_json::to_value(&output)
+                        .unwrap_or(serde_json::Value::String(format!("{:?}", output)));
+                    ProxyMessage::ClaudeOutput { content }
+                }
+            };
 
             if let Ok(json) = serde_json::to_string(&msg) {
                 let mut ws = ws_write.lock().await;
@@ -385,6 +426,27 @@ fn log_claude_output(output: &ClaudeOutput) {
                 info!("  cost: ${:.4}", res.total_cost_usd);
             }
         }
+        ClaudeOutput::ControlRequest(req) => {
+            info!("← [control_request] id={}", req.request_id);
+            match &req.request {
+                ControlRequestPayload::CanUseTool(tool_req) => {
+                    let input_preview = format_tool_input(&tool_req.tool_name, &tool_req.input);
+                    info!("  tool: {} {}", tool_req.tool_name, input_preview);
+                }
+                ControlRequestPayload::HookCallback(_) => {
+                    info!("  hook callback");
+                }
+                ControlRequestPayload::McpMessage(_) => {
+                    info!("  MCP message");
+                }
+                ControlRequestPayload::Initialize(_) => {
+                    info!("  initialize");
+                }
+            }
+        }
+        ClaudeOutput::ControlResponse(resp) => {
+            debug!("← [control_response] {:?}", resp);
+        }
     }
 }
 
@@ -469,6 +531,7 @@ fn format_duration(ms: u64) -> String {
 fn spawn_ws_reader<S, R>(
     mut ws_read: R,
     input_tx: mpsc::UnboundedSender<String>,
+    perm_tx: mpsc::UnboundedSender<PermissionResponseData>,
     ws_write: std::sync::Arc<tokio::sync::Mutex<S>>,
     disconnect_tx: tokio::sync::oneshot::Sender<()>,
 ) -> tokio::task::JoinHandle<()>
@@ -481,7 +544,7 @@ where
         while let Some(msg) = ws_read.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
-                    if !handle_ws_text_message(&text, &input_tx, &ws_write).await {
+                    if !handle_ws_text_message(&text, &input_tx, &perm_tx, &ws_write).await {
                         break;
                     }
                 }
@@ -505,6 +568,7 @@ where
 async fn handle_ws_text_message<S>(
     text: &str,
     input_tx: &mpsc::UnboundedSender<String>,
+    perm_tx: &mpsc::UnboundedSender<PermissionResponseData>,
     ws_write: &std::sync::Arc<tokio::sync::Mutex<S>>,
 ) -> bool
 where
@@ -530,6 +594,13 @@ where
                 return false;
             }
         }
+        ProxyMessage::PermissionResponse { request_id, allow, input, permissions, reason } => {
+            info!("→ [perm_response] {} allow={} permissions={} reason={:?}", request_id, allow, permissions.len(), reason);
+            if perm_tx.send(PermissionResponseData { request_id, allow, input, permissions, reason }).is_err() {
+                error!("Failed to send permission response to channel");
+                return false;
+            }
+        }
         ProxyMessage::Heartbeat => {
             debug!("heartbeat");
             let mut ws = ws_write.lock().await;
@@ -549,11 +620,14 @@ where
 async fn run_main_loop(
     claude_client: &mut AsyncClient,
     input_rx: &mut mpsc::UnboundedReceiver<String>,
+    perm_rx: &mut mpsc::UnboundedReceiver<PermissionResponseData>,
     output_tx: &mpsc::UnboundedSender<ClaudeOutput>,
     disconnect_rx: &mut tokio::sync::oneshot::Receiver<()>,
     session_id: Uuid,
     connection_start: Instant,
 ) -> ConnectionResult {
+    use claude_codes::io::{ControlResponse, PermissionResult};
+
     loop {
         tokio::select! {
             _ = &mut *disconnect_rx => {
@@ -567,6 +641,40 @@ async fn run_main_loop(
 
                 if let Err(e) = claude_client.send(&input).await {
                     error!("Failed to send to Claude: {}", e);
+                    return ConnectionResult::ClaudeExited;
+                }
+            }
+
+            Some(perm_response) = perm_rx.recv() => {
+                info!("sending permission response to claude: {:?}", perm_response);
+
+                // Create the control response
+                let ctrl_response = if perm_response.allow {
+                    // Use the original input from the permission response
+                    let input = perm_response.input.unwrap_or(serde_json::Value::Object(Default::default()));
+
+                    if perm_response.permissions.is_empty() {
+                        // Simple allow without remembering
+                        ControlResponse::from_result(
+                            &perm_response.request_id,
+                            PermissionResult::allow(input)
+                        )
+                    } else {
+                        // Allow with permissions for future similar operations
+                        ControlResponse::from_result(
+                            &perm_response.request_id,
+                            PermissionResult::allow_with_permissions(input, perm_response.permissions)
+                        )
+                    }
+                } else {
+                    ControlResponse::from_result(
+                        &perm_response.request_id,
+                        PermissionResult::deny(perm_response.reason.unwrap_or_else(|| "User denied".to_string()))
+                    )
+                };
+
+                if let Err(e) = claude_client.send_control_response(ctrl_response).await {
+                    error!("Failed to send permission response to Claude: {}", e);
                     return ConnectionResult::ClaudeExited;
                 }
             }

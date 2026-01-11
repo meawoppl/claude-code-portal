@@ -45,6 +45,36 @@ pub enum ProxyMessage {
 
     /// Session status update
     SessionStatus { status: SessionStatus },
+
+    /// Permission request from Claude (tool wants to execute)
+    PermissionRequest {
+        /// Unique ID for this permission request (to correlate responses)
+        request_id: String,
+        /// Name of the tool requesting permission
+        tool_name: String,
+        /// Tool input parameters
+        input: serde_json::Value,
+        /// Suggested permissions to grant (for "allow & remember" feature)
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        permission_suggestions: Vec<serde_json::Value>,
+    },
+
+    /// Permission response from user
+    PermissionResponse {
+        /// The request_id this responds to
+        request_id: String,
+        /// Whether to allow the tool
+        allow: bool,
+        /// The original tool input (required when allow=true)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        input: Option<serde_json::Value>,
+        /// Permissions to grant for future similar operations
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        permissions: Vec<serde_json::Value>,
+        /// Optional reason for denial
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
