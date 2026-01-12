@@ -564,16 +564,9 @@ fn render_todowrite_tool(input: &Value) -> Html {
 
 /// Render Bash command with syntax highlighting
 fn render_bash_tool(input: &Value) -> Html {
-    let command = input
-        .get("command")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let description = input
-        .get("description")
-        .and_then(|v| v.as_str());
-    let timeout = input
-        .get("timeout")
-        .and_then(|v| v.as_u64());
+    let command = input.get("command").and_then(|v| v.as_str()).unwrap_or("");
+    let description = input.get("description").and_then(|v| v.as_str());
+    let timeout = input.get("timeout").and_then(|v| v.as_u64());
     let background = input
         .get("run_in_background")
         .and_then(|v| v.as_bool())
@@ -647,10 +640,7 @@ fn render_read_tool(input: &Value) -> Html {
 
 /// Render Glob tool with pattern and path
 fn render_glob_tool(input: &Value) -> Html {
-    let pattern = input
-        .get("pattern")
-        .and_then(|v| v.as_str())
-        .unwrap_or("?");
+    let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
     let path = input.get("path").and_then(|v| v.as_str());
 
     html! {
@@ -673,10 +663,7 @@ fn render_glob_tool(input: &Value) -> Html {
 
 /// Render Grep tool with pattern, options, and path
 fn render_grep_tool(input: &Value) -> Html {
-    let pattern = input
-        .get("pattern")
-        .and_then(|v| v.as_str())
-        .unwrap_or("?");
+    let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
     let path = input.get("path").and_then(|v| v.as_str());
     let glob = input.get("glob").and_then(|v| v.as_str());
     let file_type = input.get("type").and_then(|v| v.as_str());
@@ -759,13 +746,8 @@ fn render_task_tool(input: &Value) -> Html {
 
 /// Render WebFetch tool with URL
 fn render_webfetch_tool(input: &Value) -> Html {
-    let url = input
-        .get("url")
-        .and_then(|v| v.as_str())
-        .unwrap_or("?");
-    let prompt = input
-        .get("prompt")
-        .and_then(|v| v.as_str());
+    let url = input.get("url").and_then(|v| v.as_str()).unwrap_or("?");
+    let prompt = input.get("prompt").and_then(|v| v.as_str());
 
     html! {
         <div class="tool-use webfetch-tool">
@@ -789,10 +771,7 @@ fn render_webfetch_tool(input: &Value) -> Html {
 
 /// Render WebSearch tool with query
 fn render_websearch_tool(input: &Value) -> Html {
-    let query = input
-        .get("query")
-        .and_then(|v| v.as_str())
-        .unwrap_or("?");
+    let query = input.get("query").and_then(|v| v.as_str()).unwrap_or("?");
 
     html! {
         <div class="tool-use websearch-tool">
