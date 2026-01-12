@@ -783,6 +783,15 @@ body {
     background: #e0af68;
 }
 
+.setup-notes .note.warning-note {
+    background: rgba(247, 118, 142, 0.15);
+    border: 1px solid rgba(247, 118, 142, 0.3);
+}
+
+.setup-notes .note.warning-note .note-icon {
+    background: #f7768e;
+}
+
 .setup-notes code {
     background: var(--bg-dark);
     padding: 0.15rem 0.4rem;
@@ -820,6 +829,37 @@ body {
     justify-content: center;
     gap: 0.75rem;
     padding: 1.5rem;
+}
+
+/* Platform Selector */
+.platform-selector {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+    justify-content: center;
+}
+
+.platform-option {
+    padding: 0.5rem 1rem;
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.15s ease;
+}
+
+.platform-option:hover {
+    background: var(--bg-light);
+    border-color: var(--text-muted);
+}
+
+.platform-option.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg-dark);
+    font-weight: 600;
 }
 
 /* Setup Steps */

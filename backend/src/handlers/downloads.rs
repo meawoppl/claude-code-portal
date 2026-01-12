@@ -23,11 +23,9 @@ pub struct InstallScriptParams {
 
 /// Serve the install script that downloads and sets up the proxy
 pub async fn install_script(
-    State(app_state): State<Arc<AppState>>,
+    State(_app_state): State<Arc<AppState>>,
     Query(params): Query<InstallScriptParams>,
 ) -> impl IntoResponse {
-    let base_url = &app_state.public_url;
-
     // Generate the init section if an init_url was provided
     let init_section = if let Some(ref init_url) = params.init_url {
         // Add --backend-url flag if explicitly provided
@@ -59,7 +57,7 @@ echo "  3. Start a session: claude-proxy"
     let script = format!(
         r##"#!/bin/bash
 # CC-Proxy Installer
-# This script downloads and installs the claude-proxy binary
+# This script downloads and installs the claude-proxy binary from GitHub releases
 # If already installed, skips download and just runs init
 
 set -e
@@ -67,7 +65,7 @@ set -e
 CONFIG_DIR="${{HOME}}/.config/cc-proxy"
 BIN_NAME="claude-proxy"
 BIN_PATH="${{CONFIG_DIR}}/${{BIN_NAME}}"
-DOWNLOAD_URL="{base_url}/api/download/proxy"
+GITHUB_RELEASE_URL="https://github.com/meawoppl/cc-proxy/releases/download/latest"
 
 echo "CC-Proxy Installer"
 echo "=================="
@@ -85,28 +83,55 @@ fi
 mkdir -p "${{CONFIG_DIR}}"
 
 # Detect OS and architecture
-OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-case "${{ARCH}}" in
-    x86_64|amd64)
-        ARCH="x86_64"
+case "${{OS}}" in
+    Linux)
+        case "${{ARCH}}" in
+            x86_64|amd64)
+                BINARY_NAME="claude-proxy-linux-x86_64"
+                ;;
+            *)
+                echo "Error: Unsupported Linux architecture: ${{ARCH}}"
+                echo "Supported: x86_64"
+                exit 1
+                ;;
+        esac
         ;;
-    aarch64|arm64)
-        ARCH="aarch64"
+    Darwin)
+        case "${{ARCH}}" in
+            arm64|aarch64)
+                BINARY_NAME="claude-proxy-darwin-aarch64"
+                ;;
+            x86_64)
+                BINARY_NAME="claude-proxy-darwin-x86_64"
+                ;;
+            *)
+                echo "Error: Unsupported macOS architecture: ${{ARCH}}"
+                echo "Supported: arm64 (Apple Silicon), x86_64 (Intel)"
+                exit 1
+                ;;
+        esac
         ;;
     *)
-        echo "Error: Unsupported architecture: ${{ARCH}}"
+        echo "Error: Unsupported operating system: ${{OS}}"
+        echo "Supported: Linux, Darwin (macOS)"
+        echo "For Windows, download manually from:"
+        echo "  ${{GITHUB_RELEASE_URL}}/claude-proxy-windows-x86_64.exe"
         exit 1
         ;;
 esac
 
-echo "Detected: ${{OS}}-${{ARCH}}"
+DOWNLOAD_URL="${{GITHUB_RELEASE_URL}}/${{BINARY_NAME}}"
+
+echo "Detected: ${{OS}} ${{ARCH}}"
+echo "Binary: ${{BINARY_NAME}}"
 echo "Installing to: ${{BIN_PATH}}"
 echo ""
 
 # Download the binary
-echo "Downloading claude-proxy..."
+echo "Downloading claude-proxy from GitHub releases..."
 if command -v curl &> /dev/null; then
     curl -fsSL "${{DOWNLOAD_URL}}" -o "${{BIN_PATH}}"
 elif command -v wget &> /dev/null; then
@@ -118,6 +143,11 @@ fi
 
 # Make executable
 chmod +x "${{BIN_PATH}}"
+
+# macOS: Remove quarantine attribute if present
+if [ "${{OS}}" = "Darwin" ]; then
+    xattr -d com.apple.quarantine "${{BIN_PATH}}" 2>/dev/null || true
+fi
 
 echo "Binary installed successfully!"
 echo ""

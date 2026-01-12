@@ -4,6 +4,7 @@
 
 use crate::components::CopyCommand;
 use crate::utils;
+use gloo::utils::window;
 use gloo_net::http::Request;
 use shared::{CreateProxyTokenRequest, CreateProxyTokenResponse};
 use yew::prelude::*;
@@ -15,9 +16,44 @@ enum TokenState {
     Error(String),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Platform {
+    Linux,
+    MacOS,
+    Windows,
+}
+
+impl Platform {
+    fn label(&self) -> &'static str {
+        match self {
+            Platform::Linux => "Linux",
+            Platform::MacOS => "macOS",
+            Platform::Windows => "Windows",
+        }
+    }
+}
+
+fn detect_platform() -> Platform {
+    let user_agent = window()
+        .navigator()
+        .user_agent()
+        .unwrap_or_default()
+        .to_lowercase();
+
+    if user_agent.contains("win") {
+        Platform::Windows
+    } else if user_agent.contains("mac") {
+        Platform::MacOS
+    } else {
+        Platform::Linux
+    }
+}
+
 #[function_component(ProxyTokenSetup)]
 pub fn proxy_token_setup() -> Html {
     let token_state = use_state(|| TokenState::Loading);
+    let detected = detect_platform();
+    let selected_platform = use_state(|| detected);
 
     // Get the base URL for the install script
     let base_url = web_sys::window()
@@ -78,6 +114,8 @@ pub fn proxy_token_setup() -> Html {
         });
     }
 
+    let platforms = [Platform::Linux, Platform::MacOS, Platform::Windows];
+
     match (*token_state).clone() {
         TokenState::Loading => {
             html! {
@@ -97,15 +135,47 @@ pub fn proxy_token_setup() -> Html {
                 .replace("http://", "ws://");
             let encoded_backend_url = js_sys::encode_uri_component(&ws_backend_url);
 
-            let install_command = format!(
-                "curl -fsSL \"{}/api/download/install.sh?init_url={}&backend_url={}\" | bash",
-                base_url, encoded_init_url, encoded_backend_url
-            );
-            let run_command = "claude-proxy".to_string();
+            let install_command = match *selected_platform {
+                Platform::Linux | Platform::MacOS => format!(
+                    "curl -fsSL \"{}/api/download/install.sh?init_url={}&backend_url={}\" | bash",
+                    base_url, encoded_init_url, encoded_backend_url
+                ),
+                Platform::Windows => format!(
+                    "# Download from GitHub releases, then run:\n.\\claude-proxy.exe --init \"{}\" --backend-url \"{}\"",
+                    token_response.init_url, ws_backend_url
+                ),
+            };
+            let run_command = match *selected_platform {
+                Platform::Linux | Platform::MacOS => "claude-proxy".to_string(),
+                Platform::Windows => ".\\claude-proxy.exe".to_string(),
+            };
 
             html! {
                 <div class="proxy-setup has-token">
                     <h3>{ "Quick Setup" }</h3>
+
+                    <div class="platform-selector">
+                        {for platforms.iter().map(|platform| {
+                            let is_selected = *selected_platform == *platform;
+                            let platform = *platform;
+                            let selected_platform = selected_platform.clone();
+
+                            let class = classes!(
+                                "platform-option",
+                                is_selected.then_some("selected")
+                            );
+
+                            let onclick = Callback::from(move |_| {
+                                selected_platform.set(platform);
+                            });
+
+                            html! {
+                                <button {class} {onclick}>
+                                    {platform.label()}
+                                </button>
+                            }
+                        })}
+                    </div>
 
                     <div class="setup-step">
                         <span class="step-number">{ "1" }</span>
@@ -128,6 +198,38 @@ pub fn proxy_token_setup() -> Html {
                             <span class="note-icon">{ "!" }</span>
                             { format!("Token expires: {}", format_expiry(&token_response.expires_at)) }
                         </p>
+                        {if *selected_platform == Platform::Windows {
+                            html! {
+                                <>
+                                    <p class="note warning-note">
+                                        <span class="note-icon">{ "!" }</span>
+                                        { "Windows support is experimental and largely untested. " }
+                                        <a href="https://github.com/meawoppl/cc-proxy/issues" target="_blank">
+                                            { "Please report issues!" }
+                                        </a>
+                                    </p>
+                                    <p class="note windows-note">
+                                        <span class="note-icon">{ "!" }</span>
+                                        { "Download Windows binary from " }
+                                        <a href="https://github.com/meawoppl/cc-proxy/releases/latest" target="_blank">
+                                            { "GitHub releases" }
+                                        </a>
+                                    </p>
+                                </>
+                            }
+                        } else if *selected_platform == Platform::MacOS {
+                            html! {
+                                <p class="note warning-note">
+                                    <span class="note-icon">{ "!" }</span>
+                                    { "macOS support is experimental and largely untested. " }
+                                    <a href="https://github.com/meawoppl/cc-proxy/issues" target="_blank">
+                                        { "Please report issues!" }
+                                    </a>
+                                </p>
+                            }
+                        } else {
+                            html! {}
+                        }}
                     </div>
                 </div>
             }
