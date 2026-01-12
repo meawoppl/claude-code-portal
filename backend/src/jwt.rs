@@ -20,9 +20,6 @@ pub enum JwtError {
 
     #[error("Token expired")]
     Expired,
-
-    #[error("Missing secret key")]
-    MissingSecret,
 }
 
 /// Create a new JWT token for proxy authentication
@@ -58,15 +55,13 @@ pub fn verify_proxy_token(secret: &[u8], token: &str) -> Result<ProxyTokenClaims
     let mut validation = Validation::default();
     validation.validate_exp = true;
 
-    let token_data = decode::<ProxyTokenClaims>(
-        token,
-        &DecodingKey::from_secret(secret),
-        &validation,
-    )
-    .map_err(|e| match e.kind() {
-        jsonwebtoken::errors::ErrorKind::ExpiredSignature => JwtError::Expired,
-        _ => JwtError::Invalid(e.to_string()),
-    })?;
+    let token_data =
+        decode::<ProxyTokenClaims>(token, &DecodingKey::from_secret(secret), &validation).map_err(
+            |e| match e.kind() {
+                jsonwebtoken::errors::ErrorKind::ExpiredSignature => JwtError::Expired,
+                _ => JwtError::Invalid(e.to_string()),
+            },
+        )?;
 
     Ok(token_data.claims)
 }

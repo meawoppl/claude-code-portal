@@ -69,8 +69,7 @@ fn default_session_name() -> String {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -105,7 +104,12 @@ async fn main() -> Result<()> {
 
     // Print startup info
     ui::print_startup_banner();
-    ui::print_session_info(&session_name, &session_id.to_string(), &backend_url, resuming);
+    ui::print_session_info(
+        &session_name,
+        &session_id.to_string(),
+        &backend_url,
+        resuming,
+    );
 
     // Resolve auth token
     let auth_token = resolve_auth_token(&args, &mut config, &cwd, &backend_url).await?;
@@ -126,35 +130,46 @@ async fn main() -> Result<()> {
 
 /// Resolve which session to use (new or resume existing)
 fn resolve_session(args: &Args, cwd: &str) -> Result<(Uuid, String, bool)> {
-    let (mut config, lock) = ProxyConfig::load_locked()
-        .context("Failed to load config with lock")?;
+    let (mut config, lock) =
+        ProxyConfig::load_locked().context("Failed to load config with lock")?;
 
     let existing_session = config.get_directory_session(cwd).cloned();
-    let had_existing = existing_session.is_some();
 
+    // Force new session or no existing session to resume
     if args.new_session || existing_session.is_none() {
+        let had_existing = existing_session.is_some();
+
         // Start a new session
         let session_id = Uuid::new_v4();
-        let session_name = args.session_name.clone().unwrap_or_else(default_session_name);
+        let session_name = args
+            .session_name
+            .clone()
+            .unwrap_or_else(default_session_name);
 
         let dir_session = ProxyConfig::create_directory_session(session_id, session_name.clone());
         config.set_directory_session(cwd.to_string(), dir_session);
         config.save_with_lock(&lock)?;
 
         if args.new_session && had_existing {
-            warn!("Starting new session (--new-session flag) - previous session will not be resumed");
+            warn!(
+                "Starting new session (--new-session flag) - previous session will not be resumed"
+            );
             ui::print_new_session_forced();
         } else if !had_existing {
-            info!("No existing session for directory {}, creating new session {}", cwd, session_id);
+            info!(
+                "No existing session for directory {}, creating new session {}",
+                cwd, session_id
+            );
             ui::print_no_previous_session();
         }
 
         info!("New session ID: {}", session_id);
         Ok((session_id, session_name, false))
-    } else {
+    } else if let Some(existing) = existing_session {
         // Resume existing session
-        let existing = existing_session.unwrap();
-        let session_name = args.session_name.clone()
+        let session_name = args
+            .session_name
+            .clone()
             .unwrap_or_else(|| existing.session_name.clone());
 
         config.touch_directory_session(cwd);
@@ -167,6 +182,9 @@ fn resolve_session(args: &Args, cwd: &str) -> Result<(Uuid, String, bool)> {
         ui::print_resuming_session(&existing.session_id.to_string(), &existing.created_at);
 
         Ok((existing.session_id, session_name, true))
+    } else {
+        // This branch is unreachable: if first condition is false, existing_session must be Some
+        unreachable!("existing_session cannot be None here")
     }
 }
 
@@ -188,9 +206,7 @@ async fn resolve_auth_token(
 
     if !args.reauth {
         if let Some(session_auth) = config.get_session_auth(cwd) {
-            ui::print_user(
-                session_auth.user_email.as_deref().unwrap_or("unknown user")
-            );
+            ui::print_user(session_auth.user_email.as_deref().unwrap_or("unknown user"));
             return Ok(Some(session_auth.auth_token.clone()));
         }
     }
@@ -241,7 +257,8 @@ async fn run_proxy_session(config: SessionConfig) -> Result<()> {
     let (input_tx, mut input_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
     // Run the connection loop
-    let result = session::run_connection_loop(&config, &mut claude_client, input_tx, &mut input_rx).await;
+    let result =
+        session::run_connection_loop(&config, &mut claude_client, input_tx, &mut input_rx).await;
 
     info!("Proxy shutting down");
     let _ = claude_client.shutdown().await;
@@ -254,14 +271,20 @@ async fn create_claude_client(config: &SessionConfig) -> Result<AsyncClient> {
     let base_args = [
         "--print",
         "--verbose",
-        "--output-format", "stream-json",
-        "--input-format", "stream-json",
+        "--output-format",
+        "stream-json",
+        "--input-format",
+        "stream-json",
         "--replay-user-messages",
-        "--permission-prompt-tool", "stdio",
+        "--permission-prompt-tool",
+        "stdio",
     ];
 
     let child = if config.resuming {
-        info!("Using --resume {} to resume Claude session", config.session_id);
+        info!(
+            "Using --resume {} to resume Claude session",
+            config.session_id
+        );
 
         tokio::process::Command::new("claude")
             .args(base_args)
@@ -272,7 +295,10 @@ async fn create_claude_client(config: &SessionConfig) -> Result<AsyncClient> {
             .spawn()
             .context("Failed to spawn Claude process for resume")?
     } else {
-        info!("Starting fresh Claude session with ID {}", config.session_id);
+        info!(
+            "Starting fresh Claude session with ID {}",
+            config.session_id
+        );
 
         tokio::process::Command::new("claude")
             .args(base_args)
@@ -284,6 +310,5 @@ async fn create_claude_client(config: &SessionConfig) -> Result<AsyncClient> {
             .context("Failed to spawn Claude process")?
     };
 
-    AsyncClient::new(child)
-        .map_err(|e| anyhow::anyhow!("Failed to create AsyncClient: {}", e))
+    AsyncClient::new(child).map_err(|e| anyhow::anyhow!("Failed to create AsyncClient: {}", e))
 }

@@ -30,27 +30,33 @@ pub async fn install_script(
     // Generate the init section if an init_url was provided
     let init_section = if let Some(ref init_url) = params.init_url {
         // Add --backend-url flag if explicitly provided
-        let backend_flag = params.backend_url.as_ref()
+        let backend_flag = params
+            .backend_url
+            .as_ref()
             .map(|url| format!(r#" --backend-url "{url}""#))
             .unwrap_or_default();
 
-        format!(r##"
+        format!(
+            r##"
 # Initialize with provided token
 echo "Initializing claude-proxy..."
 "${{BIN_PATH}}" --init "{init_url}"{backend_flag}
 echo ""
 echo "Setup complete! Run 'claude-proxy' to start a session."
-"##)
+"##
+        )
     } else {
         r##"
 echo "Next steps:"
 echo "  1. Restart your shell or source your rc file"
 echo "  2. Initialize with your token: claude-proxy --init <URL>"
 echo "  3. Start a session: claude-proxy"
-"##.to_string()
+"##
+        .to_string()
     };
 
-    let script = format!(r##"#!/bin/bash
+    let script = format!(
+        r##"#!/bin/bash
 # CC-Proxy Installer
 # This script downloads and installs the claude-proxy binary
 
@@ -141,18 +147,24 @@ fi
 echo ""
 echo "Installation complete!"
 {init_section}
-"##);
+"##
+    );
 
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/x-shellscript")
-        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"install.sh\"")
+        .header(
+            header::CONTENT_DISPOSITION,
+            "attachment; filename=\"install.sh\"",
+        )
         .body(Body::from(script))
         .unwrap()
 }
 
 /// Serve the proxy binary
-pub async fn proxy_binary(State(app_state): State<Arc<AppState>>) -> Result<impl IntoResponse, (StatusCode, String)> {
+pub async fn proxy_binary(
+    State(app_state): State<Arc<AppState>>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     // In dev mode, try to find the binary in target/release or target/debug
     // In production, use the PROXY_BINARY_PATH env var or a default location
     let binary_path = if app_state.dev_mode {
@@ -184,9 +196,12 @@ pub async fn proxy_binary(State(app_state): State<Arc<AppState>>) -> Result<impl
         ));
     }
 
-    let file = tokio::fs::File::open(&binary_path)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to open binary: {}", e)))?;
+    let file = tokio::fs::File::open(&binary_path).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to open binary: {}", e),
+        )
+    })?;
 
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
@@ -194,7 +209,10 @@ pub async fn proxy_binary(State(app_state): State<Arc<AppState>>) -> Result<impl
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/octet-stream")
-        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"claude-proxy\"")
+        .header(
+            header::CONTENT_DISPOSITION,
+            "attachment; filename=\"claude-proxy\"",
+        )
         .body(body)
         .unwrap())
 }

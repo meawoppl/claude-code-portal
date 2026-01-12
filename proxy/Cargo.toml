@@ -60,7 +60,7 @@ directories = "5.0"
 colored = "2.1"
 
 # Time
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["std", "clock"] }
 
 # Unix system calls (for lock file process checking)
 [target.'cfg(unix)'.dependencies]

@@ -18,10 +18,6 @@ use crate::{
 };
 
 const SESSION_COOKIE_NAME: &str = "cc_session";
-#[derive(Debug, Serialize)]
-pub struct AuthUrlResponse {
-    pub auth_url: String,
-}
 
 pub async fn login(
     State(app_state): State<Arc<AppState>>,
@@ -213,10 +209,7 @@ pub async fn me(
     }))
 }
 
-pub async fn logout(
-    State(app_state): State<Arc<AppState>>,
-    cookies: Cookies,
-) -> impl IntoResponse {
+pub async fn logout(State(app_state): State<Arc<AppState>>, cookies: Cookies) -> impl IntoResponse {
     // Remove session cookie by setting it with empty value and immediate expiry
     let mut cookie = Cookie::new(SESSION_COOKIE_NAME, "");
     cookie.set_path("/");
