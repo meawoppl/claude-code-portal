@@ -175,7 +175,8 @@ pub fn dashboard_page() -> Html {
             }
 
             // Count non-parked sessions
-            let non_parked_count = active.iter()
+            let non_parked_count = active
+                .iter()
                 .filter(|s| !parked_sessions.contains(&s.id))
                 .count();
 
