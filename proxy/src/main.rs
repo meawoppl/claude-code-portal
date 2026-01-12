@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod session;
 mod ui;
+mod update;
 mod util;
 
 use anyhow::{Context, Result};
@@ -51,6 +52,10 @@ struct Args {
     #[arg(long)]
     dev: bool,
 
+    /// Skip auto-update check on startup
+    #[arg(long)]
+    no_update: bool,
+
     /// All remaining arguments to forward to claude CLI
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     claude_args: Vec<String>,
@@ -77,6 +82,25 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
 
     let args = Args::parse();
+
+    // Check for updates before anything else (unless --no-update or --init/--logout)
+    if !args.no_update && args.init.is_none() && !args.logout {
+        if let Some(backend_url) = update::get_update_backend_url() {
+            match update::check_for_update(&backend_url) {
+                Ok(update::UpdateResult::UpToDate) => {
+                    // Continue normally
+                }
+                Ok(update::UpdateResult::Updated) => {
+                    ui::print_update_complete();
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    warn!("Update check failed: {}. Continuing with current version.", e);
+                }
+            }
+        }
+    }
+
     let cwd = std::env::current_dir()
         .context("Failed to get current directory")?
         .to_string_lossy()
@@ -96,9 +120,10 @@ async fn main() -> Result<()> {
     // Resolve session (new or resume)
     let (session_id, session_name, resuming) = resolve_session(&args, &cwd)?;
 
-    // Resolve backend URL: CLI arg > config (required, no default)
+    // Resolve backend URL: CLI arg > per-directory config > global default
     let backend_url = args.backend_url.clone()
         .or_else(|| config.get_backend_url(&cwd).map(|s| s.to_string()))
+        .or_else(|| config.preferences.default_backend_url.clone())
         .ok_or_else(|| anyhow::anyhow!(
             "No backend URL configured. Run with --init <URL> first, or specify --backend-url explicitly."
         ))?;

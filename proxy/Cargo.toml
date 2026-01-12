@@ -27,8 +27,8 @@ futures-util = "0.3"
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# HTTP client for registration
-reqwest = { version = "0.12", features = ["json"] }
+# HTTP client for registration and updates
+reqwest = { version = "0.12", features = ["json", "blocking"] }
 
 # Error handling
 anyhow = { workspace = true }
@@ -61,6 +61,10 @@ colored = "2.1"
 
 # Time
 chrono = { workspace = true }
+
+# SHA256 for binary verification
+sha2 = "0.10"
+hex = "0.4"
 
 # Unix system calls (for lock file process checking)
 [target.'cfg(unix)'.dependencies]

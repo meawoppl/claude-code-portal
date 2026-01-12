@@ -266,7 +266,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/download/proxy",
-            get(handlers::downloads::proxy_binary),
+            get(handlers::downloads::proxy_binary).head(handlers::downloads::proxy_binary),
         )
         // Add single unified state
         .with_state(app_state.clone());

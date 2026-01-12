@@ -155,3 +155,18 @@ pub fn print_init_complete(email: &str, backend_url: &str) {
         "claude-proxy".bright_cyan()
     );
 }
+
+/// Print update complete message
+pub fn print_update_complete() {
+    println!();
+    println!("{}", "╭──────────────────────────────────────╮".bright_green());
+    println!("{}", "│         ✓ Update Installed           │".bright_green());
+    println!("{}", "╰──────────────────────────────────────╯".bright_green());
+    println!();
+    println!(
+        "  A new version of {} has been installed.",
+        "claude-proxy".bright_cyan()
+    );
+    println!("  Please run the command again to use the updated version.");
+    println!();
+}

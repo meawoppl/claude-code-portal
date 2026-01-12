@@ -3,10 +3,11 @@
 use axum::{
     body::Body,
     extract::{Query, State},
-    http::{header, StatusCode},
+    http::{header, Method, StatusCode},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tokio_util::io::ReaderStream;
 
@@ -151,50 +152,91 @@ echo "Installation complete!"
         .unwrap()
 }
 
-/// Serve the proxy binary
-pub async fn proxy_binary(State(app_state): State<Arc<AppState>>) -> Result<impl IntoResponse, (StatusCode, String)> {
-    // In dev mode, try to find the binary in target/release or target/debug
-    // In production, use the PROXY_BINARY_PATH env var or a default location
-    let binary_path = if app_state.dev_mode {
+/// Resolve the path to the proxy binary
+fn resolve_binary_path(dev_mode: bool) -> Result<std::path::PathBuf, (StatusCode, String)> {
+    if dev_mode {
         // Try release first, then debug
         let release_path = std::path::Path::new("target/release/claude-proxy");
         let debug_path = std::path::Path::new("target/debug/claude-proxy");
 
         if release_path.exists() {
-            release_path.to_path_buf()
+            Ok(release_path.to_path_buf())
         } else if debug_path.exists() {
-            debug_path.to_path_buf()
+            Ok(debug_path.to_path_buf())
         } else {
-            return Err((
+            Err((
                 StatusCode::NOT_FOUND,
                 "Proxy binary not found. Run 'cargo build -p proxy --release' first.".to_string(),
-            ));
+            ))
         }
     } else {
         // Production: use env var or default location
         let path = std::env::var("PROXY_BINARY_PATH")
             .unwrap_or_else(|_| "/app/bin/claude-proxy".to_string());
-        std::path::PathBuf::from(path)
-    };
+        let path = std::path::PathBuf::from(path);
 
-    if !binary_path.exists() {
-        return Err((
-            StatusCode::NOT_FOUND,
-            format!("Proxy binary not found at: {:?}", binary_path),
-        ));
+        if !path.exists() {
+            Err((
+                StatusCode::NOT_FOUND,
+                format!("Proxy binary not found at: {:?}", path),
+            ))
+        } else {
+            Ok(path)
+        }
     }
+}
 
-    let file = tokio::fs::File::open(&binary_path)
+/// Compute SHA256 hash of a file
+async fn compute_binary_sha256(path: &std::path::Path) -> Result<String, (StatusCode, String)> {
+    let bytes = tokio::fs::read(path)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to open binary: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read binary: {}", e)))?;
 
-    let stream = ReaderStream::new(file);
-    let body = Body::from_stream(stream);
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let hash = hasher.finalize();
+    Ok(hex::encode(hash))
+}
 
-    Ok(Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "application/octet-stream")
-        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"claude-proxy\"")
-        .body(body)
-        .unwrap())
+/// Serve the proxy binary (GET) or return hash info (HEAD)
+///
+/// GET: Returns the binary file with X-Binary-SHA256 header
+/// HEAD: Returns empty body with X-Binary-SHA256 header (for update checks)
+pub async fn proxy_binary(
+    method: Method,
+    State(app_state): State<Arc<AppState>>,
+) -> Result<Response<Body>, (StatusCode, String)> {
+    let binary_path = resolve_binary_path(app_state.dev_mode)?;
+    let sha256_hash = compute_binary_sha256(&binary_path).await?;
+
+    if method == Method::HEAD {
+        // HEAD request: return just headers for update check
+        let metadata = tokio::fs::metadata(&binary_path)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read metadata: {}", e)))?;
+
+        Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/octet-stream")
+            .header(header::CONTENT_LENGTH, metadata.len())
+            .header("X-Binary-SHA256", &sha256_hash)
+            .body(Body::empty())
+            .unwrap())
+    } else {
+        // GET request: return the binary with hash header
+        let file = tokio::fs::File::open(&binary_path)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to open binary: {}", e)))?;
+
+        let stream = ReaderStream::new(file);
+        let body = Body::from_stream(stream);
+
+        Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/octet-stream")
+            .header(header::CONTENT_DISPOSITION, "attachment; filename=\"claude-proxy\"")
+            .header("X-Binary-SHA256", &sha256_hash)
+            .body(body)
+            .unwrap())
+    }
 }
