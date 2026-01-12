@@ -11,17 +11,38 @@ pub enum MessageGroup {
     AssistantGroup(Vec<String>),
 }
 
-/// Group consecutive assistant messages together
+/// Check if a message should be grouped with assistant messages
+/// This includes assistant messages AND tool result messages (user messages containing only tool results)
+fn should_group_with_assistant(json: &str) -> bool {
+    match serde_json::from_str::<ClaudeMessage>(json) {
+        Ok(ClaudeMessage::Assistant(_)) => true,
+        Ok(ClaudeMessage::User(msg)) => {
+            // Check if this is a tool result message (no direct content, has message.content with tool_results)
+            if msg.content.is_some() {
+                return false; // Has direct text content = real user message
+            }
+            if let Some(message) = &msg.message {
+                if let Some(blocks) = &message.content {
+                    // If all blocks are tool results, group with assistant
+                    return !blocks.is_empty()
+                        && blocks
+                            .iter()
+                            .all(|b| matches!(b, ContentBlock::ToolResult { .. }));
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+/// Group consecutive assistant messages (and their tool results) together
 pub fn group_messages(messages: &[String]) -> Vec<MessageGroup> {
     let mut groups = Vec::new();
     let mut current_assistant_group: Vec<String> = Vec::new();
 
     for json in messages {
-        let is_assistant = serde_json::from_str::<ClaudeMessage>(json)
-            .map(|msg| matches!(msg, ClaudeMessage::Assistant(_)))
-            .unwrap_or(false);
-
-        if is_assistant {
+        if should_group_with_assistant(json) {
             current_assistant_group.push(json.clone());
         } else {
             // Flush any pending assistant group
@@ -188,7 +209,7 @@ pub fn message_group_renderer(props: &MessageGroupRendererProps) -> Html {
     }
 }
 
-/// Render a group of consecutive assistant messages in a single frame
+/// Render a group of consecutive assistant messages (and tool results) in a single frame
 fn render_assistant_group(messages: &[String]) -> Html {
     // Parse all messages to extract content and sum tokens
     let mut all_blocks: Vec<ContentBlock> = Vec::new();
@@ -199,26 +220,37 @@ fn render_assistant_group(messages: &[String]) -> Html {
     let mut model_name = String::new();
 
     for json in messages {
-        if let Ok(ClaudeMessage::Assistant(msg)) = serde_json::from_str::<ClaudeMessage>(json) {
-            if let Some(message) = &msg.message {
-                // Collect content blocks
-                if let Some(blocks) = &message.content {
-                    all_blocks.extend(blocks.clone());
-                }
-                // Sum up usage
-                if let Some(usage) = &message.usage {
-                    total_output_tokens += usage.output_tokens.unwrap_or(0);
-                    total_input_tokens += usage.input_tokens.unwrap_or(0);
-                    total_cache_read += usage.cache_read_input_tokens.unwrap_or(0);
-                    total_cache_created += usage.cache_creation_input_tokens.unwrap_or(0);
-                }
-                // Use the model from the first message that has one
-                if model_name.is_empty() {
-                    if let Some(m) = &message.model {
-                        model_name = m.clone();
+        match serde_json::from_str::<ClaudeMessage>(json) {
+            Ok(ClaudeMessage::Assistant(msg)) => {
+                if let Some(message) = &msg.message {
+                    // Collect content blocks
+                    if let Some(blocks) = &message.content {
+                        all_blocks.extend(blocks.clone());
+                    }
+                    // Sum up usage
+                    if let Some(usage) = &message.usage {
+                        total_output_tokens += usage.output_tokens.unwrap_or(0);
+                        total_input_tokens += usage.input_tokens.unwrap_or(0);
+                        total_cache_read += usage.cache_read_input_tokens.unwrap_or(0);
+                        total_cache_created += usage.cache_creation_input_tokens.unwrap_or(0);
+                    }
+                    // Use the model from the first message that has one
+                    if model_name.is_empty() {
+                        if let Some(m) = &message.model {
+                            model_name = m.clone();
+                        }
                     }
                 }
             }
+            Ok(ClaudeMessage::User(msg)) => {
+                // Tool result messages - extract content blocks
+                if let Some(message) = &msg.message {
+                    if let Some(blocks) = &message.content {
+                        all_blocks.extend(blocks.clone());
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
