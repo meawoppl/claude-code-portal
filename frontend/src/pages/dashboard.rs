@@ -355,8 +355,9 @@ pub fn dashboard_page() -> Html {
                     <button
                         class={classes!("new-session-button", if *show_new_session { "active" } else { "" })}
                         onclick={toggle_new_session.clone()}
+                        title={if *show_new_session { "Close" } else { "Connect a new Claude proxy session" }}
                     >
-                        { if *show_new_session { "-" } else { "+" } }
+                        { if *show_new_session { "Close" } else { "+ New Session" } }
                     </button>
                     <a href="/api/auth/logout" class="logout-button">
                         { "Logout" }
@@ -381,7 +382,7 @@ pub fn dashboard_page() -> Html {
             } else if active_sessions.is_empty() {
                 <div class="empty-state">
                     <h2>{ "No Active Sessions" }</h2>
-                    <p>{ "Click \"+\" to connect a Claude proxy from your machine." }</p>
+                    <p>{ "Click \"+ New Session\" to connect a Claude proxy from your machine." }</p>
                 </div>
             } else {
                 <>

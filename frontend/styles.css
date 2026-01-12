@@ -1663,25 +1663,31 @@ body {
 }
 
 .focus-flow-header .new-session-button {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--text-primary);
-    font-size: 1.2rem;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+    background: rgba(122, 162, 247, 0.1);
+    color: var(--accent);
+    font-size: 0.9rem;
+    font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
+    white-space: nowrap;
 }
 
 .focus-flow-header .new-session-button:hover {
-    border-color: var(--accent);
-    background: rgba(122, 162, 247, 0.1);
+    border-color: var(--accent-hover);
+    background: var(--accent);
+    color: var(--bg-dark);
+}
+
+.focus-flow-header .new-session-button:active {
+    transform: scale(0.98);
 }
 
 .focus-flow-header .new-session-button.active {
-    background: var(--accent);
-    border-color: var(--accent);
+    background: var(--text-secondary);
+    border-color: var(--text-secondary);
     color: var(--bg-dark);
 }
 
