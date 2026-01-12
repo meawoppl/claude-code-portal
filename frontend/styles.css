@@ -277,6 +277,10 @@ body {
 }
 
 .modal-content {
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
     max-width: 600px;
     width: 90%;
     animation: scaleIn 0.2s ease-out;
@@ -2844,25 +2848,9 @@ body {
     to { opacity: 1; }
 }
 
-.modal-content {
-    background: var(--bg-darker);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1.5rem;
+/* Delete confirmation modals should be narrower */
+.modal-content.delete-confirm {
     max-width: 400px;
-    width: 90%;
-    animation: slideIn 0.15s ease-out;
-}
-
-@keyframes slideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 
 .modal-content h2 {

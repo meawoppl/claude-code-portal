@@ -528,7 +528,7 @@ pub fn dashboard_page() -> Html {
 
                     html! {
                         <div class="modal-overlay" onclick={on_cancel_delete.clone()}>
-                            <div class="modal-content" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                            <div class="modal-content delete-confirm" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                                 <h2>{ "Delete Session?" }</h2>
                                 <p>{ format!("Are you sure you want to delete \"{}\"?", session_name) }</p>
                                 <p class="modal-warning">{ "This action cannot be undone." }</p>
