@@ -459,16 +459,7 @@ fn render_content_blocks(blocks: &[ContentBlock]) -> Html {
                             html! { <div class="assistant-text">{ linkify_text(text) }</div> }
                         }
                         ContentBlock::ToolUse { id: _, name, input } => {
-                            let input_preview = format_tool_input(name, input);
-                            html! {
-                                <div class="tool-use">
-                                    <div class="tool-use-header">
-                                        <span class="tool-icon">{ "⚡" }</span>
-                                        <span class="tool-name">{ name }</span>
-                                    </div>
-                                    <pre class="tool-args">{ input_preview }</pre>
-                                </div>
-                            }
+                            render_tool_use(name, input)
                         }
                         ContentBlock::ToolResult { tool_use_id: _, content, is_error } => {
                             let class = if *is_error { "tool-result error" } else { "tool-result" };
@@ -499,6 +490,254 @@ fn render_content_blocks(blocks: &[ContentBlock]) -> Html {
             }
         </>
     }
+}
+
+/// Render a tool use block with special handling for Edit tool diffs
+fn render_tool_use(name: &str, input: &Value) -> Html {
+    match name {
+        "Edit" => render_edit_tool_diff(input),
+        "Write" => render_write_tool(input),
+        _ => {
+            let input_preview = format_tool_input(name, input);
+            html! {
+                <div class="tool-use">
+                    <div class="tool-use-header">
+                        <span class="tool-icon">{ "⚡" }</span>
+                        <span class="tool-name">{ name }</span>
+                    </div>
+                    <pre class="tool-args">{ input_preview }</pre>
+                </div>
+            }
+        }
+    }
+}
+
+/// Render the Edit tool with a proper diff view
+fn render_edit_tool_diff(input: &Value) -> Html {
+    let file_path = input
+        .get("file_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown file");
+    let old_string = input
+        .get("old_string")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let new_string = input
+        .get("new_string")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let replace_all = input
+        .get("replace_all")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    // Generate diff lines
+    let diff_html = render_diff_lines(old_string, new_string);
+
+    html! {
+        <div class="tool-use edit-tool">
+            <div class="tool-use-header">
+                <span class="tool-icon">{ "✏️" }</span>
+                <span class="tool-name">{ "Edit" }</span>
+                <span class="edit-file-path">{ file_path }</span>
+                {
+                    if replace_all {
+                        html! { <span class="edit-replace-all">{ "(replace all)" }</span> }
+                    } else {
+                        html! {}
+                    }
+                }
+            </div>
+            <div class="diff-container">
+                { diff_html }
+            </div>
+        </div>
+    }
+}
+
+/// Render the Write tool with file content preview
+fn render_write_tool(input: &Value) -> Html {
+    let file_path = input
+        .get("file_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown file");
+    let content = input.get("content").and_then(|v| v.as_str()).unwrap_or("");
+
+    // Show a preview of the content (first N lines)
+    let preview_lines: Vec<&str> = content.lines().take(20).collect();
+    let total_lines = content.lines().count();
+    let truncated = total_lines > 20;
+
+    html! {
+        <div class="tool-use write-tool">
+            <div class="tool-use-header">
+                <span class="tool-icon">{ "📝" }</span>
+                <span class="tool-name">{ "Write" }</span>
+                <span class="write-file-path">{ file_path }</span>
+                <span class="write-size">{ format!("({} lines, {} bytes)", total_lines, content.len()) }</span>
+            </div>
+            <div class="write-preview">
+                <pre class="write-content">
+                    {
+                        preview_lines.iter().enumerate().map(|(i, line)| {
+                            html! {
+                                <div class="write-line">
+                                    <span class="line-number">{ format!("{:>4}", i + 1) }</span>
+                                    <span class="line-content">{ *line }</span>
+                                </div>
+                            }
+                        }).collect::<Html>()
+                    }
+                    {
+                        if truncated {
+                            html! {
+                                <div class="write-truncated">
+                                    { format!("... {} more lines", total_lines - 20) }
+                                </div>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
+                </pre>
+            </div>
+        </div>
+    }
+}
+
+/// Generate diff view HTML from old and new strings
+fn render_diff_lines(old_string: &str, new_string: &str) -> Html {
+    let old_lines: Vec<&str> = old_string.lines().collect();
+    let new_lines: Vec<&str> = new_string.lines().collect();
+
+    // Simple line-by-line diff using longest common subsequence approach
+    let diff = compute_line_diff(&old_lines, &new_lines);
+
+    html! {
+        <div class="diff-view">
+            {
+                diff.iter().map(|change| {
+                    match change {
+                        DiffLine::Context(line) => html! {
+                            <div class="diff-line context">
+                                <span class="diff-marker">{ " " }</span>
+                                <span class="diff-content">{ *line }</span>
+                            </div>
+                        },
+                        DiffLine::Removed(line) => html! {
+                            <div class="diff-line removed">
+                                <span class="diff-marker">{ "-" }</span>
+                                <span class="diff-content">{ *line }</span>
+                            </div>
+                        },
+                        DiffLine::Added(line) => html! {
+                            <div class="diff-line added">
+                                <span class="diff-marker">{ "+" }</span>
+                                <span class="diff-content">{ *line }</span>
+                            </div>
+                        },
+                    }
+                }).collect::<Html>()
+            }
+        </div>
+    }
+}
+
+#[derive(Debug, Clone)]
+enum DiffLine<'a> {
+    Context(&'a str),
+    Removed(&'a str),
+    Added(&'a str),
+}
+
+/// Compute a line-based diff between old and new content
+fn compute_line_diff<'a>(old_lines: &[&'a str], new_lines: &[&'a str]) -> Vec<DiffLine<'a>> {
+    // Use a simple LCS-based diff algorithm
+    let lcs = longest_common_subsequence(old_lines, new_lines);
+
+    let mut result = Vec::new();
+    let mut old_idx = 0;
+    let mut new_idx = 0;
+    let mut lcs_idx = 0;
+
+    while old_idx < old_lines.len() || new_idx < new_lines.len() {
+        if lcs_idx < lcs.len() {
+            let (lcs_old, lcs_new) = lcs[lcs_idx];
+
+            // Add removed lines before the next common line
+            while old_idx < lcs_old {
+                result.push(DiffLine::Removed(old_lines[old_idx]));
+                old_idx += 1;
+            }
+
+            // Add added lines before the next common line
+            while new_idx < lcs_new {
+                result.push(DiffLine::Added(new_lines[new_idx]));
+                new_idx += 1;
+            }
+
+            // Add the common line as context
+            result.push(DiffLine::Context(old_lines[old_idx]));
+            old_idx += 1;
+            new_idx += 1;
+            lcs_idx += 1;
+        } else {
+            // No more common lines - add remaining as removed/added
+            while old_idx < old_lines.len() {
+                result.push(DiffLine::Removed(old_lines[old_idx]));
+                old_idx += 1;
+            }
+            while new_idx < new_lines.len() {
+                result.push(DiffLine::Added(new_lines[new_idx]));
+                new_idx += 1;
+            }
+        }
+    }
+
+    result
+}
+
+/// Compute longest common subsequence indices for line diff
+fn longest_common_subsequence(old: &[&str], new: &[&str]) -> Vec<(usize, usize)> {
+    let m = old.len();
+    let n = new.len();
+
+    if m == 0 || n == 0 {
+        return Vec::new();
+    }
+
+    // Build LCS length table
+    let mut dp = vec![vec![0usize; n + 1]; m + 1];
+
+    for i in 1..=m {
+        for j in 1..=n {
+            if old[i - 1] == new[j - 1] {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            } else {
+                dp[i][j] = dp[i - 1][j].max(dp[i][j - 1]);
+            }
+        }
+    }
+
+    // Backtrack to find LCS indices
+    let mut result = Vec::new();
+    let mut i = m;
+    let mut j = n;
+
+    while i > 0 && j > 0 {
+        if old[i - 1] == new[j - 1] {
+            result.push((i - 1, j - 1));
+            i -= 1;
+            j -= 1;
+        } else if dp[i - 1][j] > dp[i][j - 1] {
+            i -= 1;
+        } else {
+            j -= 1;
+        }
+    }
+
+    result.reverse();
+    result
 }
 
 fn format_tool_input(tool_name: &str, input: &Value) -> String {
