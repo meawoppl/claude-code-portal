@@ -2,6 +2,12 @@
 
 A web-based proxy for Claude Code sessions, enabling remote access to Claude Code running on dedicated computers through a beautiful web interface.
 
+## Try It Out
+
+**Live Demo**: [txcl.io](https://txcl.io)
+
+You can try cc-proxy right now at [txcl.io](https://txcl.io). Sign in with Google to get started - your sessions are isolated and secure. This is a great way to evaluate the project before self-hosting.
+
 ## Overview
 
 cc-proxy allows you to:
@@ -13,25 +19,44 @@ cc-proxy allows you to:
 
 Perfect for teams with dedicated AI workstations or for accessing your home setup while traveling.
 
+## Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Linux (x86_64) | ✅ Tested | Primary development platform |
+| macOS (Apple Silicon) | ⚠️ Untested | Builds in CI, PRs welcome |
+| macOS (Intel) | ⚠️ Untested | Builds in CI, PRs welcome |
+| Windows (x86_64) | ⚠️ Untested | Builds in CI, PRs welcome |
+
+Pre-built binaries for all platforms are available from [GitHub Releases](https://github.com/meawoppl/cc-proxy/releases/latest).
+
+**Help Wanted**: If you use macOS or Windows, we'd love your help testing and improving support! Please open issues for any problems you encounter, or submit PRs with fixes.
+
 ## Architecture
 
-```
-┌─────────────────┐         WebSocket          ┌──────────────────┐
-│  Dev Machine    │  ─────────────────────────► │   Backend        │
-│                 │                              │   (Axum)         │
-│ claude-proxy ───┤                              │                  │
-│     ↓           │                              │  ┌────────────┐  │
-│  Claude CLI     │                              │  │ PostgreSQL │  │
-└─────────────────┘                              │  └────────────┘  │
-                                                 └────────┬─────────┘
-                                                          │
-                                                    WebSocket
-                                                          │
-                                                          ▼
-                                                 ┌─────────────────┐
-                                                 │   Web Browser   │
-                                                 │   (Yew WASM)    │
-                                                 └─────────────────┘
+```mermaid
+flowchart TB
+    subgraph dev["Dev Machine"]
+        subgraph proxy["claude-proxy binary"]
+            subgraph codes["claude-codes crate"]
+                claude["claude CLI binary"]
+            end
+        end
+    end
+
+    subgraph server["Backend Server"]
+        axum["Axum Web Server"]
+        db[(PostgreSQL)]
+        axum <--> db
+    end
+
+    subgraph browser["Web Browser"]
+        yew["Yew WASM Frontend"]
+    end
+
+    proxy <-->|"WebSocket"| axum
+    yew <-->|"WebSocket"| axum
+    axum -->|"Serves"| yew
 ```
 
 ### Workspace Structure
@@ -109,7 +134,7 @@ The fastest way to get started:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/cc-proxy.git
+git clone https://github.com/meawoppl/cc-proxy.git
 cd cc-proxy
 
 # Start everything (auto-installs dependencies)
@@ -734,8 +759,8 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/cc-proxy/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/cc-proxy/discussions)
+- **Issues**: [GitHub Issues](https://github.com/meawoppl/cc-proxy/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/meawoppl/cc-proxy/discussions)
 - **Documentation**: See additional docs in project root
 
 ## Roadmap
