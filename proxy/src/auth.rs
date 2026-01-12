@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
-use reqwest;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -13,13 +12,6 @@ struct DeviceCodeResponse {
     verification_uri: String,
     expires_in: u64,
     interval: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct TokenResponse {
-    access_token: String,
-    user_id: String,
-    user_email: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

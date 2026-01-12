@@ -83,23 +83,6 @@ pub struct NewMessage {
     pub user_id: Uuid,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum SessionStatus {
-    Active,
-    Inactive,
-    Disconnected,
-}
-
-impl SessionStatus {
-    pub fn as_str(&self) -> &str {
-        match self {
-            SessionStatus::Active => "active",
-            SessionStatus::Inactive => "inactive",
-            SessionStatus::Disconnected => "disconnected",
-        }
-    }
-}
-
 // ============================================================================
 // Proxy Auth Token Models
 // ============================================================================

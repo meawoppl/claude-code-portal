@@ -218,10 +218,8 @@ pub async fn device_verify_page(
     drop(store_lock);
 
     if !valid {
-        return Redirect::temporary(&format!(
-            "/api/auth/device/error?message=Invalid+or+expired+code"
-        ))
-        .into_response();
+        return Redirect::temporary("/api/auth/device/error?message=Invalid+or+expired+code")
+            .into_response();
     }
 
     // Redirect to Google OAuth with user_code in state

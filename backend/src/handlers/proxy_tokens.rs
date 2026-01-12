@@ -37,20 +37,16 @@ pub async fn create_token(
 
     // Get user email for JWT claims
     use crate::schema::users;
-    let user: User = users::table
-        .find(user_id)
-        .first(&mut conn)
-        .map_err(|e| {
-            error!("Failed to find user: {}", e);
-            StatusCode::NOT_FOUND
-        })?;
+    let user: User = users::table.find(user_id).first(&mut conn).map_err(|e| {
+        error!("Failed to find user: {}", e);
+        StatusCode::NOT_FOUND
+    })?;
 
     // Generate token ID
     let token_id = Uuid::new_v4();
 
     // Calculate expiration
-    let expires_at = chrono::Utc::now()
-        + chrono::Duration::days(req.expires_in_days as i64);
+    let expires_at = chrono::Utc::now() + chrono::Duration::days(req.expires_in_days as i64);
 
     // Create JWT
     let jwt_secret = app_state.jwt_secret.as_bytes();
@@ -137,7 +133,9 @@ pub async fn list_tokens(
         })
         .collect();
 
-    Ok(Json(ProxyTokenListResponse { tokens: token_infos }))
+    Ok(Json(ProxyTokenListResponse {
+        tokens: token_infos,
+    }))
 }
 
 /// DELETE /api/proxy-tokens/:id - Revoke a token
@@ -180,8 +178,8 @@ pub fn verify_and_get_user(
     token: &str,
 ) -> Result<(Uuid, String), StatusCode> {
     // First verify JWT signature and expiration
-    let claims = crate::jwt::verify_proxy_token(app_state.jwt_secret.as_bytes(), token)
-        .map_err(|e| {
+    let claims =
+        crate::jwt::verify_proxy_token(app_state.jwt_secret.as_bytes(), token).map_err(|e| {
             error!("JWT verification failed: {}", e);
             StatusCode::UNAUTHORIZED
         })?;

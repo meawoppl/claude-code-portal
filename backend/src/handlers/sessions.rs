@@ -4,13 +4,13 @@ use axum::{
     Json,
 };
 use diesel::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
 use tower_cookies::Cookies;
 use uuid::Uuid;
 
 use crate::{
-    models::{Message, NewMessage, Session},
+    models::{Message, Session},
     AppState,
 };
 
@@ -106,48 +106,6 @@ pub async fn get_session(
     Ok(Json(SessionDetailResponse {
         session,
         recent_messages,
-    }))
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SendMessageRequest {
-    pub content: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct SendMessageResponse {
-    pub message_id: Uuid,
-}
-
-pub async fn send_message(
-    State(app_state): State<Arc<AppState>>,
-    cookies: Cookies,
-    Path(session_id): Path<Uuid>,
-    Json(req): Json<SendMessageRequest>,
-) -> Result<Json<SendMessageResponse>, StatusCode> {
-    let current_user_id = extract_user_id(&app_state, &cookies)?;
-
-    let mut conn = app_state
-        .db_pool
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    use crate::schema::messages;
-
-    let new_message = NewMessage {
-        session_id,
-        role: "user".to_string(),
-        content: req.content,
-        user_id: current_user_id,
-    };
-
-    let message = diesel::insert_into(messages::table)
-        .values(&new_message)
-        .get_result::<Message>(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(Json(SendMessageResponse {
-        message_id: message.id,
     }))
 }
 

@@ -48,7 +48,7 @@ impl SessionManager {
         info!("Adding web client for session: {}", session_key);
         self.web_clients
             .entry(session_key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(sender);
     }
 
@@ -142,13 +142,17 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                             ))
                                             .execute(&mut conn);
                                     db_session_id = Some(existing_session.id);
-                                    info!("Session reactivated in DB: {} ({})", session_name, claude_session_id);
+                                    info!(
+                                        "Session reactivated in DB: {} ({})",
+                                        session_name, claude_session_id
+                                    );
                                 } else if resuming {
                                     // Trying to resume but session doesn't exist in DB
                                     // This can happen if the session was deleted or is on a different backend
                                     warn!("Resuming session {} but not found in DB, creating new entry", claude_session_id);
 
-                                    let user_id = get_user_id_from_token(&app_state, auth_token.as_deref());
+                                    let user_id =
+                                        get_user_id_from_token(&app_state, auth_token.as_deref());
                                     if let Some(user_id) = user_id {
                                         let new_session = NewSessionWithId {
                                             id: claude_session_id,
@@ -169,7 +173,10 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                         {
                                             Ok(session) => {
                                                 db_session_id = Some(session.id);
-                                                info!("Session created in DB: {} ({})", session_name, claude_session_id);
+                                                info!(
+                                                    "Session created in DB: {} ({})",
+                                                    session_name, claude_session_id
+                                                );
                                             }
                                             Err(e) => {
                                                 error!("Failed to persist session: {}", e);
@@ -201,7 +208,10 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                         {
                                             Ok(session) => {
                                                 db_session_id = Some(session.id);
-                                                info!("Session persisted to DB: {} ({})", session_name, claude_session_id);
+                                                info!(
+                                                    "Session persisted to DB: {} ({})",
+                                                    session_name, claude_session_id
+                                                );
                                             }
                                             Err(e) => {
                                                 error!("Failed to persist session: {}", e);
@@ -213,14 +223,19 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                 }
                             }
 
-                            info!("Session registered: {} ({})", session_name, claude_session_id);
+                            info!(
+                                "Session registered: {} ({})",
+                                session_name, claude_session_id
+                            );
                         }
                         ProxyMessage::ClaudeOutput { content } => {
                             // Broadcast output to all web clients
                             if let Some(ref key) = session_key {
                                 session_manager.broadcast_to_web_clients(
                                     key,
-                                    ProxyMessage::ClaudeOutput { content: content.clone() },
+                                    ProxyMessage::ClaudeOutput {
+                                        content: content.clone(),
+                                    },
                                 );
                             }
 
@@ -235,7 +250,8 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                     .first::<crate::models::Session>(&mut conn)
                                 {
                                     // Determine role from content type
-                                    let role = content.get("type")
+                                    let role = content
+                                        .get("type")
                                         .and_then(|t| t.as_str())
                                         .unwrap_or("assistant");
 
@@ -255,8 +271,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
 
                                     // Truncate to keep only last 100 messages
                                     let _ = super::messages::truncate_session_messages_internal(
-                                        &mut conn,
-                                        session_id,
+                                        &mut conn, session_id,
                                     );
                                 }
 
@@ -270,13 +285,23 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             // Respond to heartbeat
                             let _ = tx.send(ProxyMessage::Heartbeat);
                         }
-                        ProxyMessage::PermissionRequest { request_id, tool_name, input, permission_suggestions } => {
+                        ProxyMessage::PermissionRequest {
+                            request_id,
+                            tool_name,
+                            input,
+                            permission_suggestions,
+                        } => {
                             // Forward permission request to all web clients
                             if let Some(ref key) = session_key {
                                 info!("Permission request from proxy for tool: {} (request_id: {}, suggestions: {})", tool_name, request_id, permission_suggestions.len());
                                 session_manager.broadcast_to_web_clients(
                                     key,
-                                    ProxyMessage::PermissionRequest { request_id, tool_name, input, permission_suggestions },
+                                    ProxyMessage::PermissionRequest {
+                                        request_id,
+                                        tool_name,
+                                        input,
+                                        permission_suggestions,
+                                    },
                                 );
                             }
                         }
@@ -389,7 +414,10 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>) {
 
                             // Register this web client to receive new messages
                             session_manager.add_web_client(key, tx.clone());
-                            info!("Web client connected to session: {} ({})", session_name, session_id);
+                            info!(
+                                "Web client connected to session: {} ({})",
+                                session_name, session_id
+                            );
 
                             // Send existing messages from DB as history
                             if let Ok(mut conn) = db_pool.get() {
@@ -401,12 +429,17 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                     .load(&mut conn)
                                     .unwrap_or_default();
 
-                                info!("Sending {} historical messages to web client", history.len());
+                                info!(
+                                    "Sending {} historical messages to web client",
+                                    history.len()
+                                );
 
                                 for msg in history {
                                     // Convert stored message to ClaudeOutput format
                                     // The content is stored as JSON string, parse it back
-                                    let content = match serde_json::from_str::<serde_json::Value>(&msg.content) {
+                                    let content = match serde_json::from_str::<serde_json::Value>(
+                                        &msg.content,
+                                    ) {
                                         Ok(json) => json,
                                         Err(_) => {
                                             // If not valid JSON, wrap as text
@@ -434,14 +467,26 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                 warn!("Web client tried to send ClaudeInput but no session_key set (not registered?)");
                             }
                         }
-                        ProxyMessage::PermissionResponse { request_id, allow, input, permissions, reason } => {
+                        ProxyMessage::PermissionResponse {
+                            request_id,
+                            allow,
+                            input,
+                            permissions,
+                            reason,
+                        } => {
                             // Forward permission response to the proxy session
                             if let Some(ref key) = session_key {
                                 info!("Web client sending PermissionResponse: {} -> {} (permissions: {}, reason: {:?})",
                                       request_id, if allow { "allow" } else { "deny" }, permissions.len(), reason);
                                 if !session_manager.send_to_session(
                                     key,
-                                    ProxyMessage::PermissionResponse { request_id, allow, input, permissions, reason },
+                                    ProxyMessage::PermissionResponse {
+                                        request_id,
+                                        allow,
+                                        input,
+                                        permissions,
+                                        reason,
+                                    },
                                 ) {
                                     warn!("Failed to send PermissionResponse to session '{}', session not connected", key);
                                 }

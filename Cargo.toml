@@ -52,7 +52,7 @@ gloo = "0.11"
 gloo-net = "0.6"
 
 # Time handling
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["serde"] }
 
 # UUID
 uuid = { version = "1.11", features = ["v4", "serde", "js"] }

@@ -520,20 +520,26 @@ impl Component for SessionView {
             let link = link.clone();
             let on_awaiting_change = on_awaiting_change.clone();
             spawn_local(async move {
-                let api_endpoint = utils::api_url(&format!("/api/sessions/{}/messages", session_id));
+                let api_endpoint =
+                    utils::api_url(&format!("/api/sessions/{}/messages", session_id));
                 if let Ok(response) = Request::get(&api_endpoint).send().await {
                     if let Ok(data) = response.json::<MessagesResponse>().await {
                         // Check if awaiting input
                         let is_awaiting = data.messages.last().is_some_and(|msg| {
                             serde_json::from_str::<serde_json::Value>(&msg.content)
                                 .ok()
-                                .and_then(|p| p.get("type").and_then(|t| t.as_str()).map(|t| t == "result"))
+                                .and_then(|p| {
+                                    p.get("type")
+                                        .and_then(|t| t.as_str())
+                                        .map(|t| t == "result")
+                                })
                                 .unwrap_or(false)
                         });
                         on_awaiting_change.emit((session_id, is_awaiting));
 
                         // Bulk load all historical messages at once
-                        let messages: Vec<String> = data.messages.into_iter().map(|m| m.content).collect();
+                        let messages: Vec<String> =
+                            data.messages.into_iter().map(|m| m.content).collect();
                         link.send_message(SessionViewMsg::LoadHistory(messages));
                     }
                 }
@@ -578,9 +584,19 @@ impl Component for SessionView {
                                             ));
                                             link.send_message(SessionViewMsg::CheckAwaiting);
                                         }
-                                        ProxyMessage::PermissionRequest { request_id, tool_name, input, permission_suggestions } => {
+                                        ProxyMessage::PermissionRequest {
+                                            request_id,
+                                            tool_name,
+                                            input,
+                                            permission_suggestions,
+                                        } => {
                                             link.send_message(SessionViewMsg::PermissionRequest(
-                                                PendingPermission { request_id, tool_name, input, permission_suggestions }
+                                                PendingPermission {
+                                                    request_id,
+                                                    tool_name,
+                                                    input,
+                                                    permission_suggestions,
+                                                },
                                             ));
                                         }
                                         ProxyMessage::Error { message } => {
@@ -598,7 +614,10 @@ impl Component for SessionView {
                             }
                             Err(e) => {
                                 log::error!("WebSocket error: {:?}", e);
-                                link.send_message(SessionViewMsg::WebSocketError(format!("{:?}", e)));
+                                link.send_message(SessionViewMsg::WebSocketError(format!(
+                                    "{:?}",
+                                    e
+                                )));
                                 break;
                             }
                             _ => {}
@@ -673,10 +692,8 @@ impl Component for SessionView {
                     *should_autoscroll.borrow_mut() = at_bottom;
                 });
 
-                let _ = element.add_event_listener_with_callback(
-                    "scroll",
-                    closure.as_ref().unchecked_ref(),
-                );
+                let _ = element
+                    .add_event_listener_with_callback("scroll", closure.as_ref().unchecked_ref());
 
                 self.scroll_listener = Some(closure);
             }
@@ -759,7 +776,7 @@ impl Component for SessionView {
             SessionViewMsg::PermissionRequest(perm) => {
                 self.pending_permission = Some(perm);
                 self.permission_selected = 0; // Default to "Allow"
-                // Focus the permission prompt after render
+                                              // Focus the permission prompt after render
                 if let Some(el) = self.permission_ref.cast::<web_sys::HtmlElement>() {
                     let _ = el.focus();
                 }
@@ -767,7 +784,12 @@ impl Component for SessionView {
             }
             SessionViewMsg::PermissionSelectUp => {
                 if self.pending_permission.is_some() {
-                    let max = if self.pending_permission.as_ref().map(|p| !p.permission_suggestions.is_empty()).unwrap_or(false) {
+                    let max = if self
+                        .pending_permission
+                        .as_ref()
+                        .map(|p| !p.permission_suggestions.is_empty())
+                        .unwrap_or(false)
+                    {
                         2 // Allow, Allow & Remember, Deny
                     } else {
                         1 // Allow, Deny
@@ -782,7 +804,12 @@ impl Component for SessionView {
             }
             SessionViewMsg::PermissionSelectDown => {
                 if self.pending_permission.is_some() {
-                    let max = if self.pending_permission.as_ref().map(|p| !p.permission_suggestions.is_empty()).unwrap_or(false) {
+                    let max = if self
+                        .pending_permission
+                        .as_ref()
+                        .map(|p| !p.permission_suggestions.is_empty())
+                        .unwrap_or(false)
+                    {
                         2 // Allow, Allow & Remember, Deny
                     } else {
                         1 // Allow, Deny
@@ -797,7 +824,11 @@ impl Component for SessionView {
             }
             SessionViewMsg::PermissionConfirm => {
                 if self.pending_permission.is_some() {
-                    let has_suggestions = self.pending_permission.as_ref().map(|p| !p.permission_suggestions.is_empty()).unwrap_or(false);
+                    let has_suggestions = self
+                        .pending_permission
+                        .as_ref()
+                        .map(|p| !p.permission_suggestions.is_empty())
+                        .unwrap_or(false);
                     let msg = match (self.permission_selected, has_suggestions) {
                         (0, _) => SessionViewMsg::ApprovePermission,
                         (1, true) => SessionViewMsg::ApprovePermissionAndRemember,
@@ -912,11 +943,17 @@ impl Component for SessionView {
                 let is_awaiting = self.messages.last().is_some_and(|msg| {
                     serde_json::from_str::<serde_json::Value>(msg)
                         .ok()
-                        .and_then(|p| p.get("type").and_then(|t| t.as_str()).map(|t| t == "result"))
+                        .and_then(|p| {
+                            p.get("type")
+                                .and_then(|t| t.as_str())
+                                .map(|t| t == "result")
+                        })
                         .unwrap_or(false)
                 });
                 let session_id = ctx.props().session.id;
-                ctx.props().on_awaiting_change.emit((session_id, is_awaiting));
+                ctx.props()
+                    .on_awaiting_change
+                    .emit((session_id, is_awaiting));
                 false
             }
         }
@@ -1091,20 +1128,16 @@ fn format_cost(cost: f64) -> String {
 
 fn format_permission_input(tool_name: &str, input: &serde_json::Value) -> String {
     match tool_name {
-        "Bash" => {
-            input.get("command")
-                .and_then(|v| v.as_str())
-                .map(|s| format!("$ {}", s))
-                .unwrap_or_else(|| serde_json::to_string_pretty(input).unwrap_or_default())
-        }
-        "Read" | "Edit" | "Write" => {
-            input.get("file_path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| serde_json::to_string_pretty(input).unwrap_or_default())
-        }
-        _ => {
-            serde_json::to_string_pretty(input).unwrap_or_else(|_| format!("{:?}", input))
-        }
+        "Bash" => input
+            .get("command")
+            .and_then(|v| v.as_str())
+            .map(|s| format!("$ {}", s))
+            .unwrap_or_else(|| serde_json::to_string_pretty(input).unwrap_or_default()),
+        "Read" | "Edit" | "Write" => input
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| serde_json::to_string_pretty(input).unwrap_or_default()),
+        _ => serde_json::to_string_pretty(input).unwrap_or_else(|_| format!("{:?}", input)),
     }
 }

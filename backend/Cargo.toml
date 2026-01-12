@@ -45,7 +45,7 @@ tracing-subscriber = { workspace = true }
 claude-codes = { workspace = true }
 
 # Time
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["std", "clock"] }
 
 # UUID
 uuid = { workspace = true }

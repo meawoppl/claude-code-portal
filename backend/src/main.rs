@@ -219,8 +219,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/api/sessions/:id/messages",
-            get(handlers::messages::list_messages)
-                .post(handlers::messages::create_message),
+            get(handlers::messages::list_messages).post(handlers::messages::create_message),
         )
         // Proxy token management endpoints
         .route(

@@ -78,8 +78,7 @@ pub fn extract_email_from_jwt(token: &str) -> Option<String> {
 
 /// Simple base64url decoder
 fn base64_url_decode(input: &str) -> Result<Vec<u8>> {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
     let chars: Vec<u8> = input
         .chars()

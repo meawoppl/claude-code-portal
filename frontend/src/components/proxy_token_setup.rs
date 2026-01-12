@@ -37,8 +37,7 @@ pub fn proxy_token_setup() -> Html {
                 let request_body = CreateProxyTokenRequest {
                     name: format!(
                         "CLI Setup - {}",
-                        js_sys::Date::new_0()
-                            .to_locale_string("en-US", &js_sys::Object::new())
+                        js_sys::Date::new_0().to_locale_string("en-US", &js_sys::Object::new())
                     ),
                     expires_in_days: 30,
                 };
@@ -54,7 +53,8 @@ pub fn proxy_token_setup() -> Html {
                             if let Ok(data) = response.json::<CreateProxyTokenResponse>().await {
                                 token_state.set(TokenState::HasToken(data));
                             } else {
-                                token_state.set(TokenState::Error("Failed to parse response".to_string()));
+                                token_state
+                                    .set(TokenState::Error("Failed to parse response".to_string()));
                             }
                         } else if response.status() == 401 {
                             // Session invalid - redirect to logout
@@ -62,7 +62,10 @@ pub fn proxy_token_setup() -> Html {
                                 let _ = window.location().set_href("/api/auth/logout");
                             }
                         } else {
-                            token_state.set(TokenState::Error(format!("Server error: {}", response.status())));
+                            token_state.set(TokenState::Error(format!(
+                                "Server error: {}",
+                                response.status()
+                            )));
                         }
                     }
                     Err(e) => {

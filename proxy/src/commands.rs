@@ -30,9 +30,9 @@ pub fn handle_init(
     let backend_url = backend_url_override
         .map(|s| s.to_string())
         .or(parsed_backend_url)
-        .ok_or_else(|| anyhow::anyhow!(
-            "No backend URL found in init value. Specify --backend-url explicitly."
-        ))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("No backend URL found in init value. Specify --backend-url explicitly.")
+        })?;
 
     // Extract user info from JWT (basic parsing without verification)
     let user_email = util::extract_email_from_jwt(&token);

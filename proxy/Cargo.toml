@@ -60,7 +60,7 @@ directories = "5.0"
 colored = "2.1"
 
 # Time
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["std", "clock"] }
 
 # SHA256 for binary verification
 sha2 = "0.10"

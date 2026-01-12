@@ -151,18 +151,19 @@ fn render_user_message(msg: &UserMessage) -> Html {
         let blocks = message.content.as_ref().cloned().unwrap_or_default();
 
         // Extract text content for display
-        let text_content: String = blocks.iter()
-            .filter_map(|block| {
-                match block {
-                    ContentBlock::Text { text } => Some(text.clone()),
-                    _ => None,
-                }
+        let text_content: String = blocks
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text.clone()),
+                _ => None,
             })
             .collect::<Vec<_>>()
             .join("\n");
 
         // Check if this is a tool result or regular user input
-        let has_tool_results = blocks.iter().any(|b| matches!(b, ContentBlock::ToolResult { .. }));
+        let has_tool_results = blocks
+            .iter()
+            .any(|b| matches!(b, ContentBlock::ToolResult { .. }));
 
         if has_tool_results {
             // Tool result message - render compactly
@@ -214,7 +215,9 @@ fn render_system_message(msg: &SystemMessage) -> Html {
 
     // For init messages, show a compact one-liner
     if subtype == "init" {
-        let model_short = msg.model.as_ref()
+        let model_short = msg
+            .model
+            .as_ref()
             .and_then(|m| shorten_model_name(m))
             .unwrap_or_else(|| "unknown".to_string());
 
@@ -346,14 +349,14 @@ fn render_content_blocks(blocks: &[ContentBlock]) -> Html {
 
 fn format_tool_input(tool_name: &str, input: &Value) -> String {
     match tool_name {
-        "Bash" => {
-            input.get("command")
-                .and_then(|v| v.as_str())
-                .map(|s| format!("$ {}", s))
-                .unwrap_or_else(|| format_generic_input(input))
-        }
+        "Bash" => input
+            .get("command")
+            .and_then(|v| v.as_str())
+            .map(|s| format!("$ {}", s))
+            .unwrap_or_else(|| format_generic_input(input)),
         "Read" => {
-            let path = input.get("file_path")
+            let path = input
+                .get("file_path")
                 .and_then(|v| v.as_str())
                 .unwrap_or("?");
             let mut result = path.to_string();
@@ -365,48 +368,46 @@ fn format_tool_input(tool_name: &str, input: &Value) -> String {
             result
         }
         "Edit" => {
-            let path = input.get("file_path")
+            let path = input
+                .get("file_path")
                 .and_then(|v| v.as_str())
                 .unwrap_or("?");
-            let old_len = input.get("old_string")
+            let old_len = input
+                .get("old_string")
                 .and_then(|v| v.as_str())
                 .map(|s| s.len())
                 .unwrap_or(0);
-            let new_len = input.get("new_string")
+            let new_len = input
+                .get("new_string")
                 .and_then(|v| v.as_str())
                 .map(|s| s.len())
                 .unwrap_or(0);
             format!("{}\n-{} chars +{} chars", path, old_len, new_len)
         }
         "Write" => {
-            let path = input.get("file_path")
+            let path = input
+                .get("file_path")
                 .and_then(|v| v.as_str())
                 .unwrap_or("?");
-            let content_len = input.get("content")
+            let content_len = input
+                .get("content")
                 .and_then(|v| v.as_str())
                 .map(|s| s.len())
                 .unwrap_or(0);
             format!("{} ({} bytes)", path, content_len)
         }
         "Glob" => {
-            let pattern = input.get("pattern")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?");
-            let path = input.get("path")
-                .and_then(|v| v.as_str());
+            let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
+            let path = input.get("path").and_then(|v| v.as_str());
             match path {
                 Some(p) => format!("{} in {}", pattern, p),
                 None => pattern.to_string(),
             }
         }
         "Grep" => {
-            let pattern = input.get("pattern")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?");
-            let path = input.get("path")
-                .and_then(|v| v.as_str());
-            let glob = input.get("glob")
-                .and_then(|v| v.as_str());
+            let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
+            let path = input.get("path").and_then(|v| v.as_str());
+            let glob = input.get("glob").and_then(|v| v.as_str());
             let mut result = format!("/{}/", pattern);
             if let Some(g) = glob {
                 result.push_str(&format!(" --glob={}", g));
@@ -417,39 +418,39 @@ fn format_tool_input(tool_name: &str, input: &Value) -> String {
             result
         }
         "Task" => {
-            let desc = input.get("description")
+            let desc = input
+                .get("description")
                 .and_then(|v| v.as_str())
                 .unwrap_or("?");
-            let agent = input.get("subagent_type")
+            let agent = input
+                .get("subagent_type")
                 .and_then(|v| v.as_str())
                 .unwrap_or("agent");
             format!("[{}] {}", agent, desc)
         }
-        "WebFetch" => {
-            input.get("url")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| format_generic_input(input))
-        }
-        "WebSearch" => {
-            input.get("query")
-                .and_then(|v| v.as_str())
-                .map(|s| format!("\"{}\"", s))
-                .unwrap_or_else(|| format_generic_input(input))
-        }
-        "TodoWrite" => {
-            input.get("todos")
-                .and_then(|v| v.as_array())
-                .map(|arr| format!("{} items", arr.len()))
-                .unwrap_or_else(|| format_generic_input(input))
-        }
+        "WebFetch" => input
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format_generic_input(input)),
+        "WebSearch" => input
+            .get("query")
+            .and_then(|v| v.as_str())
+            .map(|s| format!("\"{}\"", s))
+            .unwrap_or_else(|| format_generic_input(input)),
+        "TodoWrite" => input
+            .get("todos")
+            .and_then(|v| v.as_array())
+            .map(|arr| format!("{} items", arr.len()))
+            .unwrap_or_else(|| format_generic_input(input)),
         _ => format_generic_input(input),
     }
 }
 
 fn format_generic_input(input: &Value) -> String {
     if let Some(obj) = input.as_object() {
-        let parts: Vec<String> = obj.iter()
+        let parts: Vec<String> = obj
+            .iter()
             .filter(|(_, v)| v.is_string() || v.is_number() || v.is_boolean())
             .take(3)
             .map(|(k, v)| {
@@ -660,11 +661,11 @@ fn find_url_start(text: &str) -> Option<(&str, &str)> {
 /// Find the end of a URL (where it stops being URL-like)
 fn find_url_end(text: &str) -> usize {
     let mut end = 0;
-    let mut chars = text.chars().peekable();
+    let chars = text.chars().peekable();
     let mut paren_depth = 0;
     let mut bracket_depth = 0;
 
-    while let Some(c) = chars.next() {
+    for c in chars {
         match c {
             // Whitespace ends URL
             ' ' | '\t' | '\n' | '\r' => break,
@@ -695,8 +696,28 @@ fn find_url_end(text: &str) -> usize {
                 }
             }
             // Common URL-safe characters
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' | '/' | '?' | '#' | '&'
-            | '=' | '+' | '%' | '@' | ':' | '!' | '$' | '\'' | '*' | ',' | ';' => {
+            'a'..='z'
+            | 'A'..='Z'
+            | '0'..='9'
+            | '-'
+            | '_'
+            | '.'
+            | '~'
+            | '/'
+            | '?'
+            | '#'
+            | '&'
+            | '='
+            | '+'
+            | '%'
+            | '@'
+            | ':'
+            | '!'
+            | '$'
+            | '\''
+            | '*'
+            | ','
+            | ';' => {
                 end += c.len_utf8();
             }
             // Stop on other characters
@@ -752,11 +773,10 @@ fn is_valid_url(url: &str) -> bool {
     }
 
     // Must have something after the protocol
-    let after_protocol = if url.starts_with("https://") {
-        &url[8..]
-    } else {
-        &url[7..]
-    };
+    let after_protocol = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or("");
 
     // Must have at least a domain-like part
     if after_protocol.is_empty() {
@@ -825,179 +845,235 @@ mod tests {
     #[test]
     fn test_no_urls() {
         let result = parse_urls("Hello world, no links here!");
-        assert_eq!(result, vec![TextSegment::Text("Hello world, no links here!".to_string())]);
+        assert_eq!(
+            result,
+            vec![TextSegment::Text("Hello world, no links here!".to_string())]
+        );
     }
 
     #[test]
     fn test_single_https_url() {
         let result = parse_urls("Check out https://example.com for more info.");
-        assert_eq!(result, vec![
-            TextSegment::Text("Check out ".to_string()),
-            TextSegment::Url("https://example.com".to_string()),
-            TextSegment::Text(" for more info.".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Check out ".to_string()),
+                TextSegment::Url("https://example.com".to_string()),
+                TextSegment::Text(" for more info.".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_single_http_url() {
         let result = parse_urls("Visit http://example.com today");
-        assert_eq!(result, vec![
-            TextSegment::Text("Visit ".to_string()),
-            TextSegment::Url("http://example.com".to_string()),
-            TextSegment::Text(" today".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Visit ".to_string()),
+                TextSegment::Url("http://example.com".to_string()),
+                TextSegment::Text(" today".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_with_path() {
         let result = parse_urls("See https://example.com/path/to/page.html for details");
-        assert_eq!(result, vec![
-            TextSegment::Text("See ".to_string()),
-            TextSegment::Url("https://example.com/path/to/page.html".to_string()),
-            TextSegment::Text(" for details".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("See ".to_string()),
+                TextSegment::Url("https://example.com/path/to/page.html".to_string()),
+                TextSegment::Text(" for details".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_with_query_params() {
         let result = parse_urls("Link: https://example.com/search?q=test&page=1");
-        assert_eq!(result, vec![
-            TextSegment::Text("Link: ".to_string()),
-            TextSegment::Url("https://example.com/search?q=test&page=1".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Link: ".to_string()),
+                TextSegment::Url("https://example.com/search?q=test&page=1".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_with_fragment() {
         let result = parse_urls("Go to https://example.com/page#section");
-        assert_eq!(result, vec![
-            TextSegment::Text("Go to ".to_string()),
-            TextSegment::Url("https://example.com/page#section".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Go to ".to_string()),
+                TextSegment::Url("https://example.com/page#section".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_at_start() {
         let result = parse_urls("https://example.com is the site");
-        assert_eq!(result, vec![
-            TextSegment::Url("https://example.com".to_string()),
-            TextSegment::Text(" is the site".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Url("https://example.com".to_string()),
+                TextSegment::Text(" is the site".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_at_end() {
         let result = parse_urls("The site is https://example.com");
-        assert_eq!(result, vec![
-            TextSegment::Text("The site is ".to_string()),
-            TextSegment::Url("https://example.com".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("The site is ".to_string()),
+                TextSegment::Url("https://example.com".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_multiple_urls() {
         let result = parse_urls("Check https://one.com and https://two.com for info");
-        assert_eq!(result, vec![
-            TextSegment::Text("Check ".to_string()),
-            TextSegment::Url("https://one.com".to_string()),
-            TextSegment::Text(" and ".to_string()),
-            TextSegment::Url("https://two.com".to_string()),
-            TextSegment::Text(" for info".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Check ".to_string()),
+                TextSegment::Url("https://one.com".to_string()),
+                TextSegment::Text(" and ".to_string()),
+                TextSegment::Url("https://two.com".to_string()),
+                TextSegment::Text(" for info".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_with_trailing_period() {
         let result = parse_urls("Visit https://example.com.");
-        assert_eq!(result, vec![
-            TextSegment::Text("Visit ".to_string()),
-            TextSegment::Url("https://example.com".to_string()),
-            TextSegment::Text(".".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Visit ".to_string()),
+                TextSegment::Url("https://example.com".to_string()),
+                TextSegment::Text(".".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_with_trailing_comma() {
         let result = parse_urls("See https://example.com, or https://other.com");
-        assert_eq!(result, vec![
-            TextSegment::Text("See ".to_string()),
-            TextSegment::Url("https://example.com".to_string()),
-            TextSegment::Text(", or ".to_string()),
-            TextSegment::Url("https://other.com".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("See ".to_string()),
+                TextSegment::Url("https://example.com".to_string()),
+                TextSegment::Text(", or ".to_string()),
+                TextSegment::Url("https://other.com".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_in_parentheses() {
         let result = parse_urls("More info (https://example.com) here");
-        assert_eq!(result, vec![
-            TextSegment::Text("More info (".to_string()),
-            TextSegment::Url("https://example.com".to_string()),
-            TextSegment::Text(") here".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("More info (".to_string()),
+                TextSegment::Url("https://example.com".to_string()),
+                TextSegment::Text(") here".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_wikipedia_url_with_parens() {
-        let result = parse_urls("See https://en.wikipedia.org/wiki/Rust_(programming_language) for info");
-        assert_eq!(result, vec![
-            TextSegment::Text("See ".to_string()),
-            TextSegment::Url("https://en.wikipedia.org/wiki/Rust_(programming_language)".to_string()),
-            TextSegment::Text(" for info".to_string()),
-        ]);
+        let result =
+            parse_urls("See https://en.wikipedia.org/wiki/Rust_(programming_language) for info");
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("See ".to_string()),
+                TextSegment::Url(
+                    "https://en.wikipedia.org/wiki/Rust_(programming_language)".to_string()
+                ),
+                TextSegment::Text(" for info".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_with_port() {
         let result = parse_urls("Server at https://localhost:8080/api");
-        assert_eq!(result, vec![
-            TextSegment::Text("Server at ".to_string()),
-            TextSegment::Url("https://localhost:8080/api".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Server at ".to_string()),
+                TextSegment::Url("https://localhost:8080/api".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_with_encoded_chars() {
         let result = parse_urls("Link: https://example.com/path%20with%20spaces");
-        assert_eq!(result, vec![
-            TextSegment::Text("Link: ".to_string()),
-            TextSegment::Url("https://example.com/path%20with%20spaces".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Link: ".to_string()),
+                TextSegment::Url("https://example.com/path%20with%20spaces".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_invalid_url_no_domain() {
         let result = parse_urls("Not valid: https://");
-        assert_eq!(result, vec![
-            TextSegment::Text("Not valid: https://".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![TextSegment::Text("Not valid: https://".to_string()),]
+        );
     }
 
     #[test]
     fn test_localhost_url() {
         let result = parse_urls("Dev server: http://localhost:3000");
-        assert_eq!(result, vec![
-            TextSegment::Text("Dev server: ".to_string()),
-            TextSegment::Url("http://localhost:3000".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Dev server: ".to_string()),
+                TextSegment::Url("http://localhost:3000".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_url_followed_by_newline() {
         let result = parse_urls("Link: https://example.com\nNext line");
-        assert_eq!(result, vec![
-            TextSegment::Text("Link: ".to_string()),
-            TextSegment::Url("https://example.com".to_string()),
-            TextSegment::Text("\nNext line".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Link: ".to_string()),
+                TextSegment::Url("https://example.com".to_string()),
+                TextSegment::Text("\nNext line".to_string()),
+            ]
+        );
     }
 
     #[test]
     fn test_only_url() {
         let result = parse_urls("https://example.com");
-        assert_eq!(result, vec![
-            TextSegment::Url("https://example.com".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![TextSegment::Url("https://example.com".to_string()),]
+        );
     }
 
     #[test]
@@ -1009,10 +1085,12 @@ mod tests {
     #[test]
     fn test_url_with_subdomain() {
         let result = parse_urls("API docs: https://api.example.com/v1/docs");
-        assert_eq!(result, vec![
-            TextSegment::Text("API docs: ".to_string()),
-            TextSegment::Url("https://api.example.com/v1/docs".to_string()),
-        ]);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("API docs: ".to_string()),
+                TextSegment::Url("https://api.example.com/v1/docs".to_string()),
+            ]
+        );
     }
 }
-

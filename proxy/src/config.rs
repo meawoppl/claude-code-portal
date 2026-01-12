@@ -3,11 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProxyConfig {
     #[serde(default)]
     pub sessions: HashMap<String, SessionAuth>,
@@ -54,16 +54,6 @@ pub struct Preferences {
     pub auto_open_browser: bool,
 }
 
-impl Default for ProxyConfig {
-    fn default() -> Self {
-        Self {
-            sessions: HashMap::new(),
-            directory_sessions: HashMap::new(),
-            preferences: Preferences::default(),
-        }
-    }
-}
-
 /// File lock for atomic config operations
 pub struct ConfigLock {
     lock_path: PathBuf,
@@ -73,7 +63,7 @@ pub struct ConfigLock {
 impl ConfigLock {
     /// Acquire an exclusive lock on the config file
     /// Uses a PID-style lockfile with retry logic
-    pub fn acquire(config_path: &PathBuf) -> Result<Self> {
+    pub fn acquire(config_path: &Path) -> Result<Self> {
         let lock_path = config_path.with_extension("lock");
         let max_attempts = 50; // 5 seconds total with 100ms sleep
         let mut attempts = 0;
@@ -105,7 +95,6 @@ impl ConfigLock {
                                 // Check if process is still running (Unix-specific)
                                 #[cfg(unix)]
                                 {
-                                    use std::os::unix::process::CommandExt;
                                     // kill with signal 0 checks if process exists
                                     if unsafe { libc::kill(pid as i32, 0) } != 0 {
                                         // Process is dead, remove stale lock
@@ -119,7 +108,10 @@ impl ConfigLock {
 
                     attempts += 1;
                     if attempts >= max_attempts {
-                        anyhow::bail!("Failed to acquire config lock after {} attempts", max_attempts);
+                        anyhow::bail!(
+                            "Failed to acquire config lock after {} attempts",
+                            max_attempts
+                        );
                     }
                     std::thread::sleep(Duration::from_millis(100));
                 }
@@ -158,21 +150,6 @@ impl ProxyConfig {
             serde_json::from_str(&contents).context("Failed to parse config file")?;
 
         Ok(config)
-    }
-
-    pub fn save(&self) -> Result<()> {
-        let path = Self::config_path()?;
-
-        // Create parent directory if it doesn't exist
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).context("Failed to create config directory")?;
-        }
-
-        let contents = serde_json::to_string_pretty(self).context("Failed to serialize config")?;
-
-        fs::write(&path, contents).context("Failed to write config file")?;
-
-        Ok(())
     }
 
     /// Atomically save the config with file locking
@@ -265,12 +242,6 @@ impl ProxyConfig {
             .and_then(|auth| auth.backend_url.as_deref())
     }
 
-    pub fn get_session_prefix(&self, working_dir: &str) -> Option<&str> {
-        self.sessions
-            .get(working_dir)
-            .and_then(|auth| auth.session_prefix.as_deref())
-    }
-
     // =========================================================================
     // Directory Session Methods
     // =========================================================================
@@ -290,11 +261,6 @@ impl ProxyConfig {
         if let Some(session) = self.directory_sessions.get_mut(working_dir) {
             session.last_used = chrono::Utc::now().to_rfc3339();
         }
-    }
-
-    /// Remove a directory session
-    pub fn remove_directory_session(&mut self, working_dir: &str) -> Option<DirectorySession> {
-        self.directory_sessions.remove(working_dir)
     }
 
     /// Create a new directory session

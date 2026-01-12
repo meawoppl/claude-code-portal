@@ -3,13 +3,13 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
 use claude_codes::io::{ContentBlock, ControlRequestPayload};
+use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
 use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use tracing::{error, info, debug};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::ui;
@@ -121,7 +121,10 @@ pub async fn run_connection_loop(
                 backoff.reset_if_stable(duration);
 
                 ui::print_disconnected(backoff.current_secs());
-                info!("WebSocket disconnected, reconnecting in {}s", backoff.current_secs());
+                info!(
+                    "WebSocket disconnected, reconnecting in {}s",
+                    backoff.current_secs()
+                );
 
                 tokio::time::sleep(backoff.sleep_duration()).await;
                 backoff.advance();
@@ -163,7 +166,10 @@ async fn run_single_connection(
 async fn connect_to_backend(
     backend_url: &str,
     first_connection: bool,
-) -> Result<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, Duration> {
+) -> Result<
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    Duration,
+> {
     let ws_url = format!("{}/ws/session", backend_url);
 
     if first_connection {
@@ -235,7 +241,10 @@ async fn run_message_loop<S, R>(
 where
     S: SinkExt<Message> + Unpin + Send + 'static,
     S::Error: std::fmt::Display,
-    R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin + Send + 'static,
+    R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+        + Unpin
+        + Send
+        + 'static,
 {
     let connection_start = Instant::now();
     let session_id = config.session_id;
@@ -378,7 +387,11 @@ fn log_claude_output(output: &ClaudeOutput) {
                         debug!("← [assistant] thinking: {}", preview);
                     }
                     ContentBlock::ToolResult(tr) => {
-                        let status = if tr.is_error.unwrap_or(false) { "error" } else { "ok" };
+                        let status = if tr.is_error.unwrap_or(false) {
+                            "error"
+                        } else {
+                            "ok"
+                        };
                         info!("← [assistant] tool_result: {} ({})", tr.tool_use_id, status);
                     }
                     ContentBlock::Image(_) => {
@@ -388,8 +401,10 @@ fn log_claude_output(output: &ClaudeOutput) {
             }
 
             if text_count + tool_count + thinking_count > 1 {
-                info!("  stop_reason={}, blocks: {} text, {} tools, {} thinking",
-                    stop, text_count, tool_count, thinking_count);
+                info!(
+                    "  stop_reason={}, blocks: {} text, {} tools, {} thinking",
+                    stop, text_count, tool_count, thinking_count
+                );
             } else if tool_count > 0 || stop != "none" {
                 info!("  stop_reason={}", stop);
             }
@@ -401,11 +416,21 @@ fn log_claude_output(output: &ClaudeOutput) {
                         info!("← [user] text: {}", truncate(&t.text, 80));
                     }
                     ContentBlock::ToolResult(tr) => {
-                        let status = if tr.is_error.unwrap_or(false) { "ERROR" } else { "ok" };
-                        let content_preview = tr.content.as_ref()
+                        let status = if tr.is_error.unwrap_or(false) {
+                            "ERROR"
+                        } else {
+                            "ok"
+                        };
+                        let content_preview = tr
+                            .content
+                            .as_ref()
                             .map(|c| {
                                 let s = format!("{:?}", c);
-                                if s.len() > 60 { format!("{}...", &s[..60]) } else { s }
+                                if s.len() > 60 {
+                                    format!("{}...", &s[..60])
+                                } else {
+                                    s
+                                }
                             })
                             .unwrap_or_default();
                         info!("← [user] tool_result [{}]: {}", status, content_preview);
@@ -420,8 +445,10 @@ fn log_claude_output(output: &ClaudeOutput) {
             let status = if res.is_error { "ERROR" } else { "success" };
             let duration = format_duration(res.duration_ms);
             let api_duration = format_duration(res.duration_api_ms);
-            info!("← [result] {} | {} total | {} API | {} turns",
-                status, duration, api_duration, res.num_turns);
+            info!(
+                "← [result] {} | {} total | {} API | {} turns",
+                status, duration, api_duration, res.num_turns
+            );
             if res.total_cost_usd > 0.0 {
                 info!("  cost: ${:.4}", res.total_cost_usd);
             }
@@ -453,40 +480,32 @@ fn log_claude_output(output: &ClaudeOutput) {
 /// Format tool input for logging
 fn format_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
     match tool_name {
-        "Bash" => {
-            input.get("command")
-                .and_then(|v| v.as_str())
-                .map(|s| format!("$ {}", truncate(s, 70)))
-                .unwrap_or_default()
-        }
-        "Read" | "Edit" | "Write" => {
-            input.get("file_path")
-                .and_then(|v| v.as_str())
-                .map(|s| truncate(s, 70).to_string())
-                .unwrap_or_default()
-        }
+        "Bash" => input
+            .get("command")
+            .and_then(|v| v.as_str())
+            .map(|s| format!("$ {}", truncate(s, 70)))
+            .unwrap_or_default(),
+        "Read" | "Edit" | "Write" => input
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .map(|s| truncate(s, 70).to_string())
+            .unwrap_or_default(),
         "Glob" | "Grep" => {
-            let pattern = input.get("pattern")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?");
-            let path = input.get("path")
-                .and_then(|v| v.as_str())
-                .unwrap_or(".");
+            let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
+            let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
             format!("'{}' in {}", truncate(pattern, 40), truncate(path, 30))
         }
-        "Task" => {
-            input.get("description")
-                .and_then(|v| v.as_str())
-                .map(|s| truncate(s, 60).to_string())
-                .unwrap_or_default()
-        }
-        "WebFetch" | "WebSearch" => {
-            input.get("url")
-                .or_else(|| input.get("query"))
-                .and_then(|v| v.as_str())
-                .map(|s| truncate(s, 60).to_string())
-                .unwrap_or_default()
-        }
+        "Task" => input
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| truncate(s, 60).to_string())
+            .unwrap_or_default(),
+        "WebFetch" | "WebSearch" => input
+            .get("url")
+            .or_else(|| input.get("query"))
+            .and_then(|v| v.as_str())
+            .map(|s| truncate(s, 60).to_string())
+            .unwrap_or_default(),
         _ => {
             // Generic: show first string field
             if let Some(obj) = input.as_object() {
@@ -538,7 +557,10 @@ fn spawn_ws_reader<S, R>(
 where
     S: SinkExt<Message> + Unpin + Send + 'static,
     S::Error: std::fmt::Display,
-    R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin + Send + 'static,
+    R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
+        + Unpin
+        + Send
+        + 'static,
 {
     tokio::spawn(async move {
         while let Some(msg) = ws_read.next().await {
@@ -594,9 +616,30 @@ where
                 return false;
             }
         }
-        ProxyMessage::PermissionResponse { request_id, allow, input, permissions, reason } => {
-            info!("→ [perm_response] {} allow={} permissions={} reason={:?}", request_id, allow, permissions.len(), reason);
-            if perm_tx.send(PermissionResponseData { request_id, allow, input, permissions, reason }).is_err() {
+        ProxyMessage::PermissionResponse {
+            request_id,
+            allow,
+            input,
+            permissions,
+            reason,
+        } => {
+            info!(
+                "→ [perm_response] {} allow={} permissions={} reason={:?}",
+                request_id,
+                allow,
+                permissions.len(),
+                reason
+            );
+            if perm_tx
+                .send(PermissionResponseData {
+                    request_id,
+                    allow,
+                    input,
+                    permissions,
+                    reason,
+                })
+                .is_err()
+            {
                 error!("Failed to send permission response to channel");
                 return false;
             }

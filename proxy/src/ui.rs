@@ -6,9 +6,18 @@ use std::io::Write;
 /// Print the startup banner
 pub fn print_startup_banner() {
     println!();
-    println!("{}", "╭──────────────────────────────────────╮".bright_blue());
-    println!("{}", "│       Claude Code Proxy Starting     │".bright_blue());
-    println!("{}", "╰──────────────────────────────────────╯".bright_blue());
+    println!(
+        "{}",
+        "╭──────────────────────────────────────╮".bright_blue()
+    );
+    println!(
+        "{}",
+        "│       Claude Code Proxy Starting     │".bright_blue()
+    );
+    println!(
+        "{}",
+        "╰──────────────────────────────────────╯".bright_blue()
+    );
     println!();
 }
 
@@ -32,9 +41,18 @@ pub fn print_session_info(session_name: &str, session_id: &str, backend_url: &st
 /// Print the "proxy ready" banner
 pub fn print_ready_banner() {
     println!();
-    println!("{}", "╭──────────────────────────────────────╮".bright_green());
-    println!("{}", "│         ✓ Proxy Ready                │".bright_green());
-    println!("{}", "╰──────────────────────────────────────╯".bright_green());
+    println!(
+        "{}",
+        "╭──────────────────────────────────────╮".bright_green()
+    );
+    println!(
+        "{}",
+        "│         ✓ Proxy Ready                │".bright_green()
+    );
+    println!(
+        "{}",
+        "╰──────────────────────────────────────╯".bright_green()
+    );
     println!();
     println!("  Session is now visible in the web interface.");
     println!("  Press {} to stop.", "Ctrl+C".bright_yellow());
