@@ -1060,9 +1060,9 @@ body {
 
 /* Clickable links in messages */
 .message-link {
-    color: var(--accent-color);
+    color: var(--accent);
     text-decoration: none;
-    border-bottom: 1px dotted var(--accent-color);
+    border-bottom: 1px dotted var(--accent);
     transition: all 0.15s ease;
 }
 
@@ -1082,7 +1082,7 @@ body {
     gap: 0.25rem;
     padding: 0.5rem 0.75rem;
     background: rgba(99, 102, 241, 0.1);
-    border-left: 3px solid var(--accent-color);
+    border-left: 3px solid var(--accent);
     border-radius: 0 4px 4px 0;
     margin: 0.5rem 0;
     font-family: var(--font-mono);
@@ -1100,7 +1100,7 @@ body {
 }
 
 .tool-name {
-    color: var(--accent-color);
+    color: var(--accent);
     font-weight: 600;
     flex-shrink: 0;
 }
@@ -2580,7 +2580,7 @@ body {
 }
 
 .permission-option .option-cursor {
-    color: var(--accent-color);
+    color: var(--accent);
     font-weight: bold;
     width: 1ch;
 }
@@ -2599,7 +2599,7 @@ body {
 }
 
 .permission-option.selected.remember .option-label {
-    color: var(--accent-color);
+    color: var(--accent);
 }
 
 .permission-option.selected.deny .option-label {
@@ -2615,7 +2615,7 @@ body {
 
 .permission-prompt:focus {
     outline: none;
-    border-color: var(--accent-color);
+    border-color: var(--accent);
 }
 
 .session-view-input {
