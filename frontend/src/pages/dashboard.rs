@@ -1,4 +1,4 @@
-use crate::components::{MessageRenderer, ProxyTokenSetup};
+use crate::components::{group_messages, MessageGroupRenderer, ProxyTokenSetup};
 use crate::utils;
 use futures_util::{SinkExt, StreamExt};
 use gloo_net::http::Request;
@@ -1221,8 +1221,8 @@ impl Component for SessionView {
             <div class="session-view">
                 <div class="session-view-messages" ref={self.messages_ref.clone()}>
                     {
-                        self.messages.iter().map(|json| {
-                            html! { <MessageRenderer json={json.clone()} /> }
+                        group_messages(&self.messages).into_iter().map(|group| {
+                            html! { <MessageGroupRenderer group={group} /> }
                         }).collect::<Html>()
                     }
                 </div>
