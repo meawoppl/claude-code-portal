@@ -1800,6 +1800,61 @@ body {
     color: white;
 }
 
+/* Parked session styling */
+.session-pill.parked {
+    opacity: 0.5;
+    border-style: dashed;
+}
+
+.session-pill.parked:hover {
+    opacity: 0.75;
+}
+
+.session-pill.parked.focused {
+    opacity: 0.7;
+}
+
+.pill-parked-badge {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.pill-park {
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 10px;
+    cursor: pointer;
+    border-radius: 50%;
+    opacity: 0;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.session-pill:hover .pill-park {
+    opacity: 1;
+}
+
+.pill-park:hover {
+    background: rgba(122, 162, 247, 0.2);
+    color: var(--accent);
+}
+
+.pill-park.active {
+    opacity: 1;
+    color: var(--accent);
+}
+
+.pill-park.active:hover {
+    background: rgba(158, 206, 106, 0.2);
+    color: var(--success);
+}
+
 /* ==========================================================================
    Session View - Main Terminal Area
    ========================================================================== */
