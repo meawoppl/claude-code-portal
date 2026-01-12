@@ -891,6 +891,19 @@ body {
     color: var(--text-secondary);
 }
 
+/* Message count badge for grouped assistant messages */
+.message-count {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: rgba(158, 206, 106, 0.3);
+    color: var(--success);
+    margin-left: 0.25rem;
+}
+
 /* System Message - Init */
 .system-message .message-subtype {
     color: var(--text-secondary);

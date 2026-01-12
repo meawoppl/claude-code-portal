@@ -2,6 +2,67 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use yew::prelude::*;
 
+/// A group of messages to render together
+#[derive(Debug, Clone, PartialEq)]
+pub enum MessageGroup {
+    /// A single non-assistant message
+    Single(String),
+    /// Multiple consecutive assistant messages grouped together
+    AssistantGroup(Vec<String>),
+}
+
+/// Check if a message should be grouped with assistant messages
+/// This includes assistant messages AND tool result messages (user messages containing only tool results)
+fn should_group_with_assistant(json: &str) -> bool {
+    match serde_json::from_str::<ClaudeMessage>(json) {
+        Ok(ClaudeMessage::Assistant(_)) => true,
+        Ok(ClaudeMessage::User(msg)) => {
+            // Check if this is a tool result message (no direct content, has message.content with tool_results)
+            if msg.content.is_some() {
+                return false; // Has direct text content = real user message
+            }
+            if let Some(message) = &msg.message {
+                if let Some(blocks) = &message.content {
+                    // If all blocks are tool results, group with assistant
+                    return !blocks.is_empty()
+                        && blocks
+                            .iter()
+                            .all(|b| matches!(b, ContentBlock::ToolResult { .. }));
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+/// Group consecutive assistant messages (and their tool results) together
+pub fn group_messages(messages: &[String]) -> Vec<MessageGroup> {
+    let mut groups = Vec::new();
+    let mut current_assistant_group: Vec<String> = Vec::new();
+
+    for json in messages {
+        if should_group_with_assistant(json) {
+            current_assistant_group.push(json.clone());
+        } else {
+            // Flush any pending assistant group
+            if !current_assistant_group.is_empty() {
+                groups.push(MessageGroup::AssistantGroup(std::mem::take(
+                    &mut current_assistant_group,
+                )));
+            }
+            groups.push(MessageGroup::Single(json.clone()));
+        }
+    }
+
+    // Don't forget trailing assistant messages
+    if !current_assistant_group.is_empty() {
+        groups.push(MessageGroup::AssistantGroup(current_assistant_group));
+    }
+
+    groups
+}
+
 /// Parsed message types from Claude Code
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -130,6 +191,110 @@ pub fn message_renderer(props: &MessageRendererProps) -> Html {
         Ok(ClaudeMessage::User(msg)) => render_user_message(&msg),
         Ok(ClaudeMessage::Error(msg)) => render_error_message(&msg),
         Ok(ClaudeMessage::Unknown) | Err(_) => render_raw_json(&props.json),
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub struct MessageGroupRendererProps {
+    pub group: MessageGroup,
+}
+
+#[function_component(MessageGroupRenderer)]
+pub fn message_group_renderer(props: &MessageGroupRendererProps) -> Html {
+    match &props.group {
+        MessageGroup::Single(json) => {
+            html! { <MessageRenderer json={json.clone()} /> }
+        }
+        MessageGroup::AssistantGroup(messages) => render_assistant_group(messages),
+    }
+}
+
+/// Render a group of consecutive assistant messages (and tool results) in a single frame
+fn render_assistant_group(messages: &[String]) -> Html {
+    // Parse all messages to extract content and sum tokens
+    let mut all_blocks: Vec<ContentBlock> = Vec::new();
+    let mut total_output_tokens: u64 = 0;
+    let mut total_input_tokens: u64 = 0;
+    let mut total_cache_read: u64 = 0;
+    let mut total_cache_created: u64 = 0;
+    let mut model_name = String::new();
+
+    for json in messages {
+        match serde_json::from_str::<ClaudeMessage>(json) {
+            Ok(ClaudeMessage::Assistant(msg)) => {
+                if let Some(message) = &msg.message {
+                    // Collect content blocks
+                    if let Some(blocks) = &message.content {
+                        all_blocks.extend(blocks.clone());
+                    }
+                    // Sum up usage
+                    if let Some(usage) = &message.usage {
+                        total_output_tokens += usage.output_tokens.unwrap_or(0);
+                        total_input_tokens += usage.input_tokens.unwrap_or(0);
+                        total_cache_read += usage.cache_read_input_tokens.unwrap_or(0);
+                        total_cache_created += usage.cache_creation_input_tokens.unwrap_or(0);
+                    }
+                    // Use the model from the first message that has one
+                    if model_name.is_empty() {
+                        if let Some(m) = &message.model {
+                            model_name = m.clone();
+                        }
+                    }
+                }
+            }
+            Ok(ClaudeMessage::User(msg)) => {
+                // Tool result messages - extract content blocks
+                if let Some(message) = &msg.message {
+                    if let Some(blocks) = &message.content {
+                        all_blocks.extend(blocks.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let count = messages.len();
+    let usage_tooltip = format!(
+        "Input: {} | Output: {} | Cache read: {} | Cache created: {} | {} messages",
+        total_input_tokens, total_output_tokens, total_cache_read, total_cache_created, count
+    );
+
+    html! {
+        <div class="claude-message assistant-message">
+            <div class="message-header">
+                <span class="message-type-badge assistant">{ "Assistant" }</span>
+                {
+                    if count > 1 {
+                        html! { <span class="message-count" title={format!("{} consecutive messages", count)}>{ format!("{} messages", count) }</span> }
+                    } else {
+                        html! {}
+                    }
+                }
+                {
+                    if let Some(short_name) = shorten_model_name(&model_name) {
+                        html! { <span class="model-name" title={model_name.clone()}>{ short_name }</span> }
+                    } else {
+                        html! {}
+                    }
+                }
+                {
+                    if total_output_tokens > 0 {
+                        html! {
+                            <span class="usage-badge" title={usage_tooltip}>
+                                <span class="token-count">{ format!("{}", total_output_tokens) }</span>
+                                <span class="token-label">{ "tokens" }</span>
+                            </span>
+                        }
+                    } else {
+                        html! {}
+                    }
+                }
+            </div>
+            <div class="message-body">
+                { render_content_blocks(&all_blocks) }
+            </div>
+        </div>
     }
 }
 
