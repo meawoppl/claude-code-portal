@@ -96,9 +96,10 @@ async fn main() -> Result<()> {
     // Resolve session (new or resume)
     let (session_id, session_name, resuming) = resolve_session(&args, &cwd)?;
 
-    // Resolve backend URL: CLI arg > config (required, no default)
+    // Resolve backend URL: CLI arg > per-directory config > global default
     let backend_url = args.backend_url.clone()
         .or_else(|| config.get_backend_url(&cwd).map(|s| s.to_string()))
+        .or_else(|| config.preferences.default_backend_url.clone())
         .ok_or_else(|| anyhow::anyhow!(
             "No backend URL configured. Run with --init <URL> first, or specify --backend-url explicitly."
         ))?;
