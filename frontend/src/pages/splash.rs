@@ -75,6 +75,27 @@ pub fn splash_page() -> Html {
                     <span class="google-icon">{ "G" }</span>
                     { " Sign in with Google" }
                 </button>
+
+                <div class="splash-footer">
+                    <a
+                        href="https://github.com/meawoppl/cc-proxy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="footer-link"
+                    >
+                        <span class="github-icon">{ "" }</span>
+                        { "GitHub" }
+                    </a>
+                    <a
+                        href="https://github.com/meawoppl/cc-proxy/issues/new"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="footer-link bug-report"
+                    >
+                        <span class="bug-icon">{ "🐛" }</span>
+                        { "Report a Bug" }
+                    </a>
+                </div>
             </div>
         </div>
     }

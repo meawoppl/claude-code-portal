@@ -167,6 +167,43 @@ body {
     font-weight: bold;
 }
 
+.splash-footer {
+    margin-top: 2rem;
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.footer-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: color 0.2s, background 0.2s;
+}
+
+.footer-link:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.footer-link.bug-report:hover {
+    color: var(--warning);
+}
+
+.github-icon {
+    font-size: 1.1rem;
+}
+
+.bug-icon {
+    font-size: 1rem;
+}
+
 /* Dashboard */
 .dashboard-container {
     min-height: 100vh;
