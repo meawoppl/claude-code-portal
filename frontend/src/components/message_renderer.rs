@@ -1252,11 +1252,12 @@ fn format_duration(ms: u64) -> String {
     }
 }
 
-/// Represents a segment of text that may or may not be a URL
+/// Represents a segment of text that may be plain text, a URL, or formatted
 #[derive(Debug, Clone, PartialEq)]
 pub enum TextSegment {
     Text(String),
     Url(String),
+    Bold(String),
 }
 
 /// Characters that can appear in a URL path/query but shouldn't end a URL
@@ -1476,6 +1477,12 @@ fn merge_text_segments(segments: Vec<TextSegment>) -> Vec<TextSegment> {
                 }
                 result.push(TextSegment::Url(u));
             }
+            TextSegment::Bold(b) => {
+                if !current_text.is_empty() {
+                    result.push(TextSegment::Text(std::mem::take(&mut current_text)));
+                }
+                result.push(TextSegment::Bold(b));
+            }
         }
     }
 
@@ -1486,9 +1493,58 @@ fn merge_text_segments(segments: Vec<TextSegment>) -> Vec<TextSegment> {
     result
 }
 
-/// Render text with URLs converted to clickable links
+/// Parse **bold** markdown in text segments
+fn parse_bold(segments: Vec<TextSegment>) -> Vec<TextSegment> {
+    let mut result = Vec::new();
+
+    for segment in segments {
+        match segment {
+            TextSegment::Text(text) => {
+                // Parse bold markers in plain text
+                let mut remaining = text.as_str();
+                while !remaining.is_empty() {
+                    if let Some(start) = remaining.find("**") {
+                        // Add text before the bold marker
+                        if start > 0 {
+                            result.push(TextSegment::Text(remaining[..start].to_string()));
+                        }
+
+                        // Find the closing **
+                        let after_start = &remaining[start + 2..];
+                        if let Some(end) = after_start.find("**") {
+                            // Found complete bold segment
+                            let bold_text = &after_start[..end];
+                            if !bold_text.is_empty() && !bold_text.contains('\n') {
+                                result.push(TextSegment::Bold(bold_text.to_string()));
+                            } else {
+                                // Empty or multiline bold, treat as text
+                                result.push(TextSegment::Text(format!("**{}**", bold_text)));
+                            }
+                            remaining = &after_start[end + 2..];
+                        } else {
+                            // No closing **, treat as regular text
+                            result.push(TextSegment::Text(remaining.to_string()));
+                            break;
+                        }
+                    } else {
+                        // No more bold markers
+                        result.push(TextSegment::Text(remaining.to_string()));
+                        break;
+                    }
+                }
+            }
+            // Preserve URL and Bold segments as-is
+            other => result.push(other),
+        }
+    }
+
+    result
+}
+
+/// Render text with URLs converted to clickable links and **bold** formatting
 pub fn linkify_text(text: &str) -> Html {
     let segments = parse_urls(text);
+    let segments = parse_bold(segments);
 
     html! {
         <>
@@ -1500,6 +1556,9 @@ pub fn linkify_text(text: &str) -> Html {
                             <a href={url.clone()} target="_blank" rel="noopener noreferrer" class="message-link">
                                 { &url }
                             </a>
+                        },
+                        TextSegment::Bold(t) => html! {
+                            <strong class="message-bold">{ t }</strong>
                         },
                     }
                 }).collect::<Html>()
@@ -1760,6 +1819,168 @@ mod tests {
             vec![
                 TextSegment::Text("API docs: ".to_string()),
                 TextSegment::Url("https://api.example.com/v1/docs".to_string()),
+            ]
+        );
+    }
+
+    // Bold markdown tests
+
+    #[test]
+    fn test_bold_simple() {
+        let segments = parse_urls("This is **bold** text");
+        let result = parse_bold(segments);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("This is ".to_string()),
+                TextSegment::Bold("bold".to_string()),
+                TextSegment::Text(" text".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bold_at_start() {
+        let segments = parse_urls("**Bold** at start");
+        let result = parse_bold(segments);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Bold("Bold".to_string()),
+                TextSegment::Text(" at start".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bold_at_end() {
+        let segments = parse_urls("Text ends **bold**");
+        let result = parse_bold(segments);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Text ends ".to_string()),
+                TextSegment::Bold("bold".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multiple_bold() {
+        let segments = parse_urls("**first** and **second** bold");
+        let result = parse_bold(segments);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Bold("first".to_string()),
+                TextSegment::Text(" and ".to_string()),
+                TextSegment::Bold("second".to_string()),
+                TextSegment::Text(" bold".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bold_unclosed() {
+        let segments = parse_urls("This **unclosed bold");
+        let result = parse_bold(segments);
+        // Unclosed bold: text before ** is separate, then rest as text
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("This ".to_string()),
+                TextSegment::Text("This **unclosed bold".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bold_empty() {
+        let segments = parse_urls("Empty **** bold");
+        let result = parse_bold(segments);
+        // Empty bold (****) is preserved as text
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Empty ".to_string()),
+                TextSegment::Text("****".to_string()),
+                TextSegment::Text(" bold".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bold_with_newline() {
+        let segments = parse_urls("Bold with **new\nline** inside");
+        let result = parse_bold(segments);
+        // Bold with newline is treated as text (not rendered as bold)
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Bold with ".to_string()),
+                TextSegment::Text("**new\nline**".to_string()),
+                TextSegment::Text(" inside".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bold_with_url() {
+        let segments = parse_urls("Check **this** at https://example.com for **more**");
+        let result = parse_bold(segments);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("Check ".to_string()),
+                TextSegment::Bold("this".to_string()),
+                TextSegment::Text(" at ".to_string()),
+                TextSegment::Url("https://example.com".to_string()),
+                TextSegment::Text(" for ".to_string()),
+                TextSegment::Bold("more".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_no_bold() {
+        let segments = parse_urls("No bold formatting here");
+        let result = parse_bold(segments);
+        assert_eq!(
+            result,
+            vec![TextSegment::Text("No bold formatting here".to_string()),]
+        );
+    }
+
+    #[test]
+    fn test_only_bold() {
+        let segments = parse_urls("**everything**");
+        let result = parse_bold(segments);
+        assert_eq!(result, vec![TextSegment::Bold("everything".to_string()),]);
+    }
+
+    #[test]
+    fn test_bold_with_spaces() {
+        let segments = parse_urls("This is **bold with spaces** here");
+        let result = parse_bold(segments);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Text("This is ".to_string()),
+                TextSegment::Bold("bold with spaces".to_string()),
+                TextSegment::Text(" here".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_bold_adjacent() {
+        let segments = parse_urls("**first****second**");
+        let result = parse_bold(segments);
+        assert_eq!(
+            result,
+            vec![
+                TextSegment::Bold("first".to_string()),
+                TextSegment::Bold("second".to_string()),
             ]
         );
     }
