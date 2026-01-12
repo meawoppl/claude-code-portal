@@ -55,6 +55,9 @@ pub fn handle_init(
     // Save the backend URL to directory config
     config.set_backend_url(cwd, &backend_url);
 
+    // Also set as the global default so it works in other directories
+    config.preferences.default_backend_url = Some(backend_url.clone());
+
     // Save session name prefix if provided
     if let Some(prefix) = session_prefix {
         config.set_session_prefix(cwd, &prefix);
