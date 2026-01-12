@@ -1677,6 +1677,71 @@ body {
     color: var(--error);
 }
 
+.error-type {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.15rem 0.4rem;
+    background: rgba(247, 118, 142, 0.15);
+    border-radius: 3px;
+}
+
+/* Overload/Busy Message */
+.overload-message {
+    border-left: 3px solid #e0af68;
+    background: rgba(224, 175, 104, 0.08);
+}
+
+.message-type-badge.overload {
+    background: rgba(224, 175, 104, 0.2);
+    color: #e0af68;
+}
+
+.overload-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.overload-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.overload-text {
+    flex: 1;
+}
+
+.overload-title {
+    font-weight: 600;
+    color: #e0af68;
+    margin-bottom: 0.25rem;
+}
+
+.overload-description {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.overload-details {
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+}
+
+.overload-details .request-id {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
 /* Raw Message */
 .raw-message .raw-json {
     font-family: 'Courier New', monospace;
