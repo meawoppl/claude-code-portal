@@ -94,9 +94,48 @@ pub struct UserMessageContent {
     pub content: Option<Vec<ContentBlock>>,
 }
 
+/// Inner error details from API errors
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ErrorDetails {
+    #[serde(rename = "type")]
+    pub error_type: Option<String>,
+    pub message: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ErrorMessage {
+    /// Direct message field (for simple errors)
     pub message: Option<String>,
+    /// Nested error object (for API errors like overload)
+    pub error: Option<ErrorDetails>,
+    /// Request ID for API errors
+    pub request_id: Option<String>,
+}
+
+impl ErrorMessage {
+    /// Check if this is an overload error
+    pub fn is_overload(&self) -> bool {
+        self.error
+            .as_ref()
+            .and_then(|e| e.error_type.as_deref())
+            .map(|t| t == "overloaded_error")
+            .unwrap_or(false)
+    }
+
+    /// Get the display message
+    pub fn display_message(&self) -> &str {
+        // Try nested error message first, then direct message
+        self.error
+            .as_ref()
+            .and_then(|e| e.message.as_deref())
+            .or(self.message.as_deref())
+            .unwrap_or("Unknown error")
+    }
+
+    /// Get the error type for display
+    pub fn error_type(&self) -> Option<&str> {
+        self.error.as_ref().and_then(|e| e.error_type.as_deref())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -361,15 +400,55 @@ fn render_user_message(msg: &UserMessage) -> Html {
 }
 
 fn render_error_message(msg: &ErrorMessage) -> Html {
-    let message = msg.message.as_deref().unwrap_or("Unknown error");
+    // Check for special error types
+    if msg.is_overload() {
+        return render_overload_error(msg);
+    }
+
+    let message = msg.display_message();
+    let error_type = msg.error_type();
 
     html! {
         <div class="claude-message error-message-display">
             <div class="message-header">
                 <span class="message-type-badge result error">{ "Error" }</span>
+                {
+                    if let Some(err_type) = error_type {
+                        html! { <span class="error-type">{ err_type }</span> }
+                    } else {
+                        html! {}
+                    }
+                }
             </div>
             <div class="message-body">
                 <div class="error-text">{ message }</div>
+            </div>
+        </div>
+    }
+}
+
+/// Render a special message for API overload errors
+fn render_overload_error(msg: &ErrorMessage) -> Html {
+    let request_id = msg.request_id.as_deref().unwrap_or("unknown");
+
+    html! {
+        <div class="claude-message overload-message">
+            <div class="message-header">
+                <span class="message-type-badge overload">{ "API Busy" }</span>
+            </div>
+            <div class="message-body">
+                <div class="overload-content">
+                    <div class="overload-icon">{ "⏳" }</div>
+                    <div class="overload-text">
+                        <div class="overload-title">{ "Claude API is temporarily overloaded" }</div>
+                        <div class="overload-description">
+                            { "The API is experiencing high demand. Claude Code will automatically retry the request. Please wait a moment." }
+                        </div>
+                    </div>
+                </div>
+                <div class="overload-details">
+                    <span class="request-id" title="Request ID for debugging">{ format!("Request: {}", request_id) }</span>
+                </div>
             </div>
         </div>
     }
@@ -1983,5 +2062,57 @@ mod tests {
                 TextSegment::Bold("second".to_string()),
             ]
         );
+    }
+
+    // Error message tests
+
+    #[test]
+    fn test_error_message_overload_detection() {
+        let msg = ErrorMessage {
+            message: None,
+            error: Some(ErrorDetails {
+                error_type: Some("overloaded_error".to_string()),
+                message: Some("Overloaded".to_string()),
+            }),
+            request_id: Some("req_123".to_string()),
+        };
+        assert!(msg.is_overload());
+        assert_eq!(msg.display_message(), "Overloaded");
+        assert_eq!(msg.error_type(), Some("overloaded_error"));
+    }
+
+    #[test]
+    fn test_error_message_regular_error() {
+        let msg = ErrorMessage {
+            message: Some("Something went wrong".to_string()),
+            error: None,
+            request_id: None,
+        };
+        assert!(!msg.is_overload());
+        assert_eq!(msg.display_message(), "Something went wrong");
+        assert_eq!(msg.error_type(), None);
+    }
+
+    #[test]
+    fn test_error_message_api_error() {
+        let msg = ErrorMessage {
+            message: None,
+            error: Some(ErrorDetails {
+                error_type: Some("invalid_request_error".to_string()),
+                message: Some("Invalid API key".to_string()),
+            }),
+            request_id: Some("req_456".to_string()),
+        };
+        assert!(!msg.is_overload());
+        assert_eq!(msg.display_message(), "Invalid API key");
+        assert_eq!(msg.error_type(), Some("invalid_request_error"));
+    }
+
+    #[test]
+    fn test_error_message_empty() {
+        let msg = ErrorMessage::default();
+        assert!(!msg.is_overload());
+        assert_eq!(msg.display_message(), "Unknown error");
+        assert_eq!(msg.error_type(), None);
     }
 }
