@@ -311,39 +311,92 @@ async fn resolve_auth_token(
     Ok(Some(token))
 }
 
+/// Result from stderr monitoring indicating session not found
+struct SessionNotFound;
+
 /// Start Claude and run the proxy session
-async fn run_proxy_session(config: SessionConfig) -> Result<()> {
-    ui::print_status("Starting Claude CLI...");
+async fn run_proxy_session(mut config: SessionConfig) -> Result<()> {
+    loop {
+        ui::print_status("Starting Claude CLI...");
 
-    let mut claude_client = create_claude_client(&config).await?;
+        let mut claude_client = create_claude_client(&config).await?;
 
-    ui::print_started();
+        ui::print_started();
 
-    // Log stderr in background
-    if let Some(mut stderr) = claude_client.take_stderr() {
-        tokio::spawn(async move {
-            let mut line = String::new();
-            while let Ok(n) = stderr.read_line(&mut line).await {
-                if n == 0 {
-                    break;
+        // Channel to signal session not found from stderr reader
+        let (session_not_found_tx, mut session_not_found_rx) =
+            tokio::sync::mpsc::unbounded_channel::<()>();
+
+        // Log stderr in background and detect "No conversation found" error
+        if let Some(mut stderr) = claude_client.take_stderr() {
+            tokio::spawn(async move {
+                let mut line = String::new();
+                while let Ok(n) = stderr.read_line(&mut line).await {
+                    if n == 0 {
+                        break;
+                    }
+                    let trimmed = line.trim();
+                    warn!("Claude stderr: {}", trimmed);
+
+                    // Check for the session not found error
+                    if trimmed.contains("No conversation found") {
+                        let _ = session_not_found_tx.send(());
+                    }
+                    line.clear();
                 }
-                warn!("Claude stderr: {}", line.trim());
-                line.clear();
+            });
+        }
+
+        // Create input channel (shared across reconnections)
+        let (input_tx, mut input_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
+        // Run the connection loop, but also watch for session not found signal
+        let session_not_found = tokio::select! {
+            result = session::run_connection_loop(&config, &mut claude_client, input_tx, &mut input_rx) => {
+                // Normal completion or error
+                info!("Proxy shutting down");
+                let _ = claude_client.shutdown().await;
+                return result;
             }
-        });
+            _ = session_not_found_rx.recv() => {
+                // Session not found - need to restart with fresh session
+                warn!("Local Claude session not found, will start fresh session");
+                let _ = claude_client.shutdown().await;
+                SessionNotFound
+            }
+        };
+
+        // Only handle session not found if we were trying to resume
+        let SessionNotFound = session_not_found;
+        if !config.resuming {
+            // Not resuming - just exit (shouldn't happen, but handle gracefully)
+            return Ok(());
+        }
+
+        // Create a new session and update config
+        let new_session_id = Uuid::new_v4();
+        info!(
+            "Previous session {} not found locally, starting fresh session {}",
+            config.session_id, new_session_id
+        );
+        ui::print_session_not_found(&config.session_id.to_string());
+
+        // Update the directory_sessions config with the new session ID
+        let (mut proxy_config, lock) = ProxyConfig::load_locked()
+            .context("Failed to load config with lock for session update")?;
+
+        let dir_session =
+            ProxyConfig::create_directory_session(new_session_id, config.session_name.clone());
+        proxy_config.set_directory_session(config.working_directory.clone(), dir_session);
+        proxy_config.save_with_lock(&lock)?;
+
+        // Update the session config for retry
+        config.session_id = new_session_id;
+        config.resuming = false;
+
+        info!("Retrying with new session ID: {}", new_session_id);
+        // Loop will continue and start fresh session
     }
-
-    // Create input channel (shared across reconnections)
-    let (input_tx, mut input_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-
-    // Run the connection loop
-    let result =
-        session::run_connection_loop(&config, &mut claude_client, input_tx, &mut input_rx).await;
-
-    info!("Proxy shutting down");
-    let _ = claude_client.shutdown().await;
-
-    result
 }
 
 /// Create the Claude async client

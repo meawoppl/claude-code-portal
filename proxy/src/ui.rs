@@ -174,6 +174,21 @@ pub fn print_init_complete(email: &str, backend_url: &str) {
     );
 }
 
+/// Print session not found message (when resuming a session that doesn't exist locally)
+pub fn print_session_not_found(session_id: &str) {
+    println!();
+    println!(
+        "  {} Previous session {} not found locally",
+        "⚠".bright_yellow(),
+        session_id[..8].bright_cyan()
+    );
+    println!(
+        "  {} Starting a fresh session instead...",
+        "→".bright_blue()
+    );
+    println!();
+}
+
 /// Print update complete message
 pub fn print_update_complete() {
     println!();
