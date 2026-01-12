@@ -18,45 +18,97 @@ use uuid::Uuid;
 #[derive(Parser, Debug)]
 #[command(name = "claude-proxy")]
 #[command(about = "Wrapper for Claude CLI that proxies sessions to web interface")]
+#[command(
+    long_about = "A proxy wrapper for Claude Code CLI that forwards your terminal sessions \
+to a web interface for remote viewing and collaboration.\n\n\
+QUICK START:\n  \
+1. Get a setup token from the web interface\n  \
+2. Run: claude-proxy --init <token-url>\n  \
+3. Start coding: claude-proxy [claude args]\n\n\
+CONFIG:\n  \
+Configuration is stored in ~/.config/cc-proxy/config.json and includes\n  \
+the backend URL and authentication tokens per working directory."
+)]
+#[command(after_help = "EXAMPLES:\n  \
+  # First-time setup with token from web UI\n  \
+  claude-proxy --init https://myserver.com/p/abc123\n\n  \
+  # Start a new session in current directory\n  \
+  claude-proxy\n\n  \
+  # Start with a custom session name\n  \
+  claude-proxy --session-name \"feature-xyz\"\n\n  \
+  # Force a fresh session (don't resume previous)\n  \
+  claude-proxy --new-session\n\n  \
+  # Pass arguments through to claude CLI\n  \
+  claude-proxy --model sonnet -- \"explain this code\"\n\n  \
+  # Re-authenticate if token expired\n  \
+  claude-proxy --reauth")]
 struct Args {
-    /// Initialize with a token URL from the web interface
-    /// Format: https://server.com/p/{base64_config} or just the JWT token
-    #[arg(long)]
+    /// Initialize proxy with a setup token from the web interface.
+    ///
+    /// The token URL is displayed in the web UI when you click "Add Session".
+    /// This saves the backend URL and auth token to your local config.
+    #[arg(long, value_name = "TOKEN_URL")]
     init: Option<String>,
 
-    /// Backend server URL (overrides URL from --init if provided)
-    #[arg(long)]
+    /// Override the backend server URL.
+    ///
+    /// Normally set via --init, but can be overridden for testing or
+    /// connecting to a different server temporarily.
+    #[arg(long, value_name = "URL")]
     backend_url: Option<String>,
 
-    /// Session authentication token (skips OAuth if provided)
-    #[arg(long)]
+    /// Provide authentication token directly (advanced).
+    ///
+    /// Skips the OAuth device flow. Useful for CI/CD or scripted usage.
+    /// The token is a JWT issued by the backend server.
+    #[arg(long, value_name = "JWT")]
     auth_token: Option<String>,
 
-    /// Session name (auto-generated if not provided)
-    #[arg(long)]
+    /// Custom name for this session.
+    ///
+    /// If not provided, generates a name from hostname and timestamp.
+    /// Session names appear in the web interface for identification.
+    #[arg(long, value_name = "NAME")]
     session_name: Option<String>,
 
-    /// Force starting a new session instead of resuming
+    /// Start a fresh session instead of resuming the previous one.
+    ///
+    /// By default, claude-proxy resumes your last session in this directory.
+    /// Use this flag to start with a clean slate.
     #[arg(long)]
     new_session: bool,
 
-    /// Force re-authentication even if cached
+    /// Force re-authentication with the backend server.
+    ///
+    /// Use this if your cached auth token has expired or you need
+    /// to switch accounts. Triggers the OAuth device flow again.
     #[arg(long)]
     reauth: bool,
 
-    /// Logout (remove cached authentication for this directory)
+    /// Remove cached authentication for this directory.
+    ///
+    /// Clears the saved auth token for the current working directory.
+    /// You'll need to re-authenticate on next run.
     #[arg(long)]
     logout: bool,
 
-    /// Development mode - skip authentication entirely
+    /// Development mode - bypass authentication entirely.
+    ///
+    /// Only works if the backend server is also running in dev mode.
+    /// Useful for local development and testing.
     #[arg(long)]
     dev: bool,
 
-    /// Skip auto-update check on startup
+    /// Skip the automatic update check on startup.
+    ///
+    /// By default, claude-proxy checks for updates from the backend
+    /// and auto-updates if a newer version is available.
     #[arg(long)]
     no_update: bool,
 
-    /// All remaining arguments to forward to claude CLI
+    /// Arguments to pass through to the claude CLI.
+    ///
+    /// Everything after -- or unrecognized flags are forwarded to claude.
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     claude_args: Vec<String>,
 }
