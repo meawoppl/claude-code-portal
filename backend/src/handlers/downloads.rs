@@ -60,6 +60,7 @@ echo "  3. Start a session: claude-proxy"
         r##"#!/bin/bash
 # CC-Proxy Installer
 # This script downloads and installs the claude-proxy binary
+# If already installed, skips download and just runs init
 
 set -e
 
@@ -71,6 +72,14 @@ DOWNLOAD_URL="{base_url}/api/download/proxy"
 echo "CC-Proxy Installer"
 echo "=================="
 echo ""
+
+# Check if binary already exists
+if [ -x "${{BIN_PATH}}" ]; then
+    echo "claude-proxy is already installed at: ${{BIN_PATH}}"
+    echo ""
+{init_section}
+    exit 0
+fi
 
 # Create config directory
 mkdir -p "${{CONFIG_DIR}}"
