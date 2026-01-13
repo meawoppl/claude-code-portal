@@ -118,6 +118,10 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             // Register in memory
                             session_manager.register_session(key.clone(), tx.clone());
 
+                            // Track registration result for RegisterAck
+                            let mut registration_success = false;
+                            let mut registration_error: Option<String> = None;
+
                             // Persist to database
                             if let Ok(mut conn) = db_pool.get() {
                                 use crate::schema::sessions;
@@ -131,25 +135,34 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
 
                                 if let Some(existing_session) = existing {
                                     // Update existing session to active
-                                    let _ =
-                                        diesel::update(sessions::table.find(existing_session.id))
-                                            .set((
-                                                sessions::status.eq("active"),
-                                                sessions::last_activity.eq(diesel::dsl::now),
-                                                sessions::working_directory.eq(
-                                                    if working_directory.is_empty() {
-                                                        None
-                                                    } else {
-                                                        Some(&working_directory)
-                                                    },
-                                                ),
-                                            ))
-                                            .execute(&mut conn);
-                                    db_session_id = Some(existing_session.id);
-                                    info!(
-                                        "Session reactivated in DB: {} ({})",
-                                        session_name, claude_session_id
-                                    );
+                                    match diesel::update(sessions::table.find(existing_session.id))
+                                        .set((
+                                            sessions::status.eq("active"),
+                                            sessions::last_activity.eq(diesel::dsl::now),
+                                            sessions::working_directory.eq(
+                                                if working_directory.is_empty() {
+                                                    None
+                                                } else {
+                                                    Some(&working_directory)
+                                                },
+                                            ),
+                                        ))
+                                        .execute(&mut conn)
+                                    {
+                                        Ok(_) => {
+                                            db_session_id = Some(existing_session.id);
+                                            registration_success = true;
+                                            info!(
+                                                "Session reactivated in DB: {} ({})",
+                                                session_name, claude_session_id
+                                            );
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to reactivate session: {}", e);
+                                            registration_error =
+                                                Some("Failed to reactivate session".to_string());
+                                        }
+                                    }
                                 } else if resuming {
                                     // Trying to resume but session doesn't exist in DB
                                     // This can happen if the session was deleted or is on a different backend
@@ -177,6 +190,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                         {
                                             Ok(session) => {
                                                 db_session_id = Some(session.id);
+                                                registration_success = true;
                                                 info!(
                                                     "Session created in DB: {} ({})",
                                                     session_name, claude_session_id
@@ -184,8 +198,16 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                             }
                                             Err(e) => {
                                                 error!("Failed to persist session: {}", e);
+                                                registration_error =
+                                                    Some("Failed to persist session".to_string());
                                             }
                                         }
+                                    } else {
+                                        warn!("No valid user_id for session, not persisting to DB");
+                                        registration_error = Some(
+                                            "Authentication failed - please re-authenticate"
+                                                .to_string(),
+                                        );
                                     }
                                 } else {
                                     // Create new session with the provided session_id as primary key
@@ -212,6 +234,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                         {
                                             Ok(session) => {
                                                 db_session_id = Some(session.id);
+                                                registration_success = true;
                                                 info!(
                                                     "Session persisted to DB: {} ({})",
                                                     session_name, claude_session_id
@@ -219,17 +242,34 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                             }
                                             Err(e) => {
                                                 error!("Failed to persist session: {}", e);
+                                                registration_error =
+                                                    Some("Failed to persist session".to_string());
                                             }
                                         }
                                     } else {
                                         warn!("No valid user_id for session, not persisting to DB");
+                                        registration_error = Some(
+                                            "Authentication failed - please re-authenticate"
+                                                .to_string(),
+                                        );
                                     }
                                 }
+                            } else {
+                                error!("Failed to get database connection");
+                                registration_error = Some("Database connection failed".to_string());
                             }
 
+                            // Send RegisterAck to proxy
+                            let ack = ProxyMessage::RegisterAck {
+                                success: registration_success,
+                                session_id: claude_session_id,
+                                error: registration_error,
+                            };
+                            let _ = tx.send(ack);
+
                             info!(
-                                "Session registered: {} ({})",
-                                session_name, claude_session_id
+                                "Session registered: {} ({}) - success: {}",
+                                session_name, claude_session_id, registration_success
                             );
                         }
                         ProxyMessage::ClaudeOutput { content } => {

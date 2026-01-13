@@ -365,22 +365,30 @@ pub fn dashboard_page() -> Html {
         })
     };
 
-    // Get active sessions only for the rail, sorted by repo name then hostname
-    let mut active_sessions: Vec<_> = sessions
-        .iter()
-        .filter(|s| s.status.as_str() == "active")
-        .cloned()
-        .collect();
+    // Get all sessions for the rail, sorted by status (active first), then repo name, then hostname
+    let mut active_sessions: Vec<_> = sessions.iter().cloned().collect();
 
-    // Sort by repo name (project) first, then hostname
+    // Sort by: active status first, then repo name, then hostname
     active_sessions.sort_by(|a, b| {
-        let (project_a, hostname_a) = get_session_display_parts(a);
-        let (project_b, hostname_b) = get_session_display_parts(b);
-        let repo_a = project_a.as_deref().unwrap_or("");
-        let repo_b = project_b.as_deref().unwrap_or("");
-        match repo_a.to_lowercase().cmp(&repo_b.to_lowercase()) {
-            std::cmp::Ordering::Equal => hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase()),
-            other => other,
+        // Active sessions come before disconnected/inactive
+        let a_is_active = a.status.as_str() == "active";
+        let b_is_active = b.status.as_str() == "active";
+        match (a_is_active, b_is_active) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => {
+                // Same status - sort by repo name then hostname
+                let (project_a, hostname_a) = get_session_display_parts(a);
+                let (project_b, hostname_b) = get_session_display_parts(b);
+                let repo_a = project_a.as_deref().unwrap_or("");
+                let repo_b = project_b.as_deref().unwrap_or("");
+                match repo_a.to_lowercase().cmp(&repo_b.to_lowercase()) {
+                    std::cmp::Ordering::Equal => {
+                        hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
+                    }
+                    other => other,
+                }
+            }
         }
     });
 
@@ -690,12 +698,14 @@ fn session_rail(props: &SessionRailProps) -> Html {
                     };
 
                     let in_nav_mode = props.nav_mode;
+                    let is_status_disconnected = session.status.as_str() != "active";
                     let pill_class = classes!(
                         "session-pill",
                         if is_focused { Some("focused") } else { None },
                         if is_awaiting { Some("awaiting") } else { None },
                         if is_parked { Some("parked") } else { None },
                         if in_nav_mode { Some("nav-mode") } else { None },
+                        if is_status_disconnected { Some("status-disconnected") } else { None },
                     );
 
                     let (project, hostname) = get_session_display_parts(session);

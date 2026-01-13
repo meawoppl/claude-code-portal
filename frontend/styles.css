@@ -2404,6 +2404,29 @@ body {
     color: white;
 }
 
+/* Disconnected session (DB status) styling */
+.session-pill.status-disconnected {
+    opacity: 0.6;
+    background: rgba(127, 132, 156, 0.1);
+    border-color: var(--text-secondary);
+}
+
+.session-pill.status-disconnected:hover {
+    opacity: 0.8;
+    background: rgba(127, 132, 156, 0.15);
+}
+
+.session-pill.status-disconnected.focused {
+    opacity: 0.85;
+    border-color: var(--text-secondary);
+    box-shadow: 0 0 0 2px rgba(127, 132, 156, 0.3);
+}
+
+.session-pill.status-disconnected .pill-project,
+.session-pill.status-disconnected .pill-hostname {
+    color: var(--text-secondary);
+}
+
 /* Parked session styling */
 .session-pill.parked {
     opacity: 0.5;

@@ -75,6 +75,17 @@ pub enum ProxyMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
+
+    /// Backend acknowledgment of session registration
+    RegisterAck {
+        /// Whether registration succeeded
+        success: bool,
+        /// The session ID that was registered
+        session_id: Uuid,
+        /// Error message if registration failed
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -128,6 +128,25 @@ pub fn print_failed() {
     println!("{}", "failed".bright_red());
 }
 
+/// Print registration failure with error message
+pub fn print_registration_failed(error: &str) {
+    println!("{}", "failed".bright_red());
+    println!(
+        "  {} Registration error: {}",
+        "✗".bright_red(),
+        error.bright_red()
+    );
+}
+
+/// Print hint to re-authenticate
+pub fn print_reauth_hint() {
+    println!(
+        "  {} Run: {} to re-authenticate",
+        "→".bright_blue(),
+        "claude-proxy logout && claude-proxy login".bright_cyan()
+    );
+}
+
 /// Print connection restored message
 pub fn print_connection_restored() {
     println!("  {} Connection restored", "✓".bright_green());
