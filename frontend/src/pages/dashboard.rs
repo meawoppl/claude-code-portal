@@ -336,32 +336,14 @@ pub fn dashboard_page() -> Html {
         })
     };
 
-    // Auto-advance after sending message
+    // Update awaiting state after sending message (no auto-advance)
     let on_message_sent = {
-        let focused_index = focused_index.clone();
-        let sessions = sessions.clone();
         let awaiting_sessions = awaiting_sessions.clone();
         Callback::from(move |current_session_id: Uuid| {
             // Remove current from awaiting since we just sent a message
             let mut set = (*awaiting_sessions).clone();
             set.remove(&current_session_id);
-            awaiting_sessions.set(set.clone());
-
-            // Find next waiting session
-            let len = sessions.len();
-            if len == 0 {
-                return;
-            }
-            let current = *focused_index;
-            for i in 1..=len {
-                let idx = (current + i) % len;
-                if let Some(session) = sessions.get(idx) {
-                    if set.contains(&session.id) {
-                        focused_index.set(idx);
-                        return;
-                    }
-                }
-            }
+            awaiting_sessions.set(set);
         })
     };
 
