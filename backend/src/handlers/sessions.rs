@@ -79,8 +79,12 @@ pub struct SessionDetailResponse {
 
 pub async fn get_session(
     State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<SessionDetailResponse>, StatusCode> {
+    // Require authentication
+    let current_user_id = extract_user_id(&app_state, &cookies)?;
+
     let mut conn = app_state
         .db_pool
         .get()
@@ -89,8 +93,10 @@ pub async fn get_session(
     use crate::schema::messages;
     use crate::schema::sessions;
 
+    // Only return session if it belongs to the authenticated user
     let session = sessions::table
-        .find(session_id)
+        .filter(sessions::id.eq(session_id))
+        .filter(sessions::user_id.eq(current_user_id))
         .first::<Session>(&mut conn)
         .optional()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?

@@ -4,7 +4,8 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
-    response::Response,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use dashmap::DashMap;
 use diesel::prelude::*;
@@ -12,8 +13,11 @@ use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tower_cookies::Cookies;
 use tracing::{error, info, warn};
 use uuid::Uuid;
+
+const SESSION_COOKIE_NAME: &str = "cc_session";
 
 pub type SessionId = String;
 pub type ClientSender = mpsc::UnboundedSender<ProxyMessage>;
@@ -369,20 +373,67 @@ fn get_user_id_from_token(app_state: &AppState, auth_token: Option<&str>) -> Opt
     }
 }
 
+/// Extract user_id from signed session cookie for web client authentication
+fn extract_user_id_from_cookies(app_state: &AppState, cookies: &Cookies) -> Option<Uuid> {
+    // In dev mode, use the test user
+    if app_state.dev_mode {
+        let mut conn = app_state.db_pool.get().ok()?;
+        use crate::schema::users;
+        return users::table
+            .filter(users::email.eq("testing@testing.local"))
+            .select(users::id)
+            .first::<Uuid>(&mut conn)
+            .ok();
+    }
+
+    // Extract from signed cookie
+    let cookie = cookies
+        .signed(&app_state.cookie_key)
+        .get(SESSION_COOKIE_NAME)?;
+    cookie.value().parse().ok()
+}
+
+/// Verify that a session belongs to a specific user
+fn verify_session_ownership(
+    app_state: &AppState,
+    session_id: Uuid,
+    user_id: Uuid,
+) -> Result<crate::models::Session, ()> {
+    let mut conn = app_state.db_pool.get().map_err(|_| ())?;
+    use crate::schema::sessions;
+    sessions::table
+        .filter(sessions::id.eq(session_id))
+        .filter(sessions::user_id.eq(user_id))
+        .first::<crate::models::Session>(&mut conn)
+        .map_err(|_| ())
+}
+
 pub async fn handle_web_client_websocket(
     ws: WebSocketUpgrade,
     State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
 ) -> Response {
-    ws.on_upgrade(|socket| handle_web_client_socket(socket, app_state))
+    // Authenticate the user before upgrading the WebSocket
+    let user_id = match extract_user_id_from_cookies(&app_state, &cookies) {
+        Some(id) => id,
+        None => {
+            warn!("Unauthenticated WebSocket connection attempt to /ws/client");
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+    };
+
+    info!("Authenticated WebSocket upgrade for user: {}", user_id);
+    ws.on_upgrade(move |socket| handle_web_client_socket(socket, app_state, user_id))
 }
 
-async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>) {
+async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, user_id: Uuid) {
     let session_manager = app_state.session_manager.clone();
     let db_pool = app_state.db_pool.clone();
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = mpsc::unbounded_channel::<ProxyMessage>();
 
     let mut session_key: Option<SessionId> = None;
+    let mut verified_session_id: Option<Uuid> = None;
 
     // Spawn task to send messages to the WebSocket
     let send_task = tokio::spawn(async move {
@@ -408,60 +459,85 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             working_directory: _,
                             resuming: _,
                         } => {
-                            // Web client connecting to a session - use session_id as the key
-                            let key = session_id.to_string();
-                            session_key = Some(key.clone());
+                            // Verify the user owns this session before allowing connection
+                            match verify_session_ownership(&app_state, session_id, user_id) {
+                                Ok(_session) => {
+                                    // User owns this session, allow connection
+                                    let key = session_id.to_string();
+                                    session_key = Some(key.clone());
+                                    verified_session_id = Some(session_id);
 
-                            // Register this web client to receive new messages
-                            session_manager.add_web_client(key, tx.clone());
-                            info!(
-                                "Web client connected to session: {} ({})",
-                                session_name, session_id
-                            );
+                                    // Register this web client to receive new messages
+                                    session_manager.add_web_client(key, tx.clone());
+                                    info!(
+                                        "Web client connected to session: {} ({}) for user {}",
+                                        session_name, session_id, user_id
+                                    );
 
-                            // Send existing messages from DB as history
-                            if let Ok(mut conn) = db_pool.get() {
-                                use crate::schema::messages;
+                                    // Send existing messages from DB as history
+                                    if let Ok(mut conn) = db_pool.get() {
+                                        use crate::schema::messages;
 
-                                let history: Vec<crate::models::Message> = messages::table
-                                    .filter(messages::session_id.eq(session_id))
-                                    .order(messages::created_at.asc())
-                                    .load(&mut conn)
-                                    .unwrap_or_default();
+                                        let history: Vec<crate::models::Message> = messages::table
+                                            .filter(messages::session_id.eq(session_id))
+                                            .order(messages::created_at.asc())
+                                            .load(&mut conn)
+                                            .unwrap_or_default();
 
-                                info!(
-                                    "Sending {} historical messages to web client",
-                                    history.len()
-                                );
+                                        info!(
+                                            "Sending {} historical messages to web client",
+                                            history.len()
+                                        );
 
-                                for msg in history {
-                                    // Convert stored message to ClaudeOutput format
-                                    // The content is stored as JSON string, parse it back
-                                    let content = match serde_json::from_str::<serde_json::Value>(
-                                        &msg.content,
-                                    ) {
-                                        Ok(json) => json,
-                                        Err(_) => {
-                                            // If not valid JSON, wrap as text
-                                            serde_json::json!({
-                                                "type": msg.role,
-                                                "content": msg.content
-                                            })
+                                        for msg in history {
+                                            // Convert stored message to ClaudeOutput format
+                                            // The content is stored as JSON string, parse it back
+                                            let content =
+                                                match serde_json::from_str::<serde_json::Value>(
+                                                    &msg.content,
+                                                ) {
+                                                    Ok(json) => json,
+                                                    Err(_) => {
+                                                        // If not valid JSON, wrap as text
+                                                        serde_json::json!({
+                                                            "type": msg.role,
+                                                            "content": msg.content
+                                                        })
+                                                    }
+                                                };
+
+                                            let _ = tx.send(ProxyMessage::ClaudeOutput { content });
                                         }
-                                    };
-
-                                    let _ = tx.send(ProxyMessage::ClaudeOutput { content });
+                                    }
+                                }
+                                Err(_) => {
+                                    // User doesn't own this session - reject
+                                    warn!(
+                                        "User {} attempted to access session {} they don't own",
+                                        user_id, session_id
+                                    );
+                                    let _ = tx.send(ProxyMessage::Error {
+                                        message: "Access denied: you don't own this session"
+                                            .to_string(),
+                                    });
+                                    break;
                                 }
                             }
                         }
                         ProxyMessage::ClaudeInput { content } => {
-                            // Forward input to the actual session
+                            // Only allow if session ownership was verified
                             if let Some(ref key) = session_key {
-                                info!("Web client sending ClaudeInput to session: {}", key);
-                                if !session_manager
-                                    .send_to_session(key, ProxyMessage::ClaudeInput { content })
-                                {
-                                    warn!("Failed to send to session '{}', session not found in SessionManager", key);
+                                if verified_session_id.is_some() {
+                                    info!("Web client sending ClaudeInput to session: {}", key);
+                                    if !session_manager
+                                        .send_to_session(key, ProxyMessage::ClaudeInput { content })
+                                    {
+                                        warn!("Failed to send to session '{}', session not found in SessionManager", key);
+                                    }
+                                } else {
+                                    warn!(
+                                        "Attempted ClaudeInput without verified session ownership"
+                                    );
                                 }
                             } else {
                                 warn!("Web client tried to send ClaudeInput but no session_key set (not registered?)");
@@ -474,21 +550,25 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             permissions,
                             reason,
                         } => {
-                            // Forward permission response to the proxy session
+                            // Only allow if session ownership was verified
                             if let Some(ref key) = session_key {
-                                info!("Web client sending PermissionResponse: {} -> {} (permissions: {}, reason: {:?})",
-                                      request_id, if allow { "allow" } else { "deny" }, permissions.len(), reason);
-                                if !session_manager.send_to_session(
-                                    key,
-                                    ProxyMessage::PermissionResponse {
-                                        request_id,
-                                        allow,
-                                        input,
-                                        permissions,
-                                        reason,
-                                    },
-                                ) {
-                                    warn!("Failed to send PermissionResponse to session '{}', session not connected", key);
+                                if verified_session_id.is_some() {
+                                    info!("Web client sending PermissionResponse: {} -> {} (permissions: {}, reason: {:?})",
+                                          request_id, if allow { "allow" } else { "deny" }, permissions.len(), reason);
+                                    if !session_manager.send_to_session(
+                                        key,
+                                        ProxyMessage::PermissionResponse {
+                                            request_id,
+                                            allow,
+                                            input,
+                                            permissions,
+                                            reason,
+                                        },
+                                    ) {
+                                        warn!("Failed to send PermissionResponse to session '{}', session not connected", key);
+                                    }
+                                } else {
+                                    warn!("Attempted PermissionResponse without verified session ownership");
                                 }
                             } else {
                                 warn!("Web client tried to send PermissionResponse but no session_key set");

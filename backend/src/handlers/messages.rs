@@ -9,8 +9,11 @@ use axum::{
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tower_cookies::Cookies;
 use tracing::{error, info};
 use uuid::Uuid;
+
+const SESSION_COOKIE_NAME: &str = "cc_session";
 
 /// Maximum number of messages to keep per session
 pub const MAX_MESSAGES_PER_SESSION: i64 = 100;
@@ -35,23 +38,63 @@ pub struct MessagesListResponse {
     pub total: i64,
 }
 
+/// Extract user_id from signed session cookie
+fn extract_user_id(app_state: &AppState, cookies: &Cookies) -> Result<Uuid, StatusCode> {
+    // In dev mode, allow unauthenticated access with test user
+    if app_state.dev_mode {
+        let mut conn = app_state
+            .db_pool
+            .get()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        use crate::schema::users;
+        return users::table
+            .filter(users::email.eq("testing@testing.local"))
+            .select(users::id)
+            .first::<Uuid>(&mut conn)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // Extract from signed cookie
+    let cookie = cookies
+        .signed(&app_state.cookie_key)
+        .get(SESSION_COOKIE_NAME)
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    cookie.value().parse().map_err(|_| StatusCode::UNAUTHORIZED)
+}
+
+/// Verify that a session belongs to the authenticated user
+fn verify_session_ownership(
+    conn: &mut diesel::pg::PgConnection,
+    session_id: Uuid,
+    user_id: Uuid,
+) -> Result<crate::models::Session, StatusCode> {
+    use crate::schema::sessions;
+    sessions::table
+        .filter(sessions::id.eq(session_id))
+        .filter(sessions::user_id.eq(user_id))
+        .first::<crate::models::Session>(conn)
+        .map_err(|_| StatusCode::NOT_FOUND)
+}
+
 /// Create a new message for a session
 pub async fn create_message(
     State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
     Path(session_id): Path<Uuid>,
     Json(req): Json<CreateMessageRequest>,
 ) -> Result<Json<MessageResponse>, StatusCode> {
+    // Require authentication
+    let current_user_id = extract_user_id(&app_state, &cookies)?;
+
     let mut conn = app_state
         .db_pool
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Get the session to find the user_id
-    use crate::schema::sessions;
-    let session: crate::models::Session = sessions::table
-        .find(session_id)
-        .first(&mut conn)
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    // Verify the session belongs to the authenticated user
+    let session = verify_session_ownership(&mut conn, session_id, current_user_id)?;
 
     let new_message = NewMessage {
         session_id,
@@ -77,12 +120,19 @@ pub async fn create_message(
 /// List messages for a session
 pub async fn list_messages(
     State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
     Path(session_id): Path<Uuid>,
 ) -> Result<Json<MessagesListResponse>, StatusCode> {
+    // Require authentication
+    let current_user_id = extract_user_id(&app_state, &cookies)?;
+
     let mut conn = app_state
         .db_pool
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Verify the session belongs to the authenticated user
+    let _session = verify_session_ownership(&mut conn, session_id, current_user_id)?;
 
     let message_list: Vec<Message> = messages::table
         .filter(messages::session_id.eq(session_id))
