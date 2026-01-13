@@ -56,9 +56,14 @@ is_running() {
     return 1
 }
 
-# Check if database container is running
+# Check if database container is running and accepting connections
 is_db_running() {
-    docker ps --format '{{.Names}}' 2>/dev/null | grep -q "db"
+    # First check if any db container is running
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "db"; then
+        return 1
+    fi
+    # Then check if it's actually accepting connections
+    docker compose -f docker-compose.test.yml exec -T db pg_isready -U ccproxy > /dev/null 2>&1
 }
 
 # Start the database

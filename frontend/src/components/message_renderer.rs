@@ -578,6 +578,7 @@ fn render_tool_use(name: &str, input: &Value) -> Html {
         "Edit" => render_edit_tool_diff(input),
         "Write" => render_write_tool(input),
         "TodoWrite" => render_todowrite_tool(input),
+        "AskUserQuestion" => render_askuserquestion_tool(input),
         "Bash" => render_bash_tool(input),
         "Read" => render_read_tool(input),
         "Glob" => render_glob_tool(input),
@@ -632,6 +633,113 @@ fn render_todowrite_tool(input: &Value) -> Html {
                             <div class={format!("todo-item {}", class)}>
                                 <span class="todo-status">{ icon }</span>
                                 <span class="todo-content">{ content }</span>
+                            </div>
+                        }
+                    }).collect::<Html>()
+                }
+            </div>
+        </div>
+    }
+}
+
+/// Render AskUserQuestion with question cards and options
+fn render_askuserquestion_tool(input: &Value) -> Html {
+    let questions = input
+        .get("questions")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let answers = input.get("answers").and_then(|v| v.as_object());
+
+    html! {
+        <div class="tool-use askuserquestion-tool">
+            <div class="tool-use-header">
+                <span class="tool-icon">{ "❓" }</span>
+                <span class="tool-name">{ "AskUserQuestion" }</span>
+                <span class="tool-meta">{ format!("({} question{})", questions.len(), if questions.len() == 1 { "" } else { "s" }) }</span>
+            </div>
+            <div class="question-list">
+                {
+                    questions.iter().map(|q| {
+                        let header = q.get("header").and_then(|h| h.as_str()).unwrap_or("");
+                        let question = q.get("question").and_then(|q| q.as_str()).unwrap_or("");
+                        let multi_select = q.get("multiSelect").and_then(|m| m.as_bool()).unwrap_or(false);
+                        let options = q.get("options").and_then(|o| o.as_array()).cloned().unwrap_or_default();
+
+                        // Check if this question has an answer
+                        let answer = answers.and_then(|a| a.get(question)).and_then(|v| v.as_str());
+
+                        html! {
+                            <div class="question-card">
+                                <div class="question-header">
+                                    {
+                                        if !header.is_empty() {
+                                            html! { <span class="question-badge">{ header }</span> }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                    {
+                                        if multi_select {
+                                            html! { <span class="multi-select-badge">{ "multi-select" }</span> }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                </div>
+                                <div class="question-text">{ question }</div>
+                                <div class="question-options">
+                                    {
+                                        options.iter().map(|opt| {
+                                            let label = opt.get("label").and_then(|l| l.as_str()).unwrap_or("");
+                                            let description = opt.get("description").and_then(|d| d.as_str()).unwrap_or("");
+
+                                            // Check if this option was selected
+                                            let is_selected = answer.map(|a| {
+                                                // For multi-select, answers are comma-separated
+                                                a.split(',').map(|s| s.trim()).any(|s| s == label)
+                                            }).unwrap_or(false);
+
+                                            let option_class = if is_selected { "option-item selected" } else { "option-item" };
+                                            let icon = if is_selected {
+                                                if multi_select { "☑" } else { "●" }
+                                            } else if multi_select {
+                                                "☐"
+                                            } else {
+                                                "○"
+                                            };
+
+                                            html! {
+                                                <div class={option_class}>
+                                                    <span class="option-icon">{ icon }</span>
+                                                    <div class="option-content">
+                                                        <span class="option-label">{ label }</span>
+                                                        {
+                                                            if !description.is_empty() {
+                                                                html! { <span class="option-description">{ description }</span> }
+                                                            } else {
+                                                                html! {}
+                                                            }
+                                                        }
+                                                    </div>
+                                                </div>
+                                            }
+                                        }).collect::<Html>()
+                                    }
+                                </div>
+                                {
+                                    if let Some(ans) = answer {
+                                        html! {
+                                            <div class="question-answer">
+                                                <span class="answer-label">{ "Answer: " }</span>
+                                                <span class="answer-value">{ ans }</span>
+                                            </div>
+                                        }
+                                    } else {
+                                        html! {}
+                                    }
+                                }
                             </div>
                         }
                     }).collect::<Html>()
@@ -1186,6 +1294,17 @@ fn format_tool_input(tool_name: &str, input: &Value) -> String {
             .get("todos")
             .and_then(|v| v.as_array())
             .map(|arr| format!("{} items", arr.len()))
+            .unwrap_or_else(|| format_generic_input(input)),
+        "AskUserQuestion" => input
+            .get("questions")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                format!(
+                    "{} question{}",
+                    arr.len(),
+                    if arr.len() == 1 { "" } else { "s" }
+                )
+            })
             .unwrap_or_else(|| format_generic_input(input)),
         _ => format_generic_input(input),
     }
