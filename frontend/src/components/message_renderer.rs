@@ -704,8 +704,10 @@ fn render_askuserquestion_tool(input: &Value) -> Html {
                                             let option_class = if is_selected { "option-item selected" } else { "option-item" };
                                             let icon = if is_selected {
                                                 if multi_select { "☑" } else { "●" }
+                                            } else if multi_select {
+                                                "☐"
                                             } else {
-                                                if multi_select { "☐" } else { "○" }
+                                                "○"
                                             };
 
                                             html! {
@@ -1296,7 +1298,13 @@ fn format_tool_input(tool_name: &str, input: &Value) -> String {
         "AskUserQuestion" => input
             .get("questions")
             .and_then(|v| v.as_array())
-            .map(|arr| format!("{} question{}", arr.len(), if arr.len() == 1 { "" } else { "s" }))
+            .map(|arr| {
+                format!(
+                    "{} question{}",
+                    arr.len(),
+                    if arr.len() == 1 { "" } else { "s" }
+                )
+            })
             .unwrap_or_else(|| format_generic_input(input)),
         _ => format_generic_input(input),
     }
