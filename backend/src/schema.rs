@@ -43,6 +43,7 @@ diesel::table! {
         updated_at -> Timestamp,
         #[max_length = 255]
         git_branch -> Nullable<Varchar>,
+        total_cost_usd -> Float8,
     }
 }
 

@@ -98,6 +98,21 @@ pub enum ProxyMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         git_branch: Option<String>,
     },
+
+    /// User spend update (sent to web clients periodically)
+    UserSpendUpdate {
+        /// Total spend across all sessions for this user
+        total_spend_usd: f64,
+        /// Per-session spend breakdown
+        session_costs: Vec<SessionCost>,
+    },
+}
+
+/// Cost information for a single session
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionCost {
+    pub session_id: Uuid,
+    pub total_cost_usd: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

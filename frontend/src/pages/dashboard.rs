@@ -4,7 +4,7 @@ use crate::Route;
 use futures_util::{SinkExt, StreamExt};
 use gloo_net::http::Request;
 use gloo_net::websocket::{futures::WebSocket, Message};
-use shared::{ProxyMessage, SessionInfo};
+use shared::{ProxyMessage, SessionCost, SessionInfo};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -83,6 +83,7 @@ pub fn dashboard_page() -> Html {
     let connected_sessions = use_state(HashSet::<Uuid>::new);
     let pending_delete = use_state(|| None::<Uuid>);
     let nav_mode = use_state(|| false);
+    let total_user_spend = use_state(|| 0.0f64);
 
     // Fetch sessions
     let fetch_sessions = {
@@ -159,6 +160,61 @@ pub fn dashboard_page() -> Html {
             if refresh > 0 {
                 fetch_sessions.emit(false);
             }
+            || ()
+        });
+    }
+
+    // WebSocket connection for user-level spend updates
+    {
+        let total_user_spend = total_user_spend.clone();
+        let session_costs = session_costs.clone();
+        use_effect_with((), move |_| {
+            let total_user_spend = total_user_spend.clone();
+            let session_costs = session_costs.clone();
+            spawn_local(async move {
+                // Connect to the web client WebSocket to receive spend updates
+                let ws_endpoint = utils::ws_url("/ws/client");
+                match WebSocket::open(&ws_endpoint) {
+                    Ok(ws) => {
+                        let (_sender, mut receiver) = ws.split();
+                        // Note: We don't register for a specific session here,
+                        // but the backend will still send us UserSpendUpdate messages
+                        // because we're authenticated via cookies
+
+                        while let Some(msg) = receiver.next().await {
+                            match msg {
+                                Ok(Message::Text(text)) => {
+                                    if let Ok(ProxyMessage::UserSpendUpdate {
+                                        total_spend_usd,
+                                        session_costs: costs,
+                                    }) = serde_json::from_str::<ProxyMessage>(&text)
+                                    {
+                                        total_user_spend.set(total_spend_usd);
+                                        // Update per-session costs
+                                        let mut map = (*session_costs).clone();
+                                        for SessionCost {
+                                            session_id,
+                                            total_cost_usd,
+                                        } in costs
+                                        {
+                                            map.insert(session_id, total_cost_usd);
+                                        }
+                                        session_costs.set(map);
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("Spend WebSocket error: {:?}", e);
+                                    break;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to connect spend WebSocket: {:?}", e);
+                    }
+                }
+            });
             || ()
         });
     }
@@ -480,6 +536,17 @@ pub fn dashboard_page() -> Html {
             <header class="focus-flow-header">
                 <h1>{ "Claude Code Sessions" }</h1>
                 <div class="header-actions">
+                    {
+                        if *total_user_spend > 0.0 {
+                            html! {
+                                <span class="total-spend-badge" title="Total spend across all sessions">
+                                    { format!("${:.2}", *total_user_spend) }
+                                </span>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                     {
                         if waiting_count > 0 {
                             html! {

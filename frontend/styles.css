@@ -2339,6 +2339,16 @@ body {
     gap: 1rem;
 }
 
+.total-spend-badge {
+    background: rgba(158, 206, 106, 0.2);
+    color: var(--success);
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: monospace;
+}
+
 .waiting-badge {
     background: rgba(247, 118, 142, 0.2);
     color: var(--error);

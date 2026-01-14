@@ -304,6 +304,19 @@ async fn main() -> anyhow::Result<()> {
     // Add CORS and cookie management
     let app = app.layer(CookieManagerLayer::new()).layer(cors);
 
+    // Spawn background task to broadcast user spend updates
+    {
+        let app_state = app_state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                broadcast_user_spend_updates(&app_state).await;
+            }
+        });
+        tracing::info!("Started user spend broadcast task (every 5 seconds)");
+    }
+
     // Run the server
     let addr = format!("{}:{}", host, port);
 
@@ -313,4 +326,48 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// Query user spend from DB and broadcast to all connected web clients
+async fn broadcast_user_spend_updates(app_state: &Arc<AppState>) {
+    use diesel::prelude::*;
+    use schema::sessions::dsl::*;
+    use shared::{ProxyMessage, SessionCost};
+
+    let user_ids = app_state.session_manager.get_all_user_ids();
+
+    for user_id_val in user_ids {
+        let Ok(mut conn) = app_state.db_pool.get() else {
+            continue;
+        };
+
+        // Query total spend and per-session costs for this user
+        let result: Result<Vec<(uuid::Uuid, f64)>, _> = sessions
+            .filter(user_id.eq(user_id_val))
+            .select((id, total_cost_usd))
+            .load(&mut conn);
+
+        if let Ok(session_costs_data) = result {
+            let total_spend: f64 = session_costs_data.iter().map(|(_, cost)| cost).sum();
+            let session_costs_vec: Vec<SessionCost> = session_costs_data
+                .into_iter()
+                .filter(|(_, cost)| *cost > 0.0) // Only include sessions with costs
+                .map(|(sid, cost)| SessionCost {
+                    session_id: sid,
+                    total_cost_usd: cost,
+                })
+                .collect();
+
+            // Only broadcast if there's any spend to report
+            if total_spend > 0.0 || !session_costs_vec.is_empty() {
+                app_state.session_manager.broadcast_to_user(
+                    &user_id_val,
+                    ProxyMessage::UserSpendUpdate {
+                        total_spend_usd: total_spend,
+                        session_costs: session_costs_vec,
+                    },
+                );
+            }
+        }
+    }
 }

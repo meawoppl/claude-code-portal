@@ -28,6 +28,8 @@ pub struct SessionManager {
     pub sessions: Arc<DashMap<SessionId, ClientSender>>,
     // Map of session_key -> list of web client senders
     pub web_clients: Arc<DashMap<SessionId, Vec<ClientSender>>>,
+    // Map of user_id -> list of web client senders (for user-level broadcasts)
+    pub user_clients: Arc<DashMap<Uuid, Vec<ClientSender>>>,
 }
 
 impl SessionManager {
@@ -35,6 +37,7 @@ impl SessionManager {
         Self {
             sessions: Arc::new(DashMap::new()),
             web_clients: Arc::new(DashMap::new()),
+            user_clients: Arc::new(DashMap::new()),
         }
     }
 
@@ -68,6 +71,21 @@ impl SessionManager {
         } else {
             false
         }
+    }
+
+    pub fn add_user_client(&self, user_id: Uuid, sender: ClientSender) {
+        info!("Adding web client for user: {}", user_id);
+        self.user_clients.entry(user_id).or_default().push(sender);
+    }
+
+    pub fn broadcast_to_user(&self, user_id: &Uuid, msg: ProxyMessage) {
+        if let Some(mut clients) = self.user_clients.get_mut(user_id) {
+            clients.retain(|sender| sender.send(msg.clone()).is_ok());
+        }
+    }
+
+    pub fn get_all_user_ids(&self) -> Vec<Uuid> {
+        self.user_clients.iter().map(|r| *r.key()).collect()
     }
 }
 
@@ -317,6 +335,21 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                         error!("Failed to store message: {}", e);
                                     }
 
+                                    // Extract and store cost from result messages
+                                    if role == "result" {
+                                        if let Some(cost) =
+                                            content.get("total_cost_usd").and_then(|c| c.as_f64())
+                                        {
+                                            if let Err(e) =
+                                                diesel::update(sessions::table.find(session_id))
+                                                    .set(sessions::total_cost_usd.eq(cost))
+                                                    .execute(&mut conn)
+                                            {
+                                                error!("Failed to update session cost: {}", e);
+                                            }
+                                        }
+                                    }
+
                                     // Truncate to keep only last 100 messages
                                     let _ = super::messages::truncate_session_messages_internal(
                                         &mut conn, session_id,
@@ -520,6 +553,9 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
 
     let mut session_key: Option<SessionId> = None;
     let mut verified_session_id: Option<Uuid> = None;
+
+    // Register this client for user-level broadcasts (like spend updates)
+    session_manager.add_user_client(user_id, tx.clone());
 
     // Spawn task to send messages to the WebSocket
     let send_task = tokio::spawn(async move {

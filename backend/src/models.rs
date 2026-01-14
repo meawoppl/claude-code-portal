@@ -39,6 +39,7 @@ pub struct Session {
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
     pub git_branch: Option<String>,
+    pub total_cost_usd: f64,
 }
 
 #[derive(Debug, Insertable)]
