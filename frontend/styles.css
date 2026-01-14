@@ -2502,6 +2502,17 @@ body {
     color: var(--text-secondary);
 }
 
+.pill-no-branch {
+    font-size: 0.7rem;
+    color: var(--error);
+    font-style: italic;
+    white-space: nowrap;
+}
+
+.session-pill.status-disconnected .pill-no-branch {
+    color: var(--text-secondary);
+}
+
 .pill-status {
     font-size: 0.6rem;
     line-height: 1;

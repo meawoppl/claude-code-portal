@@ -741,7 +741,7 @@ fn session_rail(props: &SessionRailProps) -> Html {
                                     if let Some(ref branch) = session.git_branch {
                                         html! { <span class="pill-branch">{ branch }</span> }
                                     } else {
-                                        html! {}
+                                        html! { <span class="pill-no-branch">{ "⚠️ No Git Branch ⚠️" }</span> }
                                     }
                                 }
                             </span>
