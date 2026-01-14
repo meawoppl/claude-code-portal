@@ -2551,27 +2551,27 @@ body {
     color: var(--text-secondary);
 }
 
-/* Parked session styling */
-.session-pill.parked {
+/* Paused session styling */
+.session-pill.paused {
     opacity: 0.5;
     border-style: dashed;
 }
 
-.session-pill.parked:hover {
+.session-pill.paused:hover {
     opacity: 0.75;
 }
 
-.session-pill.parked.focused {
+.session-pill.paused.focused {
     opacity: 0.7;
 }
 
-.pill-parked-badge {
+.pill-paused-badge {
     font-size: 0.7rem;
     color: var(--text-secondary);
     font-weight: 600;
 }
 
-.pill-park {
+.pill-pause {
     width: 24px;
     height: 24px;
     border: 1px solid var(--border);
@@ -2586,19 +2586,19 @@ body {
     justify-content: center;
 }
 
-.pill-park:hover {
+.pill-pause:hover {
     background: rgba(122, 162, 247, 0.3);
     border-color: var(--accent);
     color: var(--accent);
 }
 
-.pill-park.active {
+.pill-pause.active {
     background: rgba(122, 162, 247, 0.2);
     border-color: var(--accent);
     color: var(--accent);
 }
 
-.pill-park.active:hover {
+.pill-pause.active:hover {
     background: rgba(158, 206, 106, 0.2);
     border-color: var(--success);
     color: var(--success);

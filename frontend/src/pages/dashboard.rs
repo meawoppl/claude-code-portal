@@ -76,7 +76,7 @@ pub fn dashboard_page() -> Html {
     let show_new_session = use_state(|| false);
     let focused_index = use_state(|| 0usize);
     let awaiting_sessions = use_state(HashSet::<Uuid>::new);
-    let parked_sessions = use_state(HashSet::<Uuid>::new);
+    let paused_sessions = use_state(HashSet::<Uuid>::new);
     let session_costs = use_state(HashMap::<Uuid, f64>::new);
     let connected_sessions = use_state(HashSet::<Uuid>::new);
     let pending_delete = use_state(|| None::<Uuid>);
@@ -222,7 +222,7 @@ pub fn dashboard_page() -> Html {
     let on_navigate = {
         let focused_index = focused_index.clone();
         let sessions = sessions.clone();
-        let parked_sessions = parked_sessions.clone();
+        let paused_sessions = paused_sessions.clone();
         Callback::from(move |delta: i32| {
             let active: Vec<_> = sessions
                 .iter()
@@ -234,21 +234,21 @@ pub fn dashboard_page() -> Html {
                 return;
             }
 
-            // Count non-parked sessions
-            let non_parked_count = active
+            // Count non-paused sessions
+            let non_pauseed_count = active
                 .iter()
-                .filter(|s| !parked_sessions.contains(&s.id))
+                .filter(|s| !paused_sessions.contains(&s.id))
                 .count();
 
-            // If all sessions are parked, allow normal navigation
-            if non_parked_count == 0 {
+            // If all sessions are paused, allow normal navigation
+            if non_pauseed_count == 0 {
                 let current = *focused_index as i32;
                 let new_index = (current + delta).rem_euclid(len as i32) as usize;
                 focused_index.set(new_index);
                 return;
             }
 
-            // Skip parked sessions when navigating
+            // Skip paused sessions when navigating
             let current = *focused_index;
             let mut new_index = current;
             let step = if delta > 0 { 1 } else { len - 1 };
@@ -256,7 +256,7 @@ pub fn dashboard_page() -> Html {
             for _ in 0..len {
                 new_index = (new_index + step) % len;
                 if let Some(session) = active.get(new_index) {
-                    if !parked_sessions.contains(&session.id) {
+                    if !paused_sessions.contains(&session.id) {
                         focused_index.set(new_index);
                         return;
                     }
@@ -265,26 +265,27 @@ pub fn dashboard_page() -> Html {
         })
     };
 
-    let on_next_waiting = {
+    let on_next_active = {
         let focused_index = focused_index.clone();
         let sessions = sessions.clone();
-        let awaiting_sessions = awaiting_sessions.clone();
+        let paused_sessions = paused_sessions.clone();
         Callback::from(move |_| {
             let len = sessions.len();
             if len == 0 {
                 return;
             }
             let current = *focused_index;
-            // Find next waiting session after current
+            // Find next non-paused session after current (wraps around)
             for i in 1..=len {
                 let idx = (current + i) % len;
                 if let Some(session) = sessions.get(idx) {
-                    if awaiting_sessions.contains(&session.id) {
+                    if !paused_sessions.contains(&session.id) {
                         focused_index.set(idx);
                         return;
                     }
                 }
             }
+            // If all sessions are paused, stay on current
         })
     };
 
@@ -323,16 +324,16 @@ pub fn dashboard_page() -> Html {
         })
     };
 
-    let on_toggle_park = {
-        let parked_sessions = parked_sessions.clone();
+    let on_toggle_pause = {
+        let paused_sessions = paused_sessions.clone();
         Callback::from(move |session_id: Uuid| {
-            let mut set = (*parked_sessions).clone();
+            let mut set = (*paused_sessions).clone();
             if set.contains(&session_id) {
                 set.remove(&session_id);
             } else {
                 set.insert(session_id);
             }
-            parked_sessions.set(set);
+            paused_sessions.set(set);
         })
     };
 
@@ -377,12 +378,12 @@ pub fn dashboard_page() -> Html {
     let waiting_count = awaiting_sessions.len();
 
     // Two-mode keyboard handling:
-    // - Edit Mode (default): typing works, Escape -> Nav Mode, Shift+Tab -> next waiting
+    // - Edit Mode (default): typing works, Escape -> Nav Mode, Shift+Tab -> next active (skips paused)
     // - Nav Mode: arrow keys navigate, Enter/Escape -> Edit Mode, numbers select directly
     let on_keydown = {
         let on_navigate = on_navigate.clone();
-        let on_next_waiting = on_next_waiting.clone();
-        let on_toggle_park = on_toggle_park.clone();
+        let on_next_active = on_next_active.clone();
+        let on_toggle_pause = on_toggle_pause.clone();
         let on_select_session = on_select_session.clone();
         let focused_index = focused_index.clone();
         let nav_mode = nav_mode.clone();
@@ -390,18 +391,18 @@ pub fn dashboard_page() -> Html {
         Callback::from(move |e: KeyboardEvent| {
             let in_nav_mode = *nav_mode;
 
-            // Shift+Tab always jumps to next waiting session (works in both modes)
+            // Shift+Tab always jumps to next active session, skipping paused (works in both modes)
             if e.shift_key() && e.key() == "Tab" {
                 e.prevent_default();
-                on_next_waiting.emit(());
+                on_next_active.emit(());
                 return;
             }
 
-            // Ctrl+Shift+P toggles park (works in both modes)
+            // Ctrl+Shift+P toggles pause (works in both modes)
             if e.ctrl_key() && e.shift_key() && (e.key() == "P" || e.key() == "p") {
                 e.prevent_default();
                 if let Some(session) = active_sessions.get(*focused_index) {
-                    on_toggle_park.emit(session.id);
+                    on_toggle_pause.emit(session.id);
                 }
                 return;
             }
@@ -427,7 +428,7 @@ pub fn dashboard_page() -> Html {
                     }
                     "w" => {
                         e.prevent_default();
-                        on_next_waiting.emit(());
+                        on_next_active.emit(());
                     }
                     "x" => {
                         // Close session - could trigger delete confirmation
@@ -515,13 +516,13 @@ pub fn dashboard_page() -> Html {
                         sessions={active_sessions.clone()}
                         focused_index={*focused_index}
                         awaiting_sessions={(*awaiting_sessions).clone()}
-                        parked_sessions={(*parked_sessions).clone()}
+                        paused_sessions={(*paused_sessions).clone()}
                         session_costs={(*session_costs).clone()}
                         connected_sessions={(*connected_sessions).clone()}
                         nav_mode={*nav_mode}
                         on_select={on_select_session.clone()}
                         on_delete={on_delete.clone()}
-                        on_toggle_park={on_toggle_park.clone()}
+                        on_toggle_pause={on_toggle_pause.clone()}
                     />
 
                     // Render ALL session views - keep them alive for instant switching
@@ -566,8 +567,8 @@ pub fn dashboard_page() -> Html {
                                 html! {
                                     <>
                                         <span>{ "Esc = nav mode" }</span>
-                                        <span>{ "Shift+Tab = next waiting" }</span>
-                                        <span>{ "Ctrl+Shift+P = park" }</span>
+                                        <span>{ "Shift+Tab = next (skip paused)" }</span>
+                                        <span>{ "Ctrl+Shift+P = pause" }</span>
                                         <span>{ "Enter = send" }</span>
                                     </>
                                 }
@@ -618,13 +619,13 @@ struct SessionRailProps {
     sessions: Vec<SessionInfo>,
     focused_index: usize,
     awaiting_sessions: HashSet<Uuid>,
-    parked_sessions: HashSet<Uuid>,
+    paused_sessions: HashSet<Uuid>,
     session_costs: HashMap<Uuid, f64>,
     connected_sessions: HashSet<Uuid>,
     nav_mode: bool,
     on_select: Callback<usize>,
     on_delete: Callback<Uuid>,
-    on_toggle_park: Callback<Uuid>,
+    on_toggle_pause: Callback<Uuid>,
 }
 
 #[function_component(SessionRail)]
@@ -652,7 +653,7 @@ fn session_rail(props: &SessionRailProps) -> Html {
                 props.sessions.iter().enumerate().map(|(index, session)| {
                     let is_focused = index == props.focused_index;
                     let is_awaiting = props.awaiting_sessions.contains(&session.id);
-                    let is_parked = props.parked_sessions.contains(&session.id);
+                    let is_paused = props.paused_sessions.contains(&session.id);
                     let is_connected = props.connected_sessions.contains(&session.id);
                     let cost = props.session_costs.get(&session.id).copied().unwrap_or(0.0);
 
@@ -670,12 +671,12 @@ fn session_rail(props: &SessionRailProps) -> Html {
                         })
                     };
 
-                    let on_park = {
-                        let on_toggle_park = props.on_toggle_park.clone();
+                    let on_pause = {
+                        let on_toggle_pause = props.on_toggle_pause.clone();
                         let session_id = session.id;
                         Callback::from(move |e: MouseEvent| {
                             e.stop_propagation();
-                            on_toggle_park.emit(session_id);
+                            on_toggle_pause.emit(session_id);
                         })
                     };
 
@@ -685,7 +686,7 @@ fn session_rail(props: &SessionRailProps) -> Html {
                         "session-pill",
                         if is_focused { Some("focused") } else { None },
                         if is_awaiting { Some("awaiting") } else { None },
-                        if is_parked { Some("parked") } else { None },
+                        if is_paused { Some("paused") } else { None },
                         if in_nav_mode { Some("nav-mode") } else { None },
                         if is_status_disconnected { Some("status-disconnected") } else { None },
                     );
@@ -733,18 +734,18 @@ fn session_rail(props: &SessionRailProps) -> Html {
                                 }
                             }
                             {
-                                if is_parked {
-                                    html! { <span class="pill-parked-badge">{ "ᴾ" }</span> }
+                                if is_paused {
+                                    html! { <span class="pill-paused-badge">{ "ᴾ" }</span> }
                                 } else {
                                     html! {}
                                 }
                             }
                             <button
-                                class={classes!("pill-park", if is_parked { Some("active") } else { None })}
-                                onclick={on_park}
-                                title={if is_parked { "Unpark session" } else { "Park session (skip in rotation)" }}
+                                class={classes!("pill-pause", if is_paused { Some("active") } else { None })}
+                                onclick={on_pause}
+                                title={if is_paused { "Unpause session" } else { "Pause session (skip in rotation)" }}
                             >
-                                { if is_parked { "▶" } else { "⏸" } }
+                                { if is_paused { "▶" } else { "⏸" } }
                             </button>
                             <button class="pill-delete" onclick={on_delete}>{ "×" }</button>
                         </div>
