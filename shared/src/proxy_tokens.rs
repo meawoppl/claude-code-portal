@@ -76,7 +76,7 @@ pub struct CreateProxyTokenResponse {
 }
 
 /// Info about an existing proxy token (without the secret)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProxyTokenInfo {
     pub id: Uuid,
     pub name: String,

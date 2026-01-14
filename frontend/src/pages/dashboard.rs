@@ -1,5 +1,6 @@
 use crate::components::{group_messages, MessageGroupRenderer, ProxyTokenSetup};
 use crate::utils;
+use crate::Route;
 use futures_util::{SinkExt, StreamExt};
 use gloo_net::http::Request;
 use gloo_net::websocket::{futures::WebSocket, Message};
@@ -13,6 +14,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{Element, HtmlInputElement, KeyboardEvent};
 use yew::prelude::*;
+use yew_router::prelude::*;
 
 /// Type alias for WebSocket sender to reduce type complexity
 type WsSender = Rc<RefCell<Option<futures_util::stream::SplitSink<WebSocket, Message>>>>;
@@ -496,6 +498,9 @@ pub fn dashboard_page() -> Html {
                     >
                         { if *show_new_session { "Close" } else { "+ New Session" } }
                     </button>
+                    <Link<Route> to={Route::Settings} classes="settings-button">
+                        { "Settings" }
+                    </Link<Route>>
                     <a href="/api/auth/logout" class="logout-button">
                         { "Logout" }
                     </a>
