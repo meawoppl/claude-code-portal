@@ -1,6 +1,7 @@
 mod auth;
 mod commands;
 mod config;
+mod output_buffer;
 mod session;
 mod ui;
 mod update;

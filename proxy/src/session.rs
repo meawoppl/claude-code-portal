@@ -6,14 +6,59 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use claude_codes::io::{ContentBlock, ControlRequestPayload};
 use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
+use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
 use tokio::sync::{mpsc, Mutex};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
-use tracing::{debug, error, info};
+use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use crate::output_buffer::PendingOutputBuffer;
 use crate::ui;
+
+/// Type alias for the WebSocket stream
+type WsStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Type alias for the shared WebSocket write half
+type SharedWsWrite = Arc<tokio::sync::Mutex<SplitSink<WsStream, Message>>>;
+
+/// Type alias for the WebSocket read half
+type WsRead = SplitStream<WsStream>;
+
+/// WebSocket connection wrapper that owns both read and write halves.
+/// Provides convenient methods for sending/receiving messages.
+pub struct WebSocketConnection {
+    write: SplitSink<WsStream, Message>,
+    read: SplitStream<WsStream>,
+}
+
+impl WebSocketConnection {
+    /// Create a new connection from a WebSocket stream
+    pub fn new(stream: WsStream) -> Self {
+        let (write, read) = stream.split();
+        Self { write, read }
+    }
+
+    /// Send a ProxyMessage
+    pub async fn send(&mut self, msg: &ProxyMessage) -> Result<(), String> {
+        let json = serde_json::to_string(msg).map_err(|e| e.to_string())?;
+        self.write
+            .send(Message::Text(json))
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Receive the next message
+    pub async fn recv(&mut self) -> Option<Result<Message, tokio_tungstenite::tungstenite::Error>> {
+        self.read.next().await
+    }
+
+    /// Split into write and read halves for concurrent use
+    pub fn split(self) -> (SplitSink<WsStream, Message>, SplitStream<WsStream>) {
+        (self.write, self.read)
+    }
+}
 
 /// Configuration for a proxy session
 #[derive(Clone)]
@@ -88,6 +133,81 @@ pub enum ConnectionResult {
     Disconnected(Duration),
 }
 
+/// State that persists across WebSocket reconnections for a session.
+/// This includes the input channel, output buffer, and session config.
+pub struct SessionState<'a> {
+    /// Session configuration
+    pub config: &'a SessionConfig,
+    /// Claude client for communication
+    pub claude_client: &'a mut AsyncClient,
+    /// Sender for input messages (cloned per connection)
+    pub input_tx: mpsc::UnboundedSender<String>,
+    /// Receiver for input messages (persists across connections)
+    pub input_rx: &'a mut mpsc::UnboundedReceiver<String>,
+    /// Output buffer with persistence
+    pub output_buffer: Arc<Mutex<PendingOutputBuffer>>,
+    /// Backoff state for reconnection
+    pub backoff: Backoff,
+    /// Whether this is the first connection attempt
+    pub first_connection: bool,
+}
+
+impl<'a> SessionState<'a> {
+    /// Create a new session state
+    pub fn new(
+        config: &'a SessionConfig,
+        claude_client: &'a mut AsyncClient,
+        input_tx: mpsc::UnboundedSender<String>,
+        input_rx: &'a mut mpsc::UnboundedReceiver<String>,
+    ) -> Result<Self> {
+        let output_buffer = match PendingOutputBuffer::new(config.session_id) {
+            Ok(buf) => buf,
+            Err(e) => {
+                warn!(
+                    "Failed to create output buffer, continuing without persistence: {}",
+                    e
+                );
+                PendingOutputBuffer::new(config.session_id)?
+            }
+        };
+        let output_buffer = Arc::new(Mutex::new(output_buffer));
+
+        Ok(Self {
+            config,
+            claude_client,
+            input_tx,
+            input_rx,
+            output_buffer,
+            backoff: Backoff::new(),
+            first_connection: true,
+        })
+    }
+
+    /// Log pending messages from previous session
+    pub async fn log_pending_messages(&self) {
+        let buf = self.output_buffer.lock().await;
+        let pending = buf.pending_count();
+        if pending > 0 {
+            info!(
+                "Loaded {} pending messages from previous session, will replay on connect",
+                pending
+            );
+        }
+    }
+
+    /// Persist the output buffer
+    pub async fn persist_buffer(&self) {
+        if let Err(e) = self.output_buffer.lock().await.persist() {
+            warn!("Failed to persist output buffer: {}", e);
+        }
+    }
+
+    /// Get pending message count
+    pub async fn pending_count(&self) -> usize {
+        self.output_buffer.lock().await.pending_count()
+    }
+}
+
 /// Run the WebSocket connection loop with auto-reconnect
 pub async fn run_connection_loop(
     config: &SessionConfig,
@@ -95,99 +215,102 @@ pub async fn run_connection_loop(
     input_tx: mpsc::UnboundedSender<String>,
     input_rx: &mut mpsc::UnboundedReceiver<String>,
 ) -> Result<()> {
-    let mut backoff = Backoff::new();
-    let mut first_connection = true;
+    let mut session = SessionState::new(config, claude_client, input_tx, input_rx)?;
+    session.log_pending_messages().await;
 
     loop {
-        if first_connection {
+        if session.first_connection {
             ui::print_ready_banner();
         }
 
-        let result = run_single_connection(
-            config,
-            claude_client,
-            input_tx.clone(),
-            input_rx,
-            first_connection,
-        )
-        .await;
-
-        first_connection = false;
+        let result = run_single_connection(&mut session).await;
+        session.first_connection = false;
 
         match result {
             ConnectionResult::ClaudeExited => {
                 info!("Claude process exited, shutting down");
+                session.persist_buffer().await;
                 return Ok(());
             }
             ConnectionResult::Disconnected(duration) => {
-                backoff.reset_if_stable(duration);
+                session.backoff.reset_if_stable(duration);
+                session.persist_buffer().await;
 
-                ui::print_disconnected(backoff.current_secs());
+                let pending = session.pending_count().await;
+                ui::print_disconnected_with_pending(session.backoff.current_secs(), pending);
                 info!(
-                    "WebSocket disconnected, reconnecting in {}s",
-                    backoff.current_secs()
+                    "WebSocket disconnected, {} pending messages, reconnecting in {}s",
+                    pending,
+                    session.backoff.current_secs()
                 );
 
-                tokio::time::sleep(backoff.sleep_duration()).await;
-                backoff.advance();
+                tokio::time::sleep(session.backoff.sleep_duration()).await;
+                session.backoff.advance();
             }
         }
     }
 }
 
 /// Run a single WebSocket connection until it disconnects or Claude exits
-async fn run_single_connection(
-    config: &SessionConfig,
-    claude_client: &mut AsyncClient,
-    input_tx: mpsc::UnboundedSender<String>,
-    input_rx: &mut mpsc::UnboundedReceiver<String>,
-    first_connection: bool,
-) -> ConnectionResult {
+async fn run_single_connection(session: &mut SessionState<'_>) -> ConnectionResult {
     // Connect to WebSocket
-    let ws_stream = match connect_to_backend(&config.backend_url, first_connection).await {
-        Ok(stream) => stream,
-        Err(duration) => return ConnectionResult::Disconnected(duration),
-    };
-
-    let (mut ws_write, mut ws_read) = ws_stream.split();
+    let mut conn =
+        match connect_to_backend(&session.config.backend_url, session.first_connection).await {
+            Ok(conn) => conn,
+            Err(duration) => return ConnectionResult::Disconnected(duration),
+        };
 
     // Re-detect git branch on reconnect (it may have changed)
-    let current_branch = get_git_branch(&config.working_directory);
+    let current_branch = get_git_branch(&session.config.working_directory);
     let config_with_branch = SessionConfig {
         git_branch: current_branch,
-        ..config.clone()
+        ..session.config.clone()
     };
 
     // Register with backend and wait for acknowledgment
-    if let Err(duration) = register_session(&mut ws_write, &mut ws_read, &config_with_branch).await
-    {
+    if let Err(duration) = register_session(&mut conn, &config_with_branch).await {
         return ConnectionResult::Disconnected(duration);
     }
 
-    if !first_connection {
+    // Replay pending messages after successful registration
+    {
+        let buf = session.output_buffer.lock().await;
+        let pending_count = buf.pending_count();
+        if pending_count > 0 {
+            info!(
+                "Replaying {} pending messages after reconnect",
+                pending_count
+            );
+            for pending in buf.get_pending() {
+                let msg = ProxyMessage::SequencedOutput {
+                    seq: pending.seq,
+                    content: pending.content.clone(),
+                };
+                if let Err(e) = conn.send(&msg).await {
+                    error!(
+                        "Failed to replay pending message seq={}: {}",
+                        pending.seq, e
+                    );
+                    return ConnectionResult::Disconnected(Duration::ZERO);
+                }
+            }
+            info!("Finished replaying pending messages");
+        }
+    }
+
+    if !session.first_connection {
         ui::print_connection_restored();
     }
 
-    // Run the message loop
-    run_message_loop(
-        &config_with_branch,
-        claude_client,
-        input_tx,
-        input_rx,
-        ws_write,
-        ws_read,
-    )
-    .await
+    // Run the message loop - split connection for concurrent read/write
+    run_message_loop(session, &config_with_branch, conn).await
 }
 
 /// Connect to the backend WebSocket
 async fn connect_to_backend(
     backend_url: &str,
     first_connection: bool,
-) -> Result<
-    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-    Duration,
-> {
+) -> Result<WebSocketConnection, Duration> {
     let ws_url = format!("{}/ws/session", backend_url);
 
     if first_connection {
@@ -199,7 +322,7 @@ async fn connect_to_backend(
     match connect_async(&ws_url).await {
         Ok((stream, _)) => {
             ui::print_connected();
-            Ok(stream)
+            Ok(WebSocketConnection::new(stream))
         }
         Err(e) => {
             ui::print_failed();
@@ -210,16 +333,10 @@ async fn connect_to_backend(
 }
 
 /// Register session with the backend and wait for acknowledgment
-async fn register_session<S, R>(
-    ws_write: &mut S,
-    ws_read: &mut R,
+async fn register_session(
+    conn: &mut WebSocketConnection,
     config: &SessionConfig,
-) -> Result<(), Duration>
-where
-    S: SinkExt<Message> + Unpin,
-    S::Error: std::fmt::Display,
-    R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
-{
+) -> Result<(), Duration> {
     ui::print_status("Registering session...");
 
     let register_msg = ProxyMessage::Register {
@@ -231,9 +348,7 @@ where
         git_branch: config.git_branch.clone(),
     };
 
-    let json = serde_json::to_string(&register_msg).unwrap_or_default();
-
-    if let Err(e) = ws_write.send(Message::Text(json)).await {
+    if let Err(e) = conn.send(&register_msg).await {
         ui::print_failed();
         error!("Failed to send registration message: {}", e);
         return Err(Duration::ZERO);
@@ -241,7 +356,7 @@ where
 
     // Wait for RegisterAck with timeout
     let ack_timeout = tokio::time::timeout(Duration::from_secs(10), async {
-        while let Some(msg) = ws_read.next().await {
+        while let Some(msg) = conn.recv().await {
             match msg {
                 Ok(Message::Text(text)) => {
                     if let Ok(ProxyMessage::RegisterAck {
@@ -302,64 +417,89 @@ pub struct PermissionResponseData {
     pub reason: Option<String>,
 }
 
+/// State for the main message loop, reducing parameter count
+/// Contains channels and state that are specific to a single connection attempt.
+/// Note: input_rx is passed separately as it persists across reconnections.
+pub struct ConnectionState {
+    /// Receiver for permission responses from frontend
+    pub perm_rx: mpsc::UnboundedReceiver<PermissionResponseData>,
+    /// Receiver for output acknowledgments from backend
+    pub ack_rx: mpsc::UnboundedReceiver<u64>,
+    /// Sender for Claude outputs to the output forwarder
+    pub output_tx: mpsc::UnboundedSender<ClaudeOutput>,
+    /// Receiver to detect WebSocket disconnection
+    pub disconnect_rx: tokio::sync::oneshot::Receiver<()>,
+    /// Session ID
+    pub session_id: Uuid,
+    /// When the connection was established
+    pub connection_start: Instant,
+    /// Buffer for pending outputs
+    pub output_buffer: Arc<Mutex<PendingOutputBuffer>>,
+}
+
 /// Run the main message forwarding loop
-async fn run_message_loop<S, R>(
+async fn run_message_loop(
+    session: &mut SessionState<'_>,
     config: &SessionConfig,
-    claude_client: &mut AsyncClient,
-    input_tx: mpsc::UnboundedSender<String>,
-    input_rx: &mut mpsc::UnboundedReceiver<String>,
-    ws_write: S,
-    ws_read: R,
-) -> ConnectionResult
-where
-    S: SinkExt<Message> + Unpin + Send + 'static,
-    S::Error: std::fmt::Display,
-    R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
-        + Unpin
-        + Send
-        + 'static,
-{
+    conn: WebSocketConnection,
+) -> ConnectionResult {
     let connection_start = Instant::now();
     let session_id = config.session_id;
+
+    // Split connection for concurrent read/write
+    let (ws_write, ws_read) = conn.split();
 
     // Channel for Claude outputs
     let (output_tx, output_rx) = mpsc::unbounded_channel::<ClaudeOutput>();
 
     // Channel for permission responses from frontend
-    let (perm_tx, mut perm_rx) = mpsc::unbounded_channel::<PermissionResponseData>();
+    let (perm_tx, perm_rx) = mpsc::unbounded_channel::<PermissionResponseData>();
+
+    // Channel for output acknowledgments from backend
+    let (ack_tx, ack_rx) = mpsc::unbounded_channel::<u64>();
 
     // Wrap ws_write for sharing
     let ws_write = std::sync::Arc::new(tokio::sync::Mutex::new(ws_write));
 
     // Channel to signal WebSocket disconnection
-    let (disconnect_tx, mut disconnect_rx) = tokio::sync::oneshot::channel::<()>();
+    let (disconnect_tx, disconnect_rx) = tokio::sync::oneshot::channel::<()>();
 
     // Shared state for tracking git branch updates
     let current_branch = Arc::new(Mutex::new(config.git_branch.clone()));
 
-    // Spawn output forwarder task
+    // Spawn output forwarder task with buffer
     let output_task = spawn_output_forwarder(
         output_rx,
         ws_write.clone(),
         session_id,
         config.working_directory.clone(),
         current_branch,
+        session.output_buffer.clone(),
     );
 
     // Spawn WebSocket reader task
-    let reader_task = spawn_ws_reader(ws_read, input_tx, perm_tx, ws_write.clone(), disconnect_tx);
+    let reader_task = spawn_ws_reader(
+        ws_read,
+        session.input_tx.clone(),
+        perm_tx,
+        ack_tx,
+        ws_write.clone(),
+        disconnect_tx,
+    );
 
-    // Main loop
-    let result = run_main_loop(
-        claude_client,
-        input_rx,
-        &mut perm_rx,
-        &output_tx,
-        &mut disconnect_rx,
+    // Create connection state (per-connection channels and timing)
+    let mut conn_state = ConnectionState {
+        perm_rx,
+        ack_rx,
+        output_tx,
+        disconnect_rx,
         session_id,
         connection_start,
-    )
-    .await;
+        output_buffer: session.output_buffer.clone(),
+    };
+
+    // Main loop
+    let result = run_main_loop(session.claude_client, session.input_rx, &mut conn_state).await;
 
     // Clean up
     output_task.abort();
@@ -430,15 +570,12 @@ fn is_git_bash_command(output: &ClaudeOutput) -> bool {
 }
 
 /// Check and send git branch update if changed
-async fn check_and_send_branch_update<S>(
-    ws_write: &Arc<tokio::sync::Mutex<S>>,
+async fn check_and_send_branch_update(
+    ws_write: &SharedWsWrite,
     session_id: Uuid,
     working_directory: &str,
     current_branch: &Arc<Mutex<Option<String>>>,
-) where
-    S: SinkExt<Message> + Unpin + Send,
-    S::Error: std::fmt::Display,
-{
+) {
     let new_branch = get_git_branch(working_directory);
     let mut branch_guard = current_branch.lock().await;
 
@@ -465,17 +602,14 @@ async fn check_and_send_branch_update<S>(
 }
 
 /// Spawn the output forwarder task
-fn spawn_output_forwarder<S>(
+fn spawn_output_forwarder(
     mut output_rx: mpsc::UnboundedReceiver<ClaudeOutput>,
-    ws_write: Arc<tokio::sync::Mutex<S>>,
+    ws_write: SharedWsWrite,
     session_id: Uuid,
     working_directory: String,
     current_branch: Arc<Mutex<Option<String>>>,
-) -> tokio::task::JoinHandle<()>
-where
-    S: SinkExt<Message> + Unpin + Send + 'static,
-    S::Error: std::fmt::Display,
-{
+    output_buffer: Arc<Mutex<PendingOutputBuffer>>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut message_count: u64 = 0;
         let mut pending_git_check = false;
@@ -491,36 +625,43 @@ where
                 pending_git_check = true;
             }
 
-            // Handle ControlRequest specially - convert to PermissionRequest
-            let msg = match &output {
-                ClaudeOutput::ControlRequest(req) => {
-                    match &req.request {
-                        ControlRequestPayload::CanUseTool(tool_req) => {
-                            ProxyMessage::PermissionRequest {
-                                request_id: req.request_id.clone(),
-                                tool_name: tool_req.tool_name.clone(),
-                                input: tool_req.input.clone(),
-                                permission_suggestions: tool_req.permission_suggestions.clone(),
-                            }
-                        }
-                        _ => {
-                            // For other control requests, forward as raw output
-                            let content = serde_json::to_value(&output)
-                                .unwrap_or(serde_json::Value::String(format!("{:?}", output)));
-                            ProxyMessage::ClaudeOutput { content }
+            // Handle ControlRequest specially - these are NOT buffered (time-sensitive)
+            if let ClaudeOutput::ControlRequest(req) = &output {
+                if let ControlRequestPayload::CanUseTool(tool_req) = &req.request {
+                    let msg = ProxyMessage::PermissionRequest {
+                        request_id: req.request_id.clone(),
+                        tool_name: tool_req.tool_name.clone(),
+                        input: tool_req.input.clone(),
+                        permission_suggestions: tool_req.permission_suggestions.clone(),
+                    };
+                    if let Ok(json) = serde_json::to_string(&msg) {
+                        let mut ws = ws_write.lock().await;
+                        if let Err(e) = ws.send(Message::Text(json)).await {
+                            error!("Failed to send permission request to backend: {}", e);
+                            break;
                         }
                     }
-                }
-                ClaudeOutput::ControlResponse(_) => {
-                    // Don't forward control responses (they're acks from Claude)
                     continue;
                 }
-                _ => {
-                    let content = serde_json::to_value(&output)
-                        .unwrap_or(serde_json::Value::String(format!("{:?}", output)));
-                    ProxyMessage::ClaudeOutput { content }
-                }
+            }
+
+            // Skip control responses (they're acks from Claude, not for backend)
+            if matches!(&output, ClaudeOutput::ControlResponse(_)) {
+                continue;
+            }
+
+            // For all other outputs, serialize and buffer with sequence number
+            let content = serde_json::to_value(&output)
+                .unwrap_or(serde_json::Value::String(format!("{:?}", output)));
+
+            // Add to buffer and get sequence number
+            let seq = {
+                let mut buf = output_buffer.lock().await;
+                buf.push(content.clone())
             };
+
+            // Send as sequenced output
+            let msg = ProxyMessage::SequencedOutput { seq, content };
 
             if let Ok(json) = serde_json::to_string(&msg) {
                 let mut ws = ws_write.lock().await;
@@ -751,26 +892,20 @@ fn format_duration(ms: u64) -> String {
 }
 
 /// Spawn the WebSocket reader task
-fn spawn_ws_reader<S, R>(
-    mut ws_read: R,
+fn spawn_ws_reader(
+    mut ws_read: WsRead,
     input_tx: mpsc::UnboundedSender<String>,
     perm_tx: mpsc::UnboundedSender<PermissionResponseData>,
-    ws_write: std::sync::Arc<tokio::sync::Mutex<S>>,
+    ack_tx: mpsc::UnboundedSender<u64>,
+    ws_write: SharedWsWrite,
     disconnect_tx: tokio::sync::oneshot::Sender<()>,
-) -> tokio::task::JoinHandle<()>
-where
-    S: SinkExt<Message> + Unpin + Send + 'static,
-    S::Error: std::fmt::Display,
-    R: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>>
-        + Unpin
-        + Send
-        + 'static,
-{
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(msg) = ws_read.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
-                    if !handle_ws_text_message(&text, &input_tx, &perm_tx, &ws_write).await {
+                    if !handle_ws_text_message(&text, &input_tx, &perm_tx, &ack_tx, &ws_write).await
+                    {
                         break;
                     }
                 }
@@ -791,16 +926,13 @@ where
 }
 
 /// Handle a text message from the WebSocket
-async fn handle_ws_text_message<S>(
+async fn handle_ws_text_message(
     text: &str,
     input_tx: &mpsc::UnboundedSender<String>,
     perm_tx: &mpsc::UnboundedSender<PermissionResponseData>,
-    ws_write: &std::sync::Arc<tokio::sync::Mutex<S>>,
-) -> bool
-where
-    S: SinkExt<Message> + Unpin + Send,
-    S::Error: std::fmt::Display,
-{
+    ack_tx: &mpsc::UnboundedSender<u64>,
+    ws_write: &SharedWsWrite,
+) -> bool {
     debug!("ws recv: {}", truncate(text, 200));
 
     let proxy_msg = match serde_json::from_str::<ProxyMessage>(text) {
@@ -848,6 +980,16 @@ where
                 return false;
             }
         }
+        ProxyMessage::OutputAck {
+            session_id: _,
+            ack_seq,
+        } => {
+            debug!("→ [output_ack] seq={}", ack_seq);
+            if ack_tx.send(ack_seq).is_err() {
+                error!("Failed to send output ack to channel");
+                return false;
+            }
+        }
         ProxyMessage::Heartbeat => {
             debug!("heartbeat");
             let mut ws = ws_write.lock().await;
@@ -867,24 +1009,20 @@ where
 async fn run_main_loop(
     claude_client: &mut AsyncClient,
     input_rx: &mut mpsc::UnboundedReceiver<String>,
-    perm_rx: &mut mpsc::UnboundedReceiver<PermissionResponseData>,
-    output_tx: &mpsc::UnboundedSender<ClaudeOutput>,
-    disconnect_rx: &mut tokio::sync::oneshot::Receiver<()>,
-    session_id: Uuid,
-    connection_start: Instant,
+    state: &mut ConnectionState,
 ) -> ConnectionResult {
     use claude_codes::io::{ControlResponse, PermissionResult};
 
     loop {
         tokio::select! {
-            _ = &mut *disconnect_rx => {
+            _ = &mut state.disconnect_rx => {
                 info!("WebSocket disconnected");
-                return ConnectionResult::Disconnected(connection_start.elapsed());
+                return ConnectionResult::Disconnected(state.connection_start.elapsed());
             }
 
             Some(text) = input_rx.recv() => {
                 debug!("sending to claude process: {}", truncate(&text, 100));
-                let input = ClaudeInput::user_message(&text, session_id);
+                let input = ClaudeInput::user_message(&text, state.session_id);
 
                 if let Err(e) = claude_client.send(&input).await {
                     error!("Failed to send to Claude: {}", e);
@@ -892,7 +1030,7 @@ async fn run_main_loop(
                 }
             }
 
-            Some(perm_response) = perm_rx.recv() => {
+            Some(perm_response) = state.perm_rx.recv() => {
                 info!("sending permission response to claude: {:?}", perm_response);
 
                 // Create the control response
@@ -926,8 +1064,18 @@ async fn run_main_loop(
                 }
             }
 
+            Some(ack_seq) = state.ack_rx.recv() => {
+                // Acknowledge receipt of messages from backend
+                let mut buf = state.output_buffer.lock().await;
+                buf.acknowledge(ack_seq);
+                // Persist periodically (on every ack for now, could be batched)
+                if let Err(e) = buf.persist() {
+                    warn!("Failed to persist buffer after ack: {}", e);
+                }
+            }
+
             result = claude_client.receive() => {
-                match handle_claude_output(result, output_tx, connection_start) {
+                match handle_claude_output(result, &state.output_tx, state.connection_start) {
                     Some(result) => return result,
                     None => continue,
                 }

@@ -154,6 +154,7 @@ pub fn print_connection_restored() {
 }
 
 /// Print disconnection message with backoff
+#[allow(dead_code)]
 pub fn print_disconnected(backoff_secs: u64) {
     println!();
     println!(
@@ -161,6 +162,29 @@ pub fn print_disconnected(backoff_secs: u64) {
         "⚠".bright_yellow(),
         backoff_secs
     );
+}
+
+/// Print disconnection message with backoff and pending message count
+pub fn print_disconnected_with_pending(backoff_secs: u64, pending_count: usize) {
+    println!();
+    if pending_count > 0 {
+        println!(
+            "  {} WebSocket disconnected. {} pending messages buffered.",
+            "⚠".bright_yellow(),
+            pending_count.to_string().bright_cyan()
+        );
+        println!(
+            "  {} Reconnecting in {}s...",
+            "→".bright_blue(),
+            backoff_secs
+        );
+    } else {
+        println!(
+            "  {} WebSocket disconnected. Reconnecting in {}s...",
+            "⚠".bright_yellow(),
+            backoff_secs
+        );
+    }
 }
 
 /// Print logout success

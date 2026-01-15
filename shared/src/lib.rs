@@ -106,6 +106,24 @@ pub enum ProxyMessage {
         /// Per-session spend breakdown
         session_costs: Vec<SessionCost>,
     },
+
+    /// Sequenced output from Claude Code (proxy -> backend)
+    /// Messages are held in proxy buffer until acknowledged
+    SequencedOutput {
+        /// Monotonic sequence number for this output
+        seq: u64,
+        /// The actual output content
+        content: serde_json::Value,
+    },
+
+    /// Acknowledge receipt of output messages (backend -> proxy)
+    /// All messages with seq <= ack_seq are confirmed stored
+    OutputAck {
+        /// The session this acknowledgment is for
+        session_id: Uuid,
+        /// All messages with sequence <= this are confirmed received
+        ack_seq: u64,
+    },
 }
 
 /// Cost information for a single session

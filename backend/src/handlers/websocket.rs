@@ -30,6 +30,8 @@ pub struct SessionManager {
     pub web_clients: Arc<DashMap<SessionId, Vec<ClientSender>>>,
     // Map of user_id -> list of web client senders (for user-level broadcasts)
     pub user_clients: Arc<DashMap<Uuid, Vec<ClientSender>>>,
+    // Map of session_id -> last acknowledged sequence number (for deduplication)
+    pub last_ack_seq: Arc<DashMap<Uuid, u64>>,
 }
 
 impl SessionManager {
@@ -38,6 +40,7 @@ impl SessionManager {
             sessions: Arc::new(DashMap::new()),
             web_clients: Arc::new(DashMap::new()),
             user_clients: Arc::new(DashMap::new()),
+            last_ack_seq: Arc::new(DashMap::new()),
         }
     }
 
@@ -86,6 +89,120 @@ impl SessionManager {
 
     pub fn get_all_user_ids(&self) -> Vec<Uuid> {
         self.user_clients.iter().map(|r| *r.key()).collect()
+    }
+}
+
+/// Handle Claude output (both legacy ClaudeOutput and new SequencedOutput)
+fn handle_claude_output(
+    session_manager: &SessionManager,
+    session_key: &Option<SessionId>,
+    db_session_id: Option<Uuid>,
+    db_pool: &crate::db::DbPool,
+    tx: &ClientSender,
+    content: serde_json::Value,
+    seq: Option<u64>,
+) {
+    // Broadcast output to all web clients (always, even for replays)
+    if let Some(ref key) = session_key {
+        session_manager.broadcast_to_web_clients(
+            key,
+            ProxyMessage::ClaudeOutput {
+                content: content.clone(),
+            },
+        );
+    }
+
+    // Check for deduplication if this is a sequenced message
+    if let (Some(session_id), Some(seq_num)) = (db_session_id, seq) {
+        let last_ack = session_manager
+            .last_ack_seq
+            .get(&session_id)
+            .map(|v| *v)
+            .unwrap_or(0);
+
+        if seq_num <= last_ack {
+            // This is a replay of an already-stored message, skip DB storage
+            info!(
+                "Skipping duplicate message seq={} (last_ack={})",
+                seq_num, last_ack
+            );
+            // Still send ACK to confirm we have it
+            let _ = tx.send(ProxyMessage::OutputAck {
+                session_id,
+                ack_seq: seq_num,
+            });
+            return;
+        }
+    }
+
+    // Store message and update last_activity in DB
+    if let (Some(session_id), Ok(mut conn)) = (db_session_id, db_pool.get()) {
+        use crate::schema::{messages, sessions};
+
+        // Get user_id from session
+        if let Ok(session) = sessions::table
+            .find(session_id)
+            .first::<crate::models::Session>(&mut conn)
+        {
+            // Determine role from content type
+            let role = content
+                .get("type")
+                .and_then(|t| t.as_str())
+                .unwrap_or("assistant");
+
+            let new_message = crate::models::NewMessage {
+                session_id,
+                role: role.to_string(),
+                content: content.to_string(),
+                user_id: session.user_id,
+            };
+
+            if let Err(e) = diesel::insert_into(messages::table)
+                .values(&new_message)
+                .execute(&mut conn)
+            {
+                error!("Failed to store message: {}", e);
+            }
+
+            // Extract and store cost from result messages
+            if role == "result" {
+                if let Some(cost) = content.get("total_cost_usd").and_then(|c| c.as_f64()) {
+                    if let Err(e) = diesel::update(sessions::table.find(session_id))
+                        .set(sessions::total_cost_usd.eq(cost))
+                        .execute(&mut conn)
+                    {
+                        error!("Failed to update session cost: {}", e);
+                    }
+                }
+            }
+
+            // Truncate to keep only last 100 messages
+            let _ = super::messages::truncate_session_messages_internal(&mut conn, session_id);
+        }
+
+        // Update last_activity
+        let _ = diesel::update(sessions::table.find(session_id))
+            .set(sessions::last_activity.eq(diesel::dsl::now))
+            .execute(&mut conn);
+
+        // Update last_ack tracker and send acknowledgment for sequenced messages
+        if let Some(seq_num) = seq {
+            session_manager
+                .last_ack_seq
+                .entry(session_id)
+                .and_modify(|v| {
+                    if seq_num > *v {
+                        *v = seq_num;
+                    }
+                })
+                .or_insert(seq_num);
+
+            // Send acknowledgment back to proxy
+            let _ = tx.send(ProxyMessage::OutputAck {
+                session_id,
+                ack_seq: seq_num,
+            });
+        }
     }
 }
 
@@ -295,72 +412,28 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             );
                         }
                         ProxyMessage::ClaudeOutput { content } => {
-                            // Broadcast output to all web clients
-                            if let Some(ref key) = session_key {
-                                session_manager.broadcast_to_web_clients(
-                                    key,
-                                    ProxyMessage::ClaudeOutput {
-                                        content: content.clone(),
-                                    },
-                                );
-                            }
-
-                            // Store message and update last_activity in DB
-                            if let (Some(session_id), Ok(mut conn)) = (db_session_id, db_pool.get())
-                            {
-                                use crate::schema::{messages, sessions};
-
-                                // Get user_id from session
-                                if let Ok(session) = sessions::table
-                                    .find(session_id)
-                                    .first::<crate::models::Session>(&mut conn)
-                                {
-                                    // Determine role from content type
-                                    let role = content
-                                        .get("type")
-                                        .and_then(|t| t.as_str())
-                                        .unwrap_or("assistant");
-
-                                    let new_message = crate::models::NewMessage {
-                                        session_id,
-                                        role: role.to_string(),
-                                        content: content.to_string(),
-                                        user_id: session.user_id,
-                                    };
-
-                                    if let Err(e) = diesel::insert_into(messages::table)
-                                        .values(&new_message)
-                                        .execute(&mut conn)
-                                    {
-                                        error!("Failed to store message: {}", e);
-                                    }
-
-                                    // Extract and store cost from result messages
-                                    if role == "result" {
-                                        if let Some(cost) =
-                                            content.get("total_cost_usd").and_then(|c| c.as_f64())
-                                        {
-                                            if let Err(e) =
-                                                diesel::update(sessions::table.find(session_id))
-                                                    .set(sessions::total_cost_usd.eq(cost))
-                                                    .execute(&mut conn)
-                                            {
-                                                error!("Failed to update session cost: {}", e);
-                                            }
-                                        }
-                                    }
-
-                                    // Truncate to keep only last 100 messages
-                                    let _ = super::messages::truncate_session_messages_internal(
-                                        &mut conn, session_id,
-                                    );
-                                }
-
-                                // Update last_activity
-                                let _ = diesel::update(sessions::table.find(session_id))
-                                    .set(sessions::last_activity.eq(diesel::dsl::now))
-                                    .execute(&mut conn);
-                            }
+                            // Legacy: Handle unsequenced output (for backwards compatibility)
+                            handle_claude_output(
+                                &session_manager,
+                                &session_key,
+                                db_session_id,
+                                &db_pool,
+                                &tx,
+                                content,
+                                None, // No sequence number
+                            );
+                        }
+                        ProxyMessage::SequencedOutput { seq, content } => {
+                            // New: Handle sequenced output with acknowledgment
+                            handle_claude_output(
+                                &session_manager,
+                                &session_key,
+                                db_session_id,
+                                &db_pool,
+                                &tx,
+                                content,
+                                Some(seq),
+                            );
                         }
                         ProxyMessage::Heartbeat => {
                             // Respond to heartbeat
