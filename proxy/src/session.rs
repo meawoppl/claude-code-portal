@@ -672,7 +672,7 @@ fn spawn_output_forwarder(
             }
 
             // Check for branch update after git commands or every 100 messages
-            let should_check_branch = pending_git_check || message_count % 100 == 0;
+            let should_check_branch = pending_git_check || message_count.is_multiple_of(100);
             if should_check_branch {
                 pending_git_check = false;
                 check_and_send_branch_update(
