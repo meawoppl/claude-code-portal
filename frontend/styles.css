@@ -1870,6 +1870,66 @@ body {
     color: var(--text-muted);
 }
 
+/* Compaction/Summary Message */
+.compaction-message {
+    border-left: 3px solid #7aa2f7;
+    background: rgba(122, 162, 247, 0.08);
+}
+
+.message-type-badge.compaction {
+    background: rgba(122, 162, 247, 0.2);
+    color: #7aa2f7;
+}
+
+.compaction-stat {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-left: 0.5rem;
+}
+
+.compaction-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.compaction-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.compaction-text {
+    flex: 1;
+}
+
+.compaction-description {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.compaction-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.compaction-summary .summary-label {
+    font-weight: 600;
+    color: #7aa2f7;
+    font-size: 0.85rem;
+}
+
+.compaction-summary .summary-text {
+    color: var(--text);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
 /* Raw Message */
 .raw-message .raw-json {
     font-family: 'Courier New', monospace;
