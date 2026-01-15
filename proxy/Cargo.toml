@@ -69,3 +69,6 @@ hex = "0.4"
 # Unix system calls (for lock file process checking)
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.14"
