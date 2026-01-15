@@ -1,6 +1,17 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    deleted_session_costs (id) {
+        id -> Uuid,
+        user_id -> Uuid,
+        cost_usd -> Float8,
+        session_count -> Int4,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     messages (id) {
         id -> Uuid,
         session_id -> Uuid,
@@ -64,9 +75,16 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(deleted_session_costs -> users (user_id));
 diesel::joinable!(messages -> sessions (session_id));
 diesel::joinable!(messages -> users (user_id));
 diesel::joinable!(proxy_auth_tokens -> users (user_id));
 diesel::joinable!(sessions -> users (user_id));
 
-diesel::allow_tables_to_appear_in_same_query!(messages, proxy_auth_tokens, sessions, users,);
+diesel::allow_tables_to_appear_in_same_query!(
+    deleted_session_costs,
+    messages,
+    proxy_auth_tokens,
+    sessions,
+    users,
+);

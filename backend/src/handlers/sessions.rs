@@ -127,20 +127,41 @@ pub async fn delete_session(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    use crate::schema::sessions;
+    use crate::schema::{deleted_session_costs, sessions};
 
-    // Only delete if session belongs to the user
-    let deleted = diesel::delete(
-        sessions::table
-            .filter(sessions::id.eq(session_id))
-            .filter(sessions::user_id.eq(current_user_id)),
-    )
-    .execute(&mut conn)
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Get session cost before deleting (only if session belongs to user)
+    let session = sessions::table
+        .filter(sessions::id.eq(session_id))
+        .filter(sessions::user_id.eq(current_user_id))
+        .first::<Session>(&mut conn)
+        .optional()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
-    if deleted > 0 {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(StatusCode::NOT_FOUND)
+    // Record the cost from deleted session
+    if session.total_cost_usd > 0.0 {
+        diesel::insert_into(deleted_session_costs::table)
+            .values(crate::models::NewDeletedSessionCosts {
+                user_id: current_user_id,
+                cost_usd: session.total_cost_usd,
+                session_count: 1,
+            })
+            .on_conflict(deleted_session_costs::user_id)
+            .do_update()
+            .set((
+                deleted_session_costs::cost_usd
+                    .eq(deleted_session_costs::cost_usd + session.total_cost_usd),
+                deleted_session_costs::session_count.eq(deleted_session_costs::session_count + 1),
+                deleted_session_costs::updated_at.eq(diesel::dsl::now),
+            ))
+            .execute(&mut conn)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
+
+    // Delete the session
+    diesel::delete(sessions::table.filter(sessions::id.eq(session_id)))
+        .execute(&mut conn)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }

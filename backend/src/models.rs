@@ -115,3 +115,27 @@ pub struct NewProxyAuthToken {
     pub token_hash: String,
     pub expires_at: NaiveDateTime,
 }
+
+// ============================================================================
+// Deleted Session Costs Models
+// ============================================================================
+
+#[derive(Debug, Queryable, Selectable, Serialize, Deserialize)]
+#[diesel(table_name = crate::schema::deleted_session_costs)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct DeletedSessionCosts {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub cost_usd: f64,
+    pub session_count: i32,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = crate::schema::deleted_session_costs)]
+pub struct NewDeletedSessionCosts {
+    pub user_id: Uuid,
+    pub cost_usd: f64,
+    pub session_count: i32,
+}

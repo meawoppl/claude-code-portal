@@ -146,15 +146,27 @@ pub async fn get_stats(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // Get total spend
-    let total_spend_usd: f64 = schema::sessions::table
+    // Get total spend from active sessions
+    let active_spend: f64 = schema::sessions::table
         .select(diesel::dsl::sum(schema::sessions::total_cost_usd))
         .first::<Option<f64>>(&mut conn)
         .map_err(|e| {
-            error!("Failed to sum total spend: {}", e);
+            error!("Failed to sum active session spend: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .unwrap_or(0.0);
+
+    // Get total spend from deleted sessions
+    let deleted_spend: f64 = schema::deleted_session_costs::table
+        .select(diesel::dsl::sum(schema::deleted_session_costs::cost_usd))
+        .first::<Option<f64>>(&mut conn)
+        .map_err(|e| {
+            error!("Failed to sum deleted session spend: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .unwrap_or(0.0);
+
+    let total_spend_usd = active_spend + deleted_spend;
 
     // Get connected client counts from session manager
     let connected_proxy_clients = app_state.session_manager.sessions.len();
@@ -223,7 +235,7 @@ pub async fn list_users(
     // Get session counts and spend per user
     let mut user_infos = Vec::with_capacity(users.len());
     for user in users {
-        let (session_count, total_spend): (i64, Option<f64>) = schema::sessions::table
+        let (session_count, active_spend): (i64, Option<f64>) = schema::sessions::table
             .filter(schema::sessions::user_id.eq(user.id))
             .select((
                 diesel::dsl::count_star(),
@@ -231,6 +243,13 @@ pub async fn list_users(
             ))
             .first(&mut conn)
             .unwrap_or((0, None));
+
+        // Get spend from deleted sessions for this user
+        let deleted_spend: f64 = schema::deleted_session_costs::table
+            .filter(schema::deleted_session_costs::user_id.eq(user.id))
+            .select(schema::deleted_session_costs::cost_usd)
+            .first(&mut conn)
+            .unwrap_or(0.0);
 
         user_infos.push(AdminUserInfo {
             id: user.id,
@@ -241,7 +260,7 @@ pub async fn list_users(
             disabled: user.disabled,
             created_at: user.created_at.to_string(),
             session_count,
-            total_spend_usd: total_spend.unwrap_or(0.0),
+            total_spend_usd: active_spend.unwrap_or(0.0) + deleted_spend,
         });
     }
 
@@ -411,7 +430,7 @@ pub async fn delete_session(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Get session info for logging
+    // Get session info for logging and cost tracking
     let session: crate::models::Session = schema::sessions::table
         .find(session_id)
         .first(&mut conn)
@@ -420,6 +439,30 @@ pub async fn delete_session(
     // Remove from session manager (disconnect if connected)
     let session_key = session_id.to_string();
     app_state.session_manager.unregister_session(&session_key);
+
+    // Record the cost from deleted session
+    if session.total_cost_usd > 0.0 {
+        diesel::insert_into(schema::deleted_session_costs::table)
+            .values(crate::models::NewDeletedSessionCosts {
+                user_id: session.user_id,
+                cost_usd: session.total_cost_usd,
+                session_count: 1,
+            })
+            .on_conflict(schema::deleted_session_costs::user_id)
+            .do_update()
+            .set((
+                schema::deleted_session_costs::cost_usd
+                    .eq(schema::deleted_session_costs::cost_usd + session.total_cost_usd),
+                schema::deleted_session_costs::session_count
+                    .eq(schema::deleted_session_costs::session_count + 1),
+                schema::deleted_session_costs::updated_at.eq(diesel::dsl::now),
+            ))
+            .execute(&mut conn)
+            .map_err(|e| {
+                error!("Failed to record deleted session cost: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
 
     // Delete messages first (foreign key constraint)
     diesel::delete(schema::messages::table.filter(schema::messages::session_id.eq(session_id)))
@@ -438,8 +481,8 @@ pub async fn delete_session(
         })?;
 
     info!(
-        "Admin {} deleted session {} ({})",
-        admin.email, session_id, session.session_name
+        "Admin {} deleted session {} ({}) - cost ${:.4} recorded",
+        admin.email, session_id, session.session_name, session.total_cost_usd
     );
 
     Ok(StatusCode::NO_CONTENT)
