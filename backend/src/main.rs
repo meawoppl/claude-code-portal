@@ -287,6 +287,18 @@ async fn main() -> anyhow::Result<()> {
             "/api/download/proxy",
             get(handlers::downloads::proxy_binary).head(handlers::downloads::proxy_binary),
         )
+        // Admin dashboard routes (admin-only)
+        .route("/api/admin/stats", get(handlers::admin::get_stats))
+        .route("/api/admin/users", get(handlers::admin::list_users))
+        .route(
+            "/api/admin/users/:id",
+            axum::routing::patch(handlers::admin::update_user),
+        )
+        .route("/api/admin/sessions", get(handlers::admin::list_sessions))
+        .route(
+            "/api/admin/sessions/:id",
+            axum::routing::delete(handlers::admin::delete_session),
+        )
         // Add single unified state
         .with_state(app_state.clone());
 

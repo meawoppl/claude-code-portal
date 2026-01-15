@@ -277,6 +277,28 @@ Options:
   # All other arguments are forwarded to claude CLI
 ```
 
+### Admin Setup
+
+To grant admin privileges to a user, run the following SQL command:
+
+```bash
+# Open a database shell
+./scripts/db-shell.sh
+
+# Or connect directly with psql
+psql $DATABASE_URL
+```
+
+```sql
+-- Grant admin privileges to a user
+UPDATE users SET is_admin = true WHERE email = 'your@email.com';
+```
+
+Admins can access the admin dashboard at `/admin` which provides:
+- System statistics (users, sessions, spend)
+- User management (enable/disable, grant/revoke admin)
+- Session management (view all sessions, force delete)
+
 ## Usage
 
 ### For End Users (Web Interface)
@@ -774,4 +796,4 @@ MIT License - see [LICENSE](LICENSE) file for details
 - [ ] CLI session management commands
 - [ ] End-to-end encryption option
 - [ ] Rate limiting and quotas
-- [ ] Admin dashboard
+- [x] Admin dashboard

@@ -2,7 +2,9 @@ mod components;
 mod pages;
 pub mod utils;
 
-use pages::{dashboard::DashboardPage, settings::SettingsPage, splash::SplashPage};
+use pages::{
+    admin::AdminPage, dashboard::DashboardPage, settings::SettingsPage, splash::SplashPage,
+};
 use yew::prelude::*;
 use yew_router::prelude::*;
 
@@ -14,6 +16,8 @@ pub enum Route {
     Dashboard,
     #[at("/settings")]
     Settings,
+    #[at("/admin")]
+    Admin,
 }
 
 fn switch(routes: Route) -> Html {
@@ -21,6 +25,7 @@ fn switch(routes: Route) -> Html {
         Route::Home => html! { <SplashPage /> },
         Route::Dashboard => html! { <DashboardPage /> },
         Route::Settings => html! { <SettingsPage /> },
+        Route::Admin => html! { <AdminPage /> },
     }
 }
 

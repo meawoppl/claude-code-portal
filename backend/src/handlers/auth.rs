@@ -172,6 +172,7 @@ pub struct UserResponse {
     pub email: String,
     pub name: Option<String>,
     pub avatar_url: Option<String>,
+    pub is_admin: bool,
 }
 
 pub async fn me(
@@ -206,6 +207,7 @@ pub async fn me(
         email: user.email,
         name: user.name,
         avatar_url: user.avatar_url,
+        is_admin: user.is_admin,
     }))
 }
 

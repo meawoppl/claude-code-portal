@@ -3,7 +3,7 @@ use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Queryable, Selectable, Serialize, Deserialize)]
+#[derive(Debug, Queryable, Selectable, Serialize, Deserialize, Clone)]
 #[diesel(table_name = crate::schema::users)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct User {
@@ -14,6 +14,8 @@ pub struct User {
     pub avatar_url: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    pub is_admin: bool,
+    pub disabled: bool,
 }
 
 #[derive(Debug, Insertable)]

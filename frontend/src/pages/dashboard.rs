@@ -84,6 +84,25 @@ pub fn dashboard_page() -> Html {
     let pending_delete = use_state(|| None::<Uuid>);
     let nav_mode = use_state(|| false);
     let total_user_spend = use_state(|| 0.0f64);
+    let is_admin = use_state(|| false);
+
+    // Fetch current user info (to check admin status)
+    {
+        let is_admin = is_admin.clone();
+        use_effect_with((), move |_| {
+            spawn_local(async move {
+                let api_endpoint = utils::api_url("/api/auth/me");
+                if let Ok(response) = Request::get(&api_endpoint).send().await {
+                    if let Ok(data) = response.json::<serde_json::Value>().await {
+                        if let Some(admin) = data.get("is_admin").and_then(|v| v.as_bool()) {
+                            is_admin.set(admin);
+                        }
+                    }
+                }
+            });
+            || ()
+        });
+    }
 
     // Fetch sessions
     let fetch_sessions = {
@@ -565,6 +584,17 @@ pub fn dashboard_page() -> Html {
                     >
                         { if *show_new_session { "Close" } else { "+ New Session" } }
                     </button>
+                    {
+                        if *is_admin {
+                            html! {
+                                <Link<Route> to={Route::Admin} classes="admin-link">
+                                    { "Admin" }
+                                </Link<Route>>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                     <Link<Route> to={Route::Settings} classes="settings-button">
                         { "Settings" }
                     </Link<Route>>

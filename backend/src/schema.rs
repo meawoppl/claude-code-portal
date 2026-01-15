@@ -59,6 +59,8 @@ diesel::table! {
         avatar_url -> Nullable<Text>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
+        is_admin -> Bool,
+        disabled -> Bool,
     }
 }
 
