@@ -20,6 +20,26 @@ jobs:
       - name: Check migration naming convention
         run: ./scripts/check-migration-names.sh
 
+  lint-css:
+    name: CSS Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run stylelint
+        run: npm run lint:css
+
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
