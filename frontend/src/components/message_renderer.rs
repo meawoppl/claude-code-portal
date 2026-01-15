@@ -466,8 +466,10 @@ fn render_overload_error(msg: &ErrorMessage) -> Html {
 fn render_system_message(msg: &SystemMessage) -> Html {
     let subtype = msg.subtype.as_deref().unwrap_or("system");
 
-    // Hide init messages - they're not informative to users
-    if subtype == "init" {
+    // Hide uninformative system messages
+    // - "init": Session initialization (no useful info)
+    // - "status": Bare status updates with no content
+    if subtype == "init" || subtype == "status" {
         return html! {};
     }
 
