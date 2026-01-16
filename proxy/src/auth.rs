@@ -45,11 +45,36 @@ pub async fn device_flow_login(backend_url: &str) -> Result<(String, String, Str
 
     info!("Requesting device code from {}", device_code_url);
 
-    let response: DeviceCodeResponse = client
+    let http_response = client
         .post(&device_code_url)
         .send()
         .await
-        .context("Failed to request device code")?
+        .context("Failed to request device code")?;
+
+    let status = http_response.status();
+    if !status.is_success() {
+        match status.as_u16() {
+            503 => {
+                anyhow::bail!(
+                    "Device flow authentication is not available on this server.\n\
+                     \n\
+                     This usually means:\n\
+                     - The server is running in dev mode, or\n\
+                     - OAuth is not configured on the server\n\
+                     \n\
+                     Try using the web UI to generate a setup token instead."
+                );
+            }
+            401 => anyhow::bail!("Authentication required. Please check your credentials."),
+            404 => anyhow::bail!("Device flow endpoint not found. Server may be outdated."),
+            _ => {
+                let body = http_response.text().await.unwrap_or_default();
+                anyhow::bail!("Server returned error {}: {}", status, body);
+            }
+        }
+    }
+
+    let response: DeviceCodeResponse = http_response
         .json()
         .await
         .context("Failed to parse device code response")?;
@@ -95,14 +120,22 @@ pub async fn device_flow_login(backend_url: &str) -> Result<(String, String, Str
 
         sleep(interval).await;
 
-        let poll_response: PollResponse = client
+        let poll_http_response = client
             .post(&poll_url)
             .json(&serde_json::json!({
                 "device_code": response.device_code
             }))
             .send()
             .await
-            .context("Failed to poll for authentication")?
+            .context("Failed to poll for authentication")?;
+
+        if !poll_http_response.status().is_success() {
+            let status = poll_http_response.status();
+            let body = poll_http_response.text().await.unwrap_or_default();
+            anyhow::bail!("Poll request failed with status {}: {}", status, body);
+        }
+
+        let poll_response: PollResponse = poll_http_response
             .json()
             .await
             .context("Failed to parse poll response")?;
