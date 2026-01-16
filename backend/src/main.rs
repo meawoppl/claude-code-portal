@@ -278,6 +278,10 @@ async fn main() -> anyhow::Result<()> {
             "/ws/client",
             get(handlers::websocket::handle_web_client_websocket),
         )
+        .route(
+            "/ws/voice/:session_id",
+            get(handlers::voice::handle_voice_websocket),
+        )
         // Download routes for proxy binary and install script
         .route(
             "/api/download/install.sh",

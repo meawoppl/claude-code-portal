@@ -57,5 +57,6 @@ log = "0.4"
 
 # Async utilities for WASM
 futures-util = "0.3"
+futures-channel = "0.3"
 uuid = { workspace = true, features = ["v4", "serde", "js"] }
 js-sys = "0.3.83"

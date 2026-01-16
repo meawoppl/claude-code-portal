@@ -3991,6 +3991,28 @@ body {
     color: var(--error);
 }
 
+.voice-toggle {
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.voice-toggle:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.voice-toggle.active {
+    background: rgba(158, 206, 106, 0.2);
+    border-color: var(--green);
+    color: var(--green);
+}
+
 .delete-btn {
     border-color: var(--error);
     color: var(--error);

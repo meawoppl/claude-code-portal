@@ -2,9 +2,14 @@
 //!
 //! Provides voice-to-text input using the Web Audio API and AudioWorklet.
 //! Audio is captured from the microphone, converted to PCM16 at 16kHz,
-//! and sent via WebSocket to the backend for speech-to-text processing.
+//! and sent via a dedicated WebSocket to the backend for speech-to-text processing.
 
+use futures_util::{SinkExt, StreamExt};
 use gloo::utils::window;
+use gloo_net::websocket::{futures::WebSocket, Message};
+use shared::ProxyMessage;
+use std::cell::RefCell;
+use std::rc::Rc;
 use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -21,8 +26,8 @@ pub struct VoiceInputProps {
     pub session_id: Uuid,
     /// Callback when recording state changes
     pub on_recording_change: Callback<bool>,
-    /// Callback to send audio data (PCM16 bytes)
-    pub on_audio_data: Callback<Vec<u8>>,
+    /// Callback when transcription is received
+    pub on_transcription: Callback<String>,
     /// Callback when an error occurs
     pub on_error: Callback<String>,
     /// Whether the component is disabled
@@ -34,8 +39,8 @@ pub struct VoiceInputProps {
 pub enum VoiceInputMsg {
     StartRecording,
     StopRecording,
-    RecordingStarted(VoiceRecordingState),
-    AudioData(Vec<u8>),
+    RecordingStarted(VoiceSession),
+    WebSocketMessage(ProxyMessage),
     Error(String),
 }
 
@@ -63,10 +68,19 @@ impl Drop for VoiceRecordingState {
     }
 }
 
+/// Channel for sending audio data to the WebSocket
+type AudioSender = Rc<RefCell<Option<futures_channel::mpsc::UnboundedSender<Vec<u8>>>>>;
+
+/// Combined voice session state
+pub struct VoiceSession {
+    recording_state: VoiceRecordingState,
+    audio_sender: AudioSender,
+}
+
 /// Voice input component with microphone button
 pub struct VoiceInput {
     is_recording: bool,
-    recording_state: Option<VoiceRecordingState>,
+    voice_session: Option<VoiceSession>,
 }
 
 impl Component for VoiceInput {
@@ -76,7 +90,7 @@ impl Component for VoiceInput {
     fn create(_ctx: &Context<Self>) -> Self {
         Self {
             is_recording: false,
-            recording_state: None,
+            voice_session: None,
         }
     }
 
@@ -88,19 +102,17 @@ impl Component for VoiceInput {
                 }
 
                 let link = ctx.link().clone();
-                let on_audio = ctx.props().on_audio_data.clone();
+                let session_id = ctx.props().session_id;
                 let on_error = ctx.props().on_error.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
-                    match start_recording(on_audio).await {
-                        Ok(state) => {
-                            link.send_message(VoiceInputMsg::RecordingStarted(state));
+                    match start_voice_session(session_id, link.clone()).await {
+                        Ok(session) => {
+                            link.send_message(VoiceInputMsg::RecordingStarted(session));
                         }
                         Err(e) => {
-                            on_error.emit(e);
-                            link.send_message(VoiceInputMsg::Error(
-                                "Failed to start recording".to_string(),
-                            ));
+                            on_error.emit(e.clone());
+                            link.send_message(VoiceInputMsg::Error(e));
                         }
                     }
                 });
@@ -112,25 +124,44 @@ impl Component for VoiceInput {
                     return false;
                 }
 
-                // Drop the recording state to clean up
-                self.recording_state = None;
+                // Signal the audio sender to stop (dropping it will close the channel)
+                if let Some(session) = &self.voice_session {
+                    session.audio_sender.borrow_mut().take();
+                }
+
+                // Drop the voice session to clean up
+                self.voice_session = None;
                 self.is_recording = false;
                 ctx.props().on_recording_change.emit(false);
                 true
             }
-            VoiceInputMsg::RecordingStarted(state) => {
-                self.recording_state = Some(state);
+            VoiceInputMsg::RecordingStarted(session) => {
+                self.voice_session = Some(session);
                 self.is_recording = true;
                 ctx.props().on_recording_change.emit(true);
                 true
             }
-            VoiceInputMsg::AudioData(data) => {
-                ctx.props().on_audio_data.emit(data);
+            VoiceInputMsg::WebSocketMessage(proxy_msg) => {
+                match proxy_msg {
+                    ProxyMessage::Transcription {
+                        transcript,
+                        is_final,
+                        ..
+                    } => {
+                        if is_final {
+                            ctx.props().on_transcription.emit(transcript);
+                        }
+                    }
+                    ProxyMessage::VoiceError { message, .. } => {
+                        ctx.props().on_error.emit(message);
+                    }
+                    _ => {}
+                }
                 false
             }
             VoiceInputMsg::Error(msg) => {
                 log::error!("Voice input error: {}", msg);
-                self.recording_state = None;
+                self.voice_session = None;
                 self.is_recording = false;
                 ctx.props().on_recording_change.emit(false);
                 true
@@ -176,13 +207,97 @@ impl Component for VoiceInput {
     }
 
     fn destroy(&mut self, _ctx: &Context<Self>) {
-        // Clean up recording state when component is destroyed
-        self.recording_state = None;
+        // Clean up voice session when component is destroyed
+        self.voice_session = None;
     }
 }
 
+/// Build the WebSocket URL for voice endpoint
+fn build_voice_ws_url(session_id: Uuid) -> String {
+    let location = window().location();
+    let protocol = location.protocol().unwrap_or_else(|_| "http:".to_string());
+    let host = location
+        .host()
+        .unwrap_or_else(|_| "localhost:3000".to_string());
+    let ws_protocol = if protocol == "https:" { "wss:" } else { "ws:" };
+    format!("{}//{}/ws/voice/{}", ws_protocol, host, session_id)
+}
+
+/// Start a voice recording session with WebSocket connection
+async fn start_voice_session(
+    session_id: Uuid,
+    link: yew::html::Scope<VoiceInput>,
+) -> Result<VoiceSession, String> {
+    // Connect to voice WebSocket
+    let ws_url = build_voice_ws_url(session_id);
+    let ws = WebSocket::open(&ws_url)
+        .map_err(|e| format!("Failed to connect to voice WebSocket: {:?}", e))?;
+    let (mut ws_sender, mut ws_receiver) = ws.split();
+
+    // Send StartVoice message
+    let start_msg = ProxyMessage::StartVoice {
+        session_id,
+        language_code: "en-US".to_string(),
+    };
+    let start_json =
+        serde_json::to_string(&start_msg).map_err(|_| "Failed to serialize StartVoice message")?;
+    ws_sender
+        .send(Message::Text(start_json))
+        .await
+        .map_err(|_| "Failed to send StartVoice message")?;
+
+    // Create channel for audio data
+    let (audio_tx, mut audio_rx) = futures_channel::mpsc::unbounded::<Vec<u8>>();
+    let audio_sender: AudioSender = Rc::new(RefCell::new(Some(audio_tx)));
+
+    // Spawn task to handle incoming WebSocket messages
+    let link_for_ws = link.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        while let Some(msg) = ws_receiver.next().await {
+            match msg {
+                Ok(Message::Text(text)) => {
+                    if let Ok(proxy_msg) = serde_json::from_str::<ProxyMessage>(&text) {
+                        link_for_ws.send_message(VoiceInputMsg::WebSocketMessage(proxy_msg));
+                    }
+                }
+                Err(e) => {
+                    log::error!("Voice WebSocket error: {:?}", e);
+                    link_for_ws.send_message(VoiceInputMsg::Error(
+                        "WebSocket connection lost".to_string(),
+                    ));
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+
+    // Spawn task to send audio data over WebSocket
+    wasm_bindgen_futures::spawn_local(async move {
+        while let Some(audio_data) = audio_rx.next().await {
+            if ws_sender.send(Message::Bytes(audio_data)).await.is_err() {
+                break;
+            }
+        }
+        // Send StopVoice when audio channel closes
+        let stop_msg = ProxyMessage::StopVoice { session_id };
+        if let Ok(json) = serde_json::to_string(&stop_msg) {
+            let _ = ws_sender.send(Message::Text(json)).await;
+        }
+        let _ = ws_sender.close().await;
+    });
+
+    // Start audio recording
+    let recording_state = start_recording(audio_sender.clone()).await?;
+
+    Ok(VoiceSession {
+        recording_state,
+        audio_sender,
+    })
+}
+
 /// Start recording audio from the microphone
-async fn start_recording(on_audio: Callback<Vec<u8>>) -> Result<VoiceRecordingState, String> {
+async fn start_recording(audio_sender: AudioSender) -> Result<VoiceRecordingState, String> {
     // Get user media (microphone)
     let navigator = window().navigator();
     let media_devices = navigator
@@ -230,7 +345,6 @@ async fn start_recording(on_audio: Callback<Vec<u8>>) -> Result<VoiceRecordingSt
             .map_err(|_| "Failed to create worklet node")?;
 
     // Set up message handler for audio data from worklet
-    let on_audio_clone = on_audio.clone();
     let onmessage = Closure::wrap(Box::new(move |event: MessageEvent| {
         if let Ok(data) = event.data().dyn_into::<js_sys::Object>() {
             if let Ok(audio_buffer) = js_sys::Reflect::get(&data, &JsValue::from_str("audioData")) {
@@ -238,7 +352,10 @@ async fn start_recording(on_audio: Callback<Vec<u8>>) -> Result<VoiceRecordingSt
                     let uint8_array = js_sys::Uint8Array::new(&array_buffer);
                     let mut bytes = vec![0u8; uint8_array.length() as usize];
                     uint8_array.copy_to(&mut bytes);
-                    on_audio_clone.emit(bytes);
+                    // Send audio data through the channel
+                    if let Some(ref sender) = *audio_sender.borrow() {
+                        let _ = sender.unbounded_send(bytes);
+                    }
                 }
             }
         }
