@@ -445,6 +445,57 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             input,
                             permission_suggestions,
                         } => {
+                            // Store permission request in database for replay on reconnect
+                            if let (Some(session_id), Ok(mut conn)) = (db_session_id, db_pool.get())
+                            {
+                                use crate::schema::pending_permission_requests;
+
+                                let new_request = crate::models::NewPendingPermissionRequest {
+                                    session_id,
+                                    request_id: request_id.clone(),
+                                    tool_name: tool_name.clone(),
+                                    input: input.clone(),
+                                    permission_suggestions: if permission_suggestions.is_empty() {
+                                        None
+                                    } else {
+                                        Some(
+                                            serde_json::to_value(&permission_suggestions)
+                                                .unwrap_or_default(),
+                                        )
+                                    },
+                                };
+
+                                // Use upsert to replace any existing pending request for this session
+                                if let Err(e) =
+                                    diesel::insert_into(pending_permission_requests::table)
+                                        .values(&new_request)
+                                        .on_conflict(pending_permission_requests::session_id)
+                                        .do_update()
+                                        .set((
+                                            pending_permission_requests::request_id.eq(&request_id),
+                                            pending_permission_requests::tool_name.eq(&tool_name),
+                                            pending_permission_requests::input.eq(&input),
+                                            pending_permission_requests::permission_suggestions.eq(
+                                                if permission_suggestions.is_empty() {
+                                                    None
+                                                } else {
+                                                    Some(
+                                                        serde_json::to_value(
+                                                            &permission_suggestions,
+                                                        )
+                                                        .unwrap_or_default(),
+                                                    )
+                                                },
+                                            ),
+                                            pending_permission_requests::created_at
+                                                .eq(diesel::dsl::now),
+                                        ))
+                                        .execute(&mut conn)
+                                {
+                                    error!("Failed to store pending permission request: {}", e);
+                                }
+                            }
+
                             // Forward permission request to all web clients
                             if let Some(ref key) = session_key {
                                 info!("Permission request from proxy for tool: {} (request_id: {}, suggestions: {})", tool_name, request_id, permission_suggestions.len());
@@ -704,6 +755,36 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
 
                                             let _ = tx.send(ProxyMessage::ClaudeOutput { content });
                                         }
+
+                                        // Replay pending permission request if one exists
+                                        use crate::schema::pending_permission_requests;
+                                        if let Ok(pending) = pending_permission_requests::table
+                                            .filter(
+                                                pending_permission_requests::session_id
+                                                    .eq(session_id),
+                                            )
+                                            .first::<crate::models::PendingPermissionRequest>(
+                                                &mut conn,
+                                            )
+                                        {
+                                            info!(
+                                                "Replaying pending permission request for session {}: {} ({})",
+                                                session_id, pending.tool_name, pending.request_id
+                                            );
+
+                                            // Convert stored permission_suggestions back to Vec
+                                            let suggestions: Vec<serde_json::Value> = pending
+                                                .permission_suggestions
+                                                .and_then(|v| serde_json::from_value(v).ok())
+                                                .unwrap_or_default();
+
+                                            let _ = tx.send(ProxyMessage::PermissionRequest {
+                                                request_id: pending.request_id,
+                                                tool_name: pending.tool_name,
+                                                input: pending.input,
+                                                permission_suggestions: suggestions,
+                                            });
+                                        }
                                     }
                                 }
                                 Err(_) => {
@@ -748,9 +829,28 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                         } => {
                             // Only allow if session ownership was verified
                             if let Some(ref key) = session_key {
-                                if verified_session_id.is_some() {
+                                if let Some(session_id) = verified_session_id {
                                     info!("Web client sending PermissionResponse: {} -> {} (permissions: {}, reason: {:?})",
                                           request_id, if allow { "allow" } else { "deny" }, permissions.len(), reason);
+
+                                    // Clear pending permission request from database
+                                    if let Ok(mut conn) = db_pool.get() {
+                                        use crate::schema::pending_permission_requests;
+                                        if let Err(e) = diesel::delete(
+                                            pending_permission_requests::table.filter(
+                                                pending_permission_requests::session_id
+                                                    .eq(session_id),
+                                            ),
+                                        )
+                                        .execute(&mut conn)
+                                        {
+                                            error!(
+                                                "Failed to clear pending permission request: {}",
+                                                e
+                                            );
+                                        }
+                                    }
+
                                     if !session_manager.send_to_session(
                                         key,
                                         ProxyMessage::PermissionResponse {

@@ -18,7 +18,7 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
 
 # Database
-diesel = { version = "2.2", features = ["postgres", "r2d2", "chrono", "uuid"] }
+diesel = { version = "2.2", features = ["postgres", "r2d2", "chrono", "uuid", "serde_json"] }
 diesel-async = { version = "0.5", features = ["postgres", "deadpool"] }
 
 # Serialization

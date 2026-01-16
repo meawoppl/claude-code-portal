@@ -13,6 +13,20 @@ diesel::table! {
 }
 
 diesel::table! {
+    pending_permission_requests (id) {
+        id -> Uuid,
+        session_id -> Uuid,
+        #[max_length = 255]
+        request_id -> Varchar,
+        #[max_length = 255]
+        tool_name -> Varchar,
+        input -> Jsonb,
+        permission_suggestions -> Nullable<Jsonb>,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     proxy_auth_tokens (id) {
         id -> Uuid,
         user_id -> Uuid,
@@ -66,7 +80,14 @@ diesel::table! {
 
 diesel::joinable!(messages -> sessions (session_id));
 diesel::joinable!(messages -> users (user_id));
+diesel::joinable!(pending_permission_requests -> sessions (session_id));
 diesel::joinable!(proxy_auth_tokens -> users (user_id));
 diesel::joinable!(sessions -> users (user_id));
 
-diesel::allow_tables_to_appear_in_same_query!(messages, proxy_auth_tokens, sessions, users,);
+diesel::allow_tables_to_appear_in_same_query!(
+    messages,
+    pending_permission_requests,
+    proxy_auth_tokens,
+    sessions,
+    users,
+);
