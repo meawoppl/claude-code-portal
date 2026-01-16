@@ -80,6 +80,7 @@ diesel::table! {
         updated_at -> Timestamp,
         is_admin -> Bool,
         disabled -> Bool,
+        voice_enabled -> Bool,
     }
 }
 

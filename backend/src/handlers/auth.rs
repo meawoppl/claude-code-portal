@@ -173,6 +173,7 @@ pub struct UserResponse {
     pub name: Option<String>,
     pub avatar_url: Option<String>,
     pub is_admin: bool,
+    pub voice_enabled: bool,
 }
 
 pub async fn me(
@@ -208,6 +209,7 @@ pub async fn me(
         name: user.name,
         avatar_url: user.avatar_url,
         is_admin: user.is_admin,
+        voice_enabled: user.voice_enabled,
     }))
 }
 

@@ -28,6 +28,19 @@ web-sys = { workspace = true, features = [
     "Storage",
     "Navigator",
     "Clipboard",
+    # Audio APIs for voice input
+    "AudioContext",
+    "AudioContextOptions",
+    "AudioContextState",
+    "AudioWorklet",
+    "AudioWorkletNode",
+    "AudioWorkletNodeOptions",
+    "MediaDevices",
+    "MediaStream",
+    "MediaStreamConstraints",
+    "MediaStreamAudioSourceNode",
+    "MessageEvent",
+    "MessagePort",
 ] }
 
 # Utility libraries for WASM
@@ -44,5 +57,6 @@ log = "0.4"
 
 # Async utilities for WASM
 futures-util = "0.3"
+futures-channel = "0.3"
 uuid = { workspace = true, features = ["v4", "serde", "js"] }
 js-sys = "0.3.83"

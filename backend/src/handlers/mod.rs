@@ -5,4 +5,5 @@ pub mod downloads;
 pub mod messages;
 pub mod proxy_tokens;
 pub mod sessions;
+pub mod voice;
 pub mod websocket;

@@ -376,6 +376,7 @@ pub struct AdminUserInfo {
     pub avatar_url: Option<String>,
     pub is_admin: bool,
     pub disabled: bool,
+    pub voice_enabled: bool,
     pub created_at: String,
     pub session_count: i64,
     pub total_spend_usd: f64,
@@ -431,6 +432,7 @@ pub async fn list_users(
             avatar_url: user.avatar_url,
             is_admin: user.is_admin,
             disabled: user.disabled,
+            voice_enabled: user.voice_enabled,
             created_at: user.created_at.to_string(),
             session_count,
             total_spend_usd: usage.cost_usd,
@@ -448,6 +450,7 @@ pub async fn list_users(
 pub struct UpdateUserRequest {
     pub is_admin: Option<bool>,
     pub disabled: Option<bool>,
+    pub voice_enabled: Option<bool>,
 }
 
 pub async fn update_user(
@@ -513,6 +516,20 @@ pub async fn update_user(
         info!(
             "Admin {} set disabled={} for user {}",
             admin.email, disabled_val, target_user.email
+        );
+    }
+
+    if let Some(voice_enabled_val) = update.voice_enabled {
+        diesel::update(schema::users::table.find(user_id))
+            .set(schema::users::voice_enabled.eq(voice_enabled_val))
+            .execute(&mut conn)
+            .map_err(|e| {
+                error!("Failed to update user voice_enabled status: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+        info!(
+            "Admin {} set voice_enabled={} for user {}",
+            admin.email, voice_enabled_val, target_user.email
         );
     }
 

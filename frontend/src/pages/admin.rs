@@ -46,6 +46,7 @@ struct AdminUserInfo {
     avatar_url: Option<String>,
     is_admin: bool,
     disabled: bool,
+    voice_enabled: bool,
     created_at: String,
     session_count: i64,
     total_spend_usd: f64,
@@ -139,6 +140,7 @@ struct UserRowProps {
     user: AdminUserInfo,
     on_toggle_admin: Callback<Uuid>,
     on_toggle_disabled: Callback<Uuid>,
+    on_toggle_voice: Callback<Uuid>,
     current_user_id: Uuid,
 }
 
@@ -155,6 +157,12 @@ fn user_row(props: &UserRowProps) -> Html {
 
     let on_toggle_disabled = {
         let callback = props.on_toggle_disabled.clone();
+        let user_id = user.id;
+        Callback::from(move |_: MouseEvent| callback.emit(user_id))
+    };
+
+    let on_toggle_voice = {
+        let callback = props.on_toggle_voice.clone();
         let user_id = user.id;
         Callback::from(move |_: MouseEvent| callback.emit(user_id))
     };
@@ -202,6 +210,13 @@ fn user_row(props: &UserRowProps) -> Html {
                     title={if is_self { "Cannot disable your own account" } else if user.disabled { "Enable user" } else { "Disable user" }}
                 >
                     { if user.disabled { "Enable" } else { "Disable" } }
+                </button>
+                <button
+                    class={classes!("voice-toggle", if user.voice_enabled { Some("active") } else { None })}
+                    onclick={on_toggle_voice}
+                    title={if user.voice_enabled { "Disable voice input" } else { "Enable voice input" }}
+                >
+                    { if user.voice_enabled { "Voice: On" } else { "Voice: Off" } }
                 </button>
             </td>
         </tr>
@@ -553,6 +568,60 @@ pub fn admin_page() -> Html {
         })
     };
 
+    // Toggle voice handler
+    let on_toggle_voice = {
+        let users = users.clone();
+        let confirm_action = confirm_action.clone();
+        Callback::from(move |user_id: Uuid| {
+            let users_inner = users.clone();
+            let confirm_inner = confirm_action.clone();
+
+            let target_user = users_inner.iter().find(|u| u.id == user_id).cloned();
+            let is_currently_enabled = target_user
+                .as_ref()
+                .map(|u| u.voice_enabled)
+                .unwrap_or(false);
+            let action_text = if is_currently_enabled {
+                "Disable voice input for this user?"
+            } else {
+                "Enable voice input for this user?"
+            };
+
+            let action = Callback::from(move |_: MouseEvent| {
+                let users = users_inner.clone();
+                let confirm = confirm_inner.clone();
+                let new_voice_status = !is_currently_enabled;
+                spawn_local(async move {
+                    let api_endpoint = utils::api_url(&format!("/api/admin/users/{}", user_id));
+                    let body = serde_json::json!({ "voice_enabled": new_voice_status });
+                    match Request::patch(&api_endpoint)
+                        .header("Content-Type", "application/json")
+                        .body(body.to_string())
+                        .unwrap()
+                        .send()
+                        .await
+                    {
+                        Ok(response) => {
+                            if response.status() == 204 {
+                                let mut updated = (*users).clone();
+                                if let Some(user) = updated.iter_mut().find(|u| u.id == user_id) {
+                                    user.voice_enabled = new_voice_status;
+                                }
+                                users.set(updated);
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to update user: {:?}", e);
+                        }
+                    }
+                    confirm.set(None);
+                });
+            });
+
+            confirm_action.set(Some((action_text.to_string(), action)));
+        })
+    };
+
     // Delete session handler
     let on_delete_session = {
         let sessions = sessions.clone();
@@ -735,6 +804,7 @@ pub fn admin_page() -> Html {
                                                                             user={user.clone()}
                                                                             on_toggle_admin={on_toggle_admin.clone()}
                                                                             on_toggle_disabled={on_toggle_disabled.clone()}
+                                                                            on_toggle_voice={on_toggle_voice.clone()}
                                                                             current_user_id={current_user_id.unwrap_or_default()}
                                                                         />
                                                                     }

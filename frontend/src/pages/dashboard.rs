@@ -1,4 +1,4 @@
-use crate::components::{group_messages, MessageGroupRenderer, ProxyTokenSetup};
+use crate::components::{group_messages, MessageGroupRenderer, ProxyTokenSetup, VoiceInput};
 use crate::utils;
 use crate::Route;
 use futures_util::{SinkExt, StreamExt};
@@ -95,10 +95,12 @@ pub fn dashboard_page() -> Html {
     let nav_mode = use_state(|| false);
     let total_user_spend = use_state(|| 0.0f64);
     let is_admin = use_state(|| false);
+    let voice_enabled = use_state(|| false);
 
-    // Fetch current user info (to check admin status)
+    // Fetch current user info (to check admin status and voice_enabled)
     {
         let is_admin = is_admin.clone();
+        let voice_enabled = voice_enabled.clone();
         use_effect_with((), move |_| {
             spawn_local(async move {
                 let api_endpoint = utils::api_url("/api/auth/me");
@@ -106,6 +108,9 @@ pub fn dashboard_page() -> Html {
                     if let Ok(data) = response.json::<serde_json::Value>().await {
                         if let Some(admin) = data.get("is_admin").and_then(|v| v.as_bool()) {
                             is_admin.set(admin);
+                        }
+                        if let Some(voice) = data.get("voice_enabled").and_then(|v| v.as_bool()) {
+                            voice_enabled.set(voice);
                         }
                     }
                 }
@@ -703,6 +708,7 @@ pub fn dashboard_page() -> Html {
                                             on_connected_change={on_connected_change.clone()}
                                             on_message_sent={on_message_sent.clone()}
                                             on_branch_change={on_branch_change.clone()}
+                                            voice_enabled={*voice_enabled}
                                         />
                                     </div>
                                 }
@@ -936,6 +942,9 @@ pub struct SessionViewProps {
     pub on_connected_change: Callback<(Uuid, bool)>,
     pub on_message_sent: Callback<Uuid>,
     pub on_branch_change: Callback<(Uuid, Option<String>)>,
+    /// Whether voice input is enabled for this user
+    #[prop_or(false)]
+    pub voice_enabled: bool,
 }
 
 /// Pending permission request
@@ -977,6 +986,12 @@ pub enum SessionViewMsg {
     PermissionConfirm,
     /// Select and confirm permission option by index (for click/touch)
     PermissionSelectAndConfirm(usize),
+    /// Voice recording state changed
+    VoiceRecordingChanged(bool),
+    /// Voice transcription received
+    VoiceTranscription(String),
+    /// Voice error occurred
+    VoiceError(String),
 }
 
 pub struct SessionView {
@@ -1000,6 +1015,8 @@ pub struct SessionView {
     /// Handle to cancel pending reconnect timer
     #[allow(dead_code)]
     reconnect_timer: Option<Timeout>,
+    /// Whether voice recording is active
+    is_recording: bool,
 }
 
 impl Component for SessionView {
@@ -1153,6 +1170,7 @@ impl Component for SessionView {
             permission_selected: 0,
             reconnect_attempt: 0,
             reconnect_timer: None,
+            is_recording: false,
         }
     }
 
@@ -1623,6 +1641,27 @@ impl Component for SessionView {
                 ctx.props().on_branch_change.emit((session_id, branch));
                 false
             }
+            SessionViewMsg::VoiceRecordingChanged(recording) => {
+                self.is_recording = recording;
+                true
+            }
+            SessionViewMsg::VoiceTranscription(text) => {
+                // Append transcribed text to input field
+                if !text.is_empty() {
+                    if self.input_value.is_empty() {
+                        self.input_value = text;
+                    } else {
+                        self.input_value.push(' ');
+                        self.input_value.push_str(&text);
+                    }
+                }
+                true
+            }
+            SessionViewMsg::VoiceError(err) => {
+                log::error!("Voice error: {}", err);
+                self.is_recording = false;
+                true
+            }
         }
     }
 
@@ -1750,6 +1789,25 @@ impl Component for SessionView {
                         oninput={handle_input}
                         disabled={!self.ws_connected}
                     />
+                    {
+                        if ctx.props().voice_enabled {
+                            let session_id = ctx.props().session.id;
+                            let on_recording_change = link.callback(SessionViewMsg::VoiceRecordingChanged);
+                            let on_transcription = link.callback(SessionViewMsg::VoiceTranscription);
+                            let on_error = link.callback(SessionViewMsg::VoiceError);
+                            html! {
+                                <VoiceInput
+                                    {session_id}
+                                    {on_recording_change}
+                                    {on_transcription}
+                                    {on_error}
+                                    disabled={!self.ws_connected}
+                                />
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                     <button type="submit" class="send-button" disabled={!self.ws_connected}>
                         { "Send" }
                     </button>

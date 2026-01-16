@@ -3086,6 +3086,59 @@ body {
     cursor: not-allowed;
 }
 
+/* Voice input button */
+.voice-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.voice-button:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.voice-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.voice-button.recording {
+    background: rgba(247, 118, 142, 0.15);
+    border-color: var(--error);
+    color: var(--error);
+    animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-recording {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(247, 118, 142, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(247, 118, 142, 0);
+    }
+}
+
+.voice-button svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+.voice-button .voice-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
 /* Nav mode: dim the input area to indicate it's not active */
 .session-views-container.nav-mode .session-view-input {
     opacity: 0.5;
@@ -3989,6 +4042,28 @@ body {
     background: rgba(247, 118, 142, 0.2);
     border-color: var(--error);
     color: var(--error);
+}
+
+.voice-toggle {
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.voice-toggle:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.voice-toggle.active {
+    background: rgba(158, 206, 106, 0.2);
+    border-color: var(--green);
+    color: var(--green);
 }
 
 .delete-btn {

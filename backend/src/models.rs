@@ -16,6 +16,7 @@ pub struct User {
     pub updated_at: NaiveDateTime,
     pub is_admin: bool,
     pub disabled: bool,
+    pub voice_enabled: bool,
 }
 
 #[derive(Debug, Insertable)]

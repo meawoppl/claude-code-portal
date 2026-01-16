@@ -3,6 +3,7 @@ mod handlers;
 mod jwt;
 mod models;
 mod schema;
+mod speech;
 
 use crate::db::DbPool;
 use crate::handlers::device_flow::DeviceFlowStore;
@@ -45,6 +46,7 @@ pub struct AppState {
     pub public_url: String,
     pub cookie_key: Key,
     pub jwt_secret: String,
+    pub speech_credentials_path: Option<String>,
 }
 
 #[tokio::main]
@@ -194,6 +196,14 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Google Cloud Speech credentials path
+    let speech_credentials_path = env::var("GOOGLE_APPLICATION_CREDENTIALS").ok();
+    if speech_credentials_path.is_some() {
+        tracing::info!("Google Cloud Speech credentials configured for voice input");
+    } else {
+        tracing::info!("Voice input disabled - GOOGLE_APPLICATION_CREDENTIALS not set");
+    }
+
     // JWT secret for proxy tokens (uses SESSION_SECRET or generates for dev)
     let jwt_secret = session_secret.unwrap_or_else(|| {
         if args.dev_mode {
@@ -217,6 +227,7 @@ async fn main() -> anyhow::Result<()> {
         public_url: public_url.clone(),
         cookie_key,
         jwt_secret,
+        speech_credentials_path,
     });
 
     // Setup CORS
@@ -277,6 +288,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/ws/client",
             get(handlers::websocket::handle_web_client_websocket),
+        )
+        .route(
+            "/ws/voice/:session_id",
+            get(handlers::voice::handle_voice_websocket),
         )
         // Download routes for proxy binary and install script
         .route(

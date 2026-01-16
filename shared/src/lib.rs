@@ -124,6 +124,48 @@ pub enum ProxyMessage {
         /// All messages with sequence <= this are confirmed received
         ack_seq: u64,
     },
+
+    // =========================================================================
+    // Voice Input Messages (frontend <-> backend)
+    // =========================================================================
+    /// Start voice recording session (frontend -> backend)
+    StartVoice {
+        /// The session to associate voice input with
+        session_id: Uuid,
+        /// Language code for speech recognition (default: "en-US")
+        #[serde(default = "default_language_code")]
+        language_code: String,
+    },
+
+    /// Stop voice recording (frontend -> backend)
+    StopVoice {
+        /// The session to stop voice input for
+        session_id: Uuid,
+    },
+
+    /// Transcription result from speech-to-text (backend -> frontend)
+    Transcription {
+        /// The session this transcription is for
+        session_id: Uuid,
+        /// The transcribed text
+        transcript: String,
+        /// Whether this is a final result (vs interim/partial)
+        is_final: bool,
+        /// Confidence score (0.0 to 1.0)
+        confidence: f32,
+    },
+
+    /// Voice error (backend -> frontend)
+    VoiceError {
+        /// The session this error is for
+        session_id: Uuid,
+        /// Error message
+        message: String,
+    },
+}
+
+fn default_language_code() -> String {
+    "en-US".to_string()
 }
 
 /// Cost information for a single session
@@ -174,6 +216,9 @@ pub struct UserInfo {
     pub email: String,
     pub name: Option<String>,
     pub avatar_url: Option<String>,
+    /// Whether voice input is enabled for this user (admin-controlled)
+    #[serde(default)]
+    pub voice_enabled: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
