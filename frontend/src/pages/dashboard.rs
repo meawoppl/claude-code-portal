@@ -2,6 +2,7 @@ use crate::components::{group_messages, MessageGroupRenderer, ProxyTokenSetup};
 use crate::utils;
 use crate::Route;
 use futures_util::{SinkExt, StreamExt};
+use gloo::timers::callback::Timeout;
 use gloo_net::http::Request;
 use gloo_net::websocket::{futures::WebSocket, Message};
 use shared::{ProxyMessage, SessionCost, SessionInfo};
@@ -15,6 +16,15 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::{Element, HtmlInputElement, KeyboardEvent};
 use yew::prelude::*;
 use yew_router::prelude::*;
+
+/// Calculate exponential backoff delay for reconnection attempts
+fn calculate_backoff(attempt: u32) -> u32 {
+    const INITIAL_MS: u32 = 1000;
+    const MAX_MS: u32 = 30000;
+    INITIAL_MS
+        .saturating_mul(2u32.saturating_pow(attempt.min(5)))
+        .min(MAX_MS)
+}
 
 /// Type alias for WebSocket sender to reduce type complexity
 type WsSender = Rc<RefCell<Option<futures_util::stream::SplitSink<WebSocket, Message>>>>;
@@ -183,7 +193,7 @@ pub fn dashboard_page() -> Html {
         });
     }
 
-    // WebSocket connection for user-level spend updates
+    // WebSocket connection for user-level spend updates (with reconnection)
     {
         let total_user_spend = total_user_spend.clone();
         let session_costs = session_costs.clone();
@@ -191,47 +201,62 @@ pub fn dashboard_page() -> Html {
             let total_user_spend = total_user_spend.clone();
             let session_costs = session_costs.clone();
             spawn_local(async move {
-                // Connect to the web client WebSocket to receive spend updates
-                let ws_endpoint = utils::ws_url("/ws/client");
-                match WebSocket::open(&ws_endpoint) {
-                    Ok(ws) => {
-                        let (_sender, mut receiver) = ws.split();
-                        // Note: We don't register for a specific session here,
-                        // but the backend will still send us UserSpendUpdate messages
-                        // because we're authenticated via cookies
+                let mut attempt: u32 = 0;
+                const MAX_ATTEMPTS: u32 = 10;
 
-                        while let Some(msg) = receiver.next().await {
-                            match msg {
-                                Ok(Message::Text(text)) => {
-                                    if let Ok(ProxyMessage::UserSpendUpdate {
-                                        total_spend_usd,
-                                        session_costs: costs,
-                                    }) = serde_json::from_str::<ProxyMessage>(&text)
-                                    {
-                                        total_user_spend.set(total_spend_usd);
-                                        // Update per-session costs
-                                        let mut map = (*session_costs).clone();
-                                        for SessionCost {
-                                            session_id,
-                                            total_cost_usd,
-                                        } in costs
+                loop {
+                    let ws_endpoint = utils::ws_url("/ws/client");
+                    match WebSocket::open(&ws_endpoint) {
+                        Ok(ws) => {
+                            attempt = 0; // Reset on successful connection
+                            let (_sender, mut receiver) = ws.split();
+
+                            while let Some(msg) = receiver.next().await {
+                                match msg {
+                                    Ok(Message::Text(text)) => {
+                                        if let Ok(ProxyMessage::UserSpendUpdate {
+                                            total_spend_usd,
+                                            session_costs: costs,
+                                        }) = serde_json::from_str::<ProxyMessage>(&text)
                                         {
-                                            map.insert(session_id, total_cost_usd);
+                                            total_user_spend.set(total_spend_usd);
+                                            let mut map = (*session_costs).clone();
+                                            for SessionCost {
+                                                session_id,
+                                                total_cost_usd,
+                                            } in costs
+                                            {
+                                                map.insert(session_id, total_cost_usd);
+                                            }
+                                            session_costs.set(map);
                                         }
-                                        session_costs.set(map);
                                     }
+                                    Err(e) => {
+                                        log::error!("Spend WebSocket error: {:?}", e);
+                                        break;
+                                    }
+                                    _ => {}
                                 }
-                                Err(e) => {
-                                    log::error!("Spend WebSocket error: {:?}", e);
-                                    break;
-                                }
-                                _ => {}
                             }
                         }
+                        Err(e) => {
+                            log::error!("Failed to connect spend WebSocket: {:?}", e);
+                        }
                     }
-                    Err(e) => {
-                        log::error!("Failed to connect spend WebSocket: {:?}", e);
+
+                    // Reconnection with exponential backoff
+                    if attempt >= MAX_ATTEMPTS {
+                        log::error!("Spend WebSocket: max reconnection attempts reached");
+                        break;
                     }
+                    let delay_ms = calculate_backoff(attempt);
+                    attempt += 1;
+                    log::info!(
+                        "Spend WebSocket reconnecting in {}ms (attempt {})",
+                        delay_ms,
+                        attempt
+                    );
+                    gloo::timers::future::TimeoutFuture::new(delay_ms).await;
                 }
             });
             || ()
@@ -466,6 +491,12 @@ pub fn dashboard_page() -> Html {
 
     let waiting_count = awaiting_sessions.len();
 
+    // Count disconnected sessions for the reconnection banner
+    let disconnected_count = active_sessions
+        .iter()
+        .filter(|s| !connected_sessions.contains(&s.id))
+        .count();
+
     // Two-mode keyboard handling:
     // - Edit Mode (default): typing works, Escape -> Nav Mode, Shift+Tab -> next active (skips paused)
     // - Nav Mode: arrow keys navigate, Enter/Escape -> Edit Mode, numbers select directly
@@ -610,6 +641,20 @@ pub fn dashboard_page() -> Html {
                     <div class="modal-content" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                         <ProxyTokenSetup />
                     </div>
+                </div>
+            }
+
+            // Reconnection banner - show when any session is disconnected
+            if disconnected_count > 0 && !*loading {
+                <div class="reconnection-banner">
+                    <span class="reconnection-spinner">{ "↻" }</span>
+                    <span class="reconnection-text">
+                        { if disconnected_count == 1 {
+                            "Reconnecting...".to_string()
+                        } else {
+                            format!("{} sessions reconnecting...", disconnected_count)
+                        }}
+                    </span>
                 </div>
             }
 
@@ -911,6 +956,8 @@ pub enum SessionViewMsg {
     ReceivedOutput(String),
     WebSocketConnected(WsSender),
     WebSocketError(String),
+    /// Attempt to reconnect WebSocket after disconnect
+    AttemptReconnect,
     CheckAwaiting,
     ClearCostFlash,
     /// Permission request received
@@ -948,6 +995,11 @@ pub struct SessionView {
     cost_flash: bool,
     pending_permission: Option<PendingPermission>,
     permission_selected: usize,
+    /// Current reconnection attempt number (0 = not reconnecting)
+    reconnect_attempt: u32,
+    /// Handle to cancel pending reconnect timer
+    #[allow(dead_code)]
+    reconnect_timer: Option<Timeout>,
 }
 
 impl Component for SessionView {
@@ -1099,6 +1151,8 @@ impl Component for SessionView {
             cost_flash: false,
             pending_permission: None,
             permission_selected: 0,
+            reconnect_attempt: 0,
+            reconnect_timer: None,
         }
     }
 
@@ -1399,20 +1453,150 @@ impl Component for SessionView {
             SessionViewMsg::WebSocketConnected(sender) => {
                 self.ws_connected = true;
                 self.ws_sender = Some(sender);
+                self.reconnect_attempt = 0;
+                self.reconnect_timer = None;
                 let session_id = ctx.props().session.id;
                 ctx.props().on_connected_change.emit((session_id, true));
                 true
             }
             SessionViewMsg::WebSocketError(err) => {
-                let error_msg = serde_json::json!({
-                    "type": "error",
-                    "message": format!("Connection error: {}", err)
-                });
-                self.messages.push(error_msg.to_string());
                 self.ws_connected = false;
+                self.ws_sender = None;
                 let session_id = ctx.props().session.id;
                 ctx.props().on_connected_change.emit((session_id, false));
+
+                // Schedule reconnection with exponential backoff (max 10 attempts)
+                const MAX_ATTEMPTS: u32 = 10;
+                if self.reconnect_attempt < MAX_ATTEMPTS {
+                    self.reconnect_attempt += 1;
+                    let delay_ms = calculate_backoff(self.reconnect_attempt - 1);
+                    log::info!(
+                        "WebSocket disconnected, reconnecting in {}ms (attempt {})",
+                        delay_ms,
+                        self.reconnect_attempt
+                    );
+
+                    let link = ctx.link().clone();
+                    self.reconnect_timer = Some(Timeout::new(delay_ms, move || {
+                        link.send_message(SessionViewMsg::AttemptReconnect);
+                    }));
+                } else {
+                    // Max attempts reached, show error
+                    let error_msg = serde_json::json!({
+                        "type": "error",
+                        "message": format!("Connection lost: {}", err)
+                    });
+                    self.messages.push(error_msg.to_string());
+                }
                 true
+            }
+            SessionViewMsg::AttemptReconnect => {
+                let link = ctx.link().clone();
+                let session_id = ctx.props().session.id;
+
+                spawn_local(async move {
+                    let ws_endpoint = utils::ws_url("/ws/client");
+                    match WebSocket::open(&ws_endpoint) {
+                        Ok(ws) => {
+                            let (mut sender, mut receiver) = ws.split();
+
+                            let register_msg = ProxyMessage::Register {
+                                session_id,
+                                session_name: session_id.to_string(),
+                                auth_token: None,
+                                working_directory: String::new(),
+                                resuming: true, // Mark as resuming connection
+                                git_branch: None,
+                            };
+
+                            if let Ok(json) = serde_json::to_string(&register_msg) {
+                                if sender.send(Message::Text(json)).await.is_err() {
+                                    link.send_message(SessionViewMsg::WebSocketError(
+                                        "Failed to send registration".to_string(),
+                                    ));
+                                    return;
+                                }
+                            }
+
+                            let sender = Rc::new(RefCell::new(Some(sender)));
+                            link.send_message(SessionViewMsg::WebSocketConnected(sender));
+
+                            while let Some(msg) = receiver.next().await {
+                                match msg {
+                                    Ok(Message::Text(text)) => {
+                                        if let Ok(proxy_msg) =
+                                            serde_json::from_str::<ProxyMessage>(&text)
+                                        {
+                                            match proxy_msg {
+                                                ProxyMessage::ClaudeOutput { content } => {
+                                                    link.send_message(
+                                                        SessionViewMsg::ReceivedOutput(
+                                                            content.to_string(),
+                                                        ),
+                                                    );
+                                                    link.send_message(
+                                                        SessionViewMsg::CheckAwaiting,
+                                                    );
+                                                }
+                                                ProxyMessage::PermissionRequest {
+                                                    request_id,
+                                                    tool_name,
+                                                    input,
+                                                    permission_suggestions,
+                                                } => {
+                                                    link.send_message(
+                                                        SessionViewMsg::PermissionRequest(
+                                                            PendingPermission {
+                                                                request_id,
+                                                                tool_name,
+                                                                input,
+                                                                permission_suggestions,
+                                                            },
+                                                        ),
+                                                    );
+                                                }
+                                                ProxyMessage::Error { message } => {
+                                                    let error_json = serde_json::json!({
+                                                        "type": "error",
+                                                        "message": message
+                                                    });
+                                                    link.send_message(
+                                                        SessionViewMsg::ReceivedOutput(
+                                                            error_json.to_string(),
+                                                        ),
+                                                    );
+                                                }
+                                                ProxyMessage::SessionUpdate {
+                                                    session_id: _,
+                                                    git_branch,
+                                                } => {
+                                                    link.send_message(
+                                                        SessionViewMsg::BranchChanged(git_branch),
+                                                    );
+                                                }
+                                                _ => {}
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::error!("WebSocket error: {:?}", e);
+                                        link.send_message(SessionViewMsg::WebSocketError(format!(
+                                            "{:?}",
+                                            e
+                                        )));
+                                        break;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to reconnect WebSocket: {:?}", e);
+                            link.send_message(SessionViewMsg::WebSocketError(format!("{:?}", e)));
+                        }
+                    }
+                });
+                false
             }
             SessionViewMsg::CheckAwaiting => {
                 // Check if last message is a result (awaiting input) OR if there's a pending permission request
