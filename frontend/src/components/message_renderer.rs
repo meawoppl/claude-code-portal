@@ -151,6 +151,15 @@ pub struct SystemMessage {
     pub slash_commands: Option<Vec<String>>,
     pub mcp_servers: Option<Vec<Value>>,
     pub plugins: Option<Vec<Value>>,
+    /// Summary text for compaction messages
+    pub summary: Option<String>,
+    /// Number of leaf messages compacted
+    pub leaf_message_count: Option<u32>,
+    /// Duration in ms for compaction
+    pub duration_ms: Option<u64>,
+    /// Catch-all for other fields we might not know about
+    #[serde(flatten)]
+    pub extra: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -457,14 +466,108 @@ fn render_overload_error(msg: &ErrorMessage) -> Html {
 fn render_system_message(msg: &SystemMessage) -> Html {
     let subtype = msg.subtype.as_deref().unwrap_or("system");
 
-    // Hide init messages - they're not informative to users
-    if subtype == "init" {
+    // Hide uninformative system messages
+    // - "init": Session initialization (no useful info)
+    // - "status": Bare status updates with no content
+    if subtype == "init" || subtype == "status" {
         return html! {};
+    }
+
+    // Handle compaction/summary messages with special rendering
+    if subtype == "summary" || subtype == "compaction" || subtype == "context_compaction" {
+        return render_compaction_message(msg);
     }
 
     html! {
         <div class="claude-message system-message compact">
             <span class="message-type-badge system">{ subtype }</span>
+        </div>
+    }
+}
+
+/// Render a compaction/summary message with a clean, informative display
+fn render_compaction_message(msg: &SystemMessage) -> Html {
+    // Extract summary text if available
+    let summary_text = msg.summary.as_deref().or_else(|| {
+        // Try to get summary from extra fields
+        msg.extra.as_ref().and_then(|v| {
+            v.get("summary")
+                .and_then(|s| s.as_str())
+                .or_else(|| v.get("content").and_then(|s| s.as_str()))
+                .or_else(|| v.get("text").and_then(|s| s.as_str()))
+        })
+    });
+
+    // Extract statistics if available
+    let leaf_count = msg.leaf_message_count.or_else(|| {
+        msg.extra.as_ref().and_then(|v| {
+            v.get("leaf_message_count")
+                .and_then(|n| n.as_u64())
+                .map(|n| n as u32)
+                .or_else(|| {
+                    v.get("message_count")
+                        .and_then(|n| n.as_u64())
+                        .map(|n| n as u32)
+                })
+        })
+    });
+
+    let duration = msg.duration_ms.or_else(|| {
+        msg.extra
+            .as_ref()
+            .and_then(|v| v.get("duration_ms").and_then(|n| n.as_u64()))
+    });
+
+    html! {
+        <div class="claude-message compaction-message">
+            <div class="message-header">
+                <span class="message-type-badge compaction">{ "Context Compacted" }</span>
+                {
+                    if let Some(count) = leaf_count {
+                        html! {
+                            <span class="compaction-stat" title="Messages summarized">
+                                { format!("{} messages", count) }
+                            </span>
+                        }
+                    } else {
+                        html! {}
+                    }
+                }
+                {
+                    if let Some(ms) = duration {
+                        html! {
+                            <span class="compaction-stat" title="Compaction duration">
+                                { format_duration(ms) }
+                            </span>
+                        }
+                    } else {
+                        html! {}
+                    }
+                }
+            </div>
+            <div class="message-body">
+                <div class="compaction-content">
+                    <div class="compaction-icon">{ "📦" }</div>
+                    <div class="compaction-text">
+                        {
+                            if let Some(summary) = summary_text {
+                                html! {
+                                    <div class="compaction-summary">
+                                        <div class="summary-label">{ "Summary:" }</div>
+                                        <div class="summary-text">{ linkify_text(summary) }</div>
+                                    </div>
+                                }
+                            } else {
+                                html! {
+                                    <div class="compaction-description">
+                                        { "The conversation context has been summarized to free up space. Previous messages have been condensed while preserving important context." }
+                                    </div>
+                                }
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
         </div>
     }
 }

@@ -7,6 +7,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use bigdecimal::ToPrimitive;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -17,6 +18,96 @@ use uuid::Uuid;
 use crate::{models::User, schema, AppState};
 
 const SESSION_COOKIE_NAME: &str = "cc_session";
+
+// ============================================================================
+// Usage Helper - Aggregates cost and token data per user
+// ============================================================================
+
+/// Aggregated usage data for a user (includes both active and deleted sessions)
+#[derive(Debug, Default, Clone)]
+pub struct UserUsage {
+    pub cost_usd: f64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub cache_read_tokens: i64,
+}
+
+/// Fetch aggregated usage for a specific user (active sessions + deleted session costs)
+pub fn get_user_usage(
+    conn: &mut diesel::PgConnection,
+    user_id: Uuid,
+) -> Result<UserUsage, diesel::result::Error> {
+    // Get cost and tokens from active sessions
+    let active_cost: f64 = schema::sessions::table
+        .filter(schema::sessions::user_id.eq(user_id))
+        .select(diesel::dsl::sum(schema::sessions::total_cost_usd))
+        .first::<Option<f64>>(conn)?
+        .unwrap_or(0.0);
+
+    let active_input: i64 = schema::sessions::table
+        .filter(schema::sessions::user_id.eq(user_id))
+        .select(diesel::dsl::sum(schema::sessions::input_tokens))
+        .first::<Option<bigdecimal::BigDecimal>>(conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+
+    let active_output: i64 = schema::sessions::table
+        .filter(schema::sessions::user_id.eq(user_id))
+        .select(diesel::dsl::sum(schema::sessions::output_tokens))
+        .first::<Option<bigdecimal::BigDecimal>>(conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+
+    let active_cache_creation: i64 = schema::sessions::table
+        .filter(schema::sessions::user_id.eq(user_id))
+        .select(diesel::dsl::sum(schema::sessions::cache_creation_tokens))
+        .first::<Option<bigdecimal::BigDecimal>>(conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+
+    let active_cache_read: i64 = schema::sessions::table
+        .filter(schema::sessions::user_id.eq(user_id))
+        .select(diesel::dsl::sum(schema::sessions::cache_read_tokens))
+        .first::<Option<bigdecimal::BigDecimal>>(conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+
+    // Get usage from deleted sessions for this user (single row per user)
+    let (deleted_cost, deleted_input, deleted_output, deleted_cache_creation, deleted_cache_read): (
+        f64,
+        i64,
+        i64,
+        i64,
+        i64,
+    ) = schema::deleted_session_costs::table
+        .filter(schema::deleted_session_costs::user_id.eq(user_id))
+        .select((
+            schema::deleted_session_costs::cost_usd,
+            schema::deleted_session_costs::input_tokens,
+            schema::deleted_session_costs::output_tokens,
+            schema::deleted_session_costs::cache_creation_tokens,
+            schema::deleted_session_costs::cache_read_tokens,
+        ))
+        .first(conn)
+        .unwrap_or((0.0, 0, 0, 0, 0));
+
+    Ok(UserUsage {
+        cost_usd: active_cost + deleted_cost,
+        input_tokens: active_input + deleted_input,
+        output_tokens: active_output + deleted_output,
+        cache_creation_tokens: active_cache_creation + deleted_cache_creation,
+        cache_read_tokens: active_cache_read + deleted_cache_read,
+    })
+}
 
 // ============================================================================
 // Admin Guard - extracts and validates admin user from cookies
@@ -87,6 +178,14 @@ pub struct AdminStats {
     pub connected_web_clients: usize,
     /// Total API spend across all sessions
     pub total_spend_usd: f64,
+    /// Total input tokens across all sessions
+    pub total_input_tokens: i64,
+    /// Total output tokens across all sessions
+    pub total_output_tokens: i64,
+    /// Total cache creation tokens across all sessions
+    pub total_cache_creation_tokens: i64,
+    /// Total cache read tokens across all sessions
+    pub total_cache_read_tokens: i64,
 }
 
 pub async fn get_stats(
@@ -146,15 +245,99 @@ pub async fn get_stats(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // Get total spend
-    let total_spend_usd: f64 = schema::sessions::table
+    // Get cost total from active sessions
+    let active_spend: f64 = schema::sessions::table
         .select(diesel::dsl::sum(schema::sessions::total_cost_usd))
         .first::<Option<f64>>(&mut conn)
         .map_err(|e| {
-            error!("Failed to sum total spend: {}", e);
+            error!("Failed to sum active session spend: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .unwrap_or(0.0);
+
+    // Get token totals from active sessions (separate queries due to Diesel type constraints)
+    let active_input: i64 = schema::sessions::table
+        .select(diesel::dsl::sum(schema::sessions::input_tokens))
+        .first::<Option<bigdecimal::BigDecimal>>(&mut conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+    let active_output: i64 = schema::sessions::table
+        .select(diesel::dsl::sum(schema::sessions::output_tokens))
+        .first::<Option<bigdecimal::BigDecimal>>(&mut conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+    let active_cache_creation: i64 = schema::sessions::table
+        .select(diesel::dsl::sum(schema::sessions::cache_creation_tokens))
+        .first::<Option<bigdecimal::BigDecimal>>(&mut conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+    let active_cache_read: i64 = schema::sessions::table
+        .select(diesel::dsl::sum(schema::sessions::cache_read_tokens))
+        .first::<Option<bigdecimal::BigDecimal>>(&mut conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+
+    // Get cost total from deleted sessions
+    let deleted_spend: f64 = schema::deleted_session_costs::table
+        .select(diesel::dsl::sum(schema::deleted_session_costs::cost_usd))
+        .first::<Option<f64>>(&mut conn)
+        .map_err(|e| {
+            error!("Failed to sum deleted session spend: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .unwrap_or(0.0);
+
+    // Get token totals from deleted sessions
+    let deleted_input: i64 = schema::deleted_session_costs::table
+        .select(diesel::dsl::sum(
+            schema::deleted_session_costs::input_tokens,
+        ))
+        .first::<Option<bigdecimal::BigDecimal>>(&mut conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+    let deleted_output: i64 = schema::deleted_session_costs::table
+        .select(diesel::dsl::sum(
+            schema::deleted_session_costs::output_tokens,
+        ))
+        .first::<Option<bigdecimal::BigDecimal>>(&mut conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+    let deleted_cache_creation: i64 = schema::deleted_session_costs::table
+        .select(diesel::dsl::sum(
+            schema::deleted_session_costs::cache_creation_tokens,
+        ))
+        .first::<Option<bigdecimal::BigDecimal>>(&mut conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+    let deleted_cache_read: i64 = schema::deleted_session_costs::table
+        .select(diesel::dsl::sum(
+            schema::deleted_session_costs::cache_read_tokens,
+        ))
+        .first::<Option<bigdecimal::BigDecimal>>(&mut conn)
+        .ok()
+        .flatten()
+        .and_then(|d| d.to_i64())
+        .unwrap_or(0);
+
+    let total_spend_usd = active_spend + deleted_spend;
+    let total_input_tokens = active_input + deleted_input;
+    let total_output_tokens = active_output + deleted_output;
+    let total_cache_creation_tokens = active_cache_creation + deleted_cache_creation;
+    let total_cache_read_tokens = active_cache_read + deleted_cache_read;
 
     // Get connected client counts from session manager
     let connected_proxy_clients = app_state.session_manager.sessions.len();
@@ -174,6 +357,10 @@ pub async fn get_stats(
         connected_proxy_clients,
         connected_web_clients,
         total_spend_usd,
+        total_input_tokens,
+        total_output_tokens,
+        total_cache_creation_tokens,
+        total_cache_read_tokens,
     }))
 }
 
@@ -192,6 +379,10 @@ pub struct AdminUserInfo {
     pub created_at: String,
     pub session_count: i64,
     pub total_spend_usd: f64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub total_cache_creation_tokens: i64,
+    pub total_cache_read_tokens: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -220,17 +411,18 @@ pub async fn list_users(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // Get session counts and spend per user
+    // Get session counts and usage per user
     let mut user_infos = Vec::with_capacity(users.len());
     for user in users {
-        let (session_count, total_spend): (i64, Option<f64>) = schema::sessions::table
+        // Get session count
+        let session_count: i64 = schema::sessions::table
             .filter(schema::sessions::user_id.eq(user.id))
-            .select((
-                diesel::dsl::count_star(),
-                diesel::dsl::sum(schema::sessions::total_cost_usd),
-            ))
-            .first(&mut conn)
-            .unwrap_or((0, None));
+            .count()
+            .get_result(&mut conn)
+            .unwrap_or(0);
+
+        // Get aggregated usage via helper
+        let usage = get_user_usage(&mut conn, user.id).unwrap_or_default();
 
         user_infos.push(AdminUserInfo {
             id: user.id,
@@ -241,7 +433,11 @@ pub async fn list_users(
             disabled: user.disabled,
             created_at: user.created_at.to_string(),
             session_count,
-            total_spend_usd: total_spend.unwrap_or(0.0),
+            total_spend_usd: usage.cost_usd,
+            total_input_tokens: usage.input_tokens,
+            total_output_tokens: usage.output_tokens,
+            total_cache_creation_tokens: usage.cache_creation_tokens,
+            total_cache_read_tokens: usage.cache_read_tokens,
         });
     }
 
@@ -411,7 +607,7 @@ pub async fn delete_session(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Get session info for logging
+    // Get session info for logging and cost tracking
     let session: crate::models::Session = schema::sessions::table
         .find(session_id)
         .first(&mut conn)
@@ -420,6 +616,46 @@ pub async fn delete_session(
     // Remove from session manager (disconnect if connected)
     let session_key = session_id.to_string();
     app_state.session_manager.unregister_session(&session_key);
+
+    // Record the cost and tokens from deleted session
+    let has_usage =
+        session.total_cost_usd > 0.0 || session.input_tokens > 0 || session.output_tokens > 0;
+    if has_usage {
+        diesel::insert_into(schema::deleted_session_costs::table)
+            .values(crate::models::NewDeletedSessionCosts {
+                user_id: session.user_id,
+                cost_usd: session.total_cost_usd,
+                session_count: 1,
+                input_tokens: session.input_tokens,
+                output_tokens: session.output_tokens,
+                cache_creation_tokens: session.cache_creation_tokens,
+                cache_read_tokens: session.cache_read_tokens,
+            })
+            .on_conflict(schema::deleted_session_costs::user_id)
+            .do_update()
+            .set((
+                schema::deleted_session_costs::cost_usd
+                    .eq(schema::deleted_session_costs::cost_usd + session.total_cost_usd),
+                schema::deleted_session_costs::session_count
+                    .eq(schema::deleted_session_costs::session_count + 1),
+                schema::deleted_session_costs::input_tokens
+                    .eq(schema::deleted_session_costs::input_tokens + session.input_tokens),
+                schema::deleted_session_costs::output_tokens
+                    .eq(schema::deleted_session_costs::output_tokens + session.output_tokens),
+                schema::deleted_session_costs::cache_creation_tokens
+                    .eq(schema::deleted_session_costs::cache_creation_tokens
+                        + session.cache_creation_tokens),
+                schema::deleted_session_costs::cache_read_tokens
+                    .eq(schema::deleted_session_costs::cache_read_tokens
+                        + session.cache_read_tokens),
+                schema::deleted_session_costs::updated_at.eq(diesel::dsl::now),
+            ))
+            .execute(&mut conn)
+            .map_err(|e| {
+                error!("Failed to record deleted session cost: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    }
 
     // Delete messages first (foreign key constraint)
     diesel::delete(schema::messages::table.filter(schema::messages::session_id.eq(session_id)))
@@ -438,8 +674,8 @@ pub async fn delete_session(
         })?;
 
     info!(
-        "Admin {} deleted session {} ({})",
-        admin.email, session_id, session.session_name
+        "Admin {} deleted session {} ({}) - cost ${:.4} recorded",
+        admin.email, session_id, session.session_name, session.total_cost_usd
     );
 
     Ok(StatusCode::NO_CONTENT)

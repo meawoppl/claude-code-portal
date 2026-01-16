@@ -159,7 +159,7 @@ pub async fn callback(
     let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
     cookie.set_path("/");
     cookie.set_http_only(true);
-    cookie.set_secure(true);
+    cookie.set_secure(!app_state.dev_mode); // Don't require HTTPS in dev mode
     cookie.set_same_site(SameSite::Lax);
     cookies.signed(&app_state.cookie_key).add(cookie);
 
@@ -248,7 +248,7 @@ pub async fn dev_login(
     let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
     cookie.set_path("/");
     cookie.set_http_only(true);
-    cookie.set_secure(true);
+    cookie.set_secure(!app_state.dev_mode); // Don't require HTTPS in dev mode
     cookie.set_same_site(SameSite::Lax);
     cookies.signed(&app_state.cookie_key).add(cookie);
 

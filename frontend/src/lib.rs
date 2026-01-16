@@ -2,6 +2,9 @@ mod components;
 mod pages;
 pub mod utils;
 
+/// Application version from Cargo.toml (set at compile time)
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 use pages::{
     admin::AdminPage, dashboard::DashboardPage, settings::SettingsPage, splash::SplashPage,
 };

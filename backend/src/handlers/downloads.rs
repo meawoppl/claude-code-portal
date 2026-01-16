@@ -71,89 +71,89 @@ echo "CC-Proxy Installer"
 echo "=================="
 echo ""
 
-# Check if binary already exists
-if [ -x "${{BIN_PATH}}" ]; then
-    echo "claude-proxy found at: ${{BIN_PATH}}"
-    echo "Updating to latest version..."
-    echo ""
-fi
-
 # Create config directory
 mkdir -p "${{CONFIG_DIR}}"
 
-# Detect OS and architecture
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-
-case "${{OS}}" in
-    Linux)
-        case "${{ARCH}}" in
-            x86_64|amd64)
-                BINARY_NAME="claude-proxy-linux-x86_64"
-                ;;
-            *)
-                echo "Error: Unsupported Linux architecture: ${{ARCH}}"
-                echo "Supported: x86_64"
-                exit 1
-                ;;
-        esac
-        ;;
-    Darwin)
-        case "${{ARCH}}" in
-            arm64|aarch64)
-                BINARY_NAME="claude-proxy-darwin-aarch64"
-                ;;
-            x86_64)
-                BINARY_NAME="claude-proxy-darwin-x86_64"
-                ;;
-            *)
-                echo "Error: Unsupported macOS architecture: ${{ARCH}}"
-                echo "Supported: arm64 (Apple Silicon), x86_64 (Intel)"
-                exit 1
-                ;;
-        esac
-        ;;
-    *)
-        echo "Error: Unsupported operating system: ${{OS}}"
-        echo "Supported: Linux, Darwin (macOS)"
-        echo "For Windows, download manually from:"
-        echo "  ${{GITHUB_RELEASE_URL}}/claude-proxy-windows-x86_64.exe"
-        exit 1
-        ;;
-esac
-
-DOWNLOAD_URL="${{GITHUB_RELEASE_URL}}/${{BINARY_NAME}}"
-
-echo "Detected: ${{OS}} ${{ARCH}}"
-echo "Binary: ${{BINARY_NAME}}"
-echo "Installing to: ${{BIN_PATH}}"
-echo ""
-
-# Download the binary to a temp file first (allows replacing running binary)
-TEMP_BIN="${{BIN_PATH}}.new.$$"
-echo "Downloading claude-proxy from GitHub releases..."
-if command -v curl &> /dev/null; then
-    curl -fsSL "${{DOWNLOAD_URL}}" -o "${{TEMP_BIN}}"
-elif command -v wget &> /dev/null; then
-    wget -q "${{DOWNLOAD_URL}}" -O "${{TEMP_BIN}}"
+# Check if binary already exists (has auto-update, skip download)
+if [ -x "${{BIN_PATH}}" ]; then
+    echo "claude-proxy already installed at: ${{BIN_PATH}}"
+    echo "Skipping download (proxy has auto-update built in)"
+    echo ""
 else
-    echo "Error: curl or wget required"
-    exit 1
+    # Detect OS and architecture
+    OS="$(uname -s)"
+    ARCH="$(uname -m)"
+
+    case "${{OS}}" in
+        Linux)
+            case "${{ARCH}}" in
+                x86_64|amd64)
+                    BINARY_NAME="claude-proxy-linux-x86_64"
+                    ;;
+                *)
+                    echo "Error: Unsupported Linux architecture: ${{ARCH}}"
+                    echo "Supported: x86_64"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        Darwin)
+            case "${{ARCH}}" in
+                arm64|aarch64)
+                    BINARY_NAME="claude-proxy-darwin-aarch64"
+                    ;;
+                x86_64)
+                    BINARY_NAME="claude-proxy-darwin-x86_64"
+                    ;;
+                *)
+                    echo "Error: Unsupported macOS architecture: ${{ARCH}}"
+                    echo "Supported: arm64 (Apple Silicon), x86_64 (Intel)"
+                    exit 1
+                    ;;
+            esac
+            ;;
+        *)
+            echo "Error: Unsupported operating system: ${{OS}}"
+            echo "Supported: Linux, Darwin (macOS)"
+            echo "For Windows, download manually from:"
+            echo "  ${{GITHUB_RELEASE_URL}}/claude-proxy-windows-x86_64.exe"
+            exit 1
+            ;;
+    esac
+
+    DOWNLOAD_URL="${{GITHUB_RELEASE_URL}}/${{BINARY_NAME}}"
+
+    echo "Detected: ${{OS}} ${{ARCH}}"
+    echo "Binary: ${{BINARY_NAME}}"
+    echo "Installing to: ${{BIN_PATH}}"
+    echo ""
+
+    # Download the binary to a temp file first (allows replacing running binary)
+    TEMP_BIN="${{BIN_PATH}}.new.$$"
+    echo "Downloading claude-proxy from GitHub releases..."
+    if command -v curl &> /dev/null; then
+        curl -fsSL "${{DOWNLOAD_URL}}" -o "${{TEMP_BIN}}"
+    elif command -v wget &> /dev/null; then
+        wget -q "${{DOWNLOAD_URL}}" -O "${{TEMP_BIN}}"
+    else
+        echo "Error: curl or wget required"
+        exit 1
+    fi
+
+    # Make executable
+    chmod +x "${{TEMP_BIN}}"
+
+    # Atomic replace (works even if binary is running)
+    mv -f "${{TEMP_BIN}}" "${{BIN_PATH}}"
+
+    # macOS: Remove quarantine attribute if present
+    if [ "${{OS}}" = "Darwin" ]; then
+        xattr -d com.apple.quarantine "${{BIN_PATH}}" 2>/dev/null || true
+    fi
+
+    echo "Binary installed successfully!"
+    echo ""
 fi
-
-# Make executable
-chmod +x "${{TEMP_BIN}}"
-
-# Atomic replace (works even if binary is running)
-mv -f "${{TEMP_BIN}}" "${{BIN_PATH}}"
-
-# macOS: Remove quarantine attribute if present
-if [ "${{OS}}" = "Darwin" ]; then
-    xattr -d com.apple.quarantine "${{BIN_PATH}}" 2>/dev/null || true
-fi
-
-echo "Binary installed successfully!"
-echo ""
 
 # Add to PATH in shell rc files
 add_to_path() {{

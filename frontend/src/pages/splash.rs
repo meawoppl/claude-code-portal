@@ -1,4 +1,4 @@
-use crate::utils;
+use crate::{utils, VERSION};
 use gloo::console;
 use yew::prelude::*;
 
@@ -77,6 +77,7 @@ pub fn splash_page() -> Html {
                 </button>
 
                 <div class="splash-footer">
+                    <span class="version">{ format!("v{}", VERSION) }</span>
                     <a
                         href="https://github.com/meawoppl/cc-proxy"
                         target="_blank"

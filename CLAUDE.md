@@ -484,6 +484,15 @@ sessions::table.filter(sessions::id.eq(...))
 
 ## Code Conventions
 
+### Dead Code
+
+**Remove dead code aggressively.** Do not:
+- Add `#[allow(dead_code)]` to suppress warnings
+- Keep unused structs, functions, or imports "for future use"
+- Leave commented-out code in the codebase
+
+If code is unused, delete it. It can be recovered from git history if needed later.
+
 ### Error Handling
 
 **Backend handlers**:

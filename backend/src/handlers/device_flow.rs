@@ -15,6 +15,59 @@ use uuid::Uuid;
 
 use crate::AppState;
 
+/// Error response for device flow endpoints
+#[derive(Debug, Serialize)]
+pub struct DeviceFlowError {
+    pub error: String,
+    pub message: String,
+}
+
+/// Device flow API error that returns JSON
+pub struct DeviceFlowApiError {
+    status: StatusCode,
+    error: String,
+    message: String,
+}
+
+impl DeviceFlowApiError {
+    fn service_unavailable() -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "service_unavailable".to_string(),
+            message: "Device flow authentication is not available. Server may be in dev mode or OAuth is not configured.".to_string(),
+        }
+    }
+
+    fn not_found(msg: &str) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found".to_string(),
+            message: msg.to_string(),
+        }
+    }
+
+    fn internal_error(msg: &str) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error".to_string(),
+            message: msg.to_string(),
+        }
+    }
+}
+
+impl IntoResponse for DeviceFlowApiError {
+    fn into_response(self) -> axum::response::Response {
+        (
+            self.status,
+            Json(DeviceFlowError {
+                error: self.error,
+                message: self.message,
+            }),
+        )
+            .into_response()
+    }
+}
+
 // In-memory store for device flow state
 // In production, use Redis or database
 pub type DeviceFlowStore = Arc<RwLock<HashMap<String, DeviceFlowState>>>;
@@ -110,11 +163,11 @@ fn generate_access_token() -> String {
 // POST /auth/device/code
 pub async fn device_code(
     State(app_state): State<Arc<AppState>>,
-) -> Result<Json<DeviceCodeResponse>, StatusCode> {
+) -> Result<Json<DeviceCodeResponse>, DeviceFlowApiError> {
     let store = app_state
         .device_flow_store
         .as_ref()
-        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+        .ok_or_else(DeviceFlowApiError::service_unavailable)?;
     let device_code = generate_device_code();
     let user_code = generate_user_code();
 
@@ -148,16 +201,16 @@ pub async fn device_code(
 pub async fn device_poll(
     State(app_state): State<Arc<AppState>>,
     Json(req): Json<PollRequest>,
-) -> Result<Json<PollResponse>, StatusCode> {
+) -> Result<Json<PollResponse>, DeviceFlowApiError> {
     let store = app_state
         .device_flow_store
         .as_ref()
-        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+        .ok_or_else(DeviceFlowApiError::service_unavailable)?;
     let mut store_lock = store.write().await;
 
     let state = store_lock
         .get_mut(&req.device_code)
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or_else(|| DeviceFlowApiError::not_found("Device code not found or expired"))?;
 
     // Check expiration
     if std::time::SystemTime::now() > state.expires_at {
@@ -167,23 +220,25 @@ pub async fn device_poll(
     match &state.status {
         DeviceFlowStatus::Pending => Ok(Json(PollResponse::Pending)),
         DeviceFlowStatus::Complete => {
-            let user_id = state.user_id.ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+            let user_id = state
+                .user_id
+                .ok_or_else(|| DeviceFlowApiError::internal_error("Missing user ID"))?;
             let access_token = state
                 .access_token
                 .clone()
-                .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+                .ok_or_else(|| DeviceFlowApiError::internal_error("Missing access token"))?;
 
             // Fetch user email from database
             use crate::schema::users::dsl::*;
             let mut conn = app_state
                 .db_pool
                 .get()
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .map_err(|_| DeviceFlowApiError::internal_error("Database connection failed"))?;
 
             let user = users
                 .find(user_id)
                 .first::<crate::models::User>(&mut conn)
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .map_err(|_| DeviceFlowApiError::internal_error("User not found"))?;
 
             Ok(Json(PollResponse::Complete {
                 access_token,

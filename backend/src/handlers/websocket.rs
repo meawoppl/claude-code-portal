@@ -34,14 +34,20 @@ pub struct SessionManager {
     pub last_ack_seq: Arc<DashMap<Uuid, u64>>,
 }
 
-impl SessionManager {
-    pub fn new() -> Self {
+impl Default for SessionManager {
+    fn default() -> Self {
         Self {
             sessions: Arc::new(DashMap::new()),
             web_clients: Arc::new(DashMap::new()),
             user_clients: Arc::new(DashMap::new()),
             last_ack_seq: Arc::new(DashMap::new()),
         }
+    }
+}
+
+impl SessionManager {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn register_session(&self, session_key: SessionId, sender: ClientSender) {
@@ -164,14 +170,44 @@ fn handle_claude_output(
                 error!("Failed to store message: {}", e);
             }
 
-            // Extract and store cost from result messages
+            // Extract and store cost and token usage from result messages
             if role == "result" {
-                if let Some(cost) = content.get("total_cost_usd").and_then(|c| c.as_f64()) {
+                let cost = content.get("total_cost_usd").and_then(|c| c.as_f64());
+                let input_tokens = content.get("total_input_tokens").and_then(|t| t.as_i64());
+                let output_tokens = content.get("total_output_tokens").and_then(|t| t.as_i64());
+                let cache_creation = content
+                    .get("total_cache_creation_tokens")
+                    .and_then(|t| t.as_i64());
+                let cache_read = content
+                    .get("total_cache_read_tokens")
+                    .and_then(|t| t.as_i64());
+
+                // Update cost if present
+                if let Some(cost_val) = cost {
                     if let Err(e) = diesel::update(sessions::table.find(session_id))
-                        .set(sessions::total_cost_usd.eq(cost))
+                        .set(sessions::total_cost_usd.eq(cost_val))
                         .execute(&mut conn)
                     {
                         error!("Failed to update session cost: {}", e);
+                    }
+                }
+
+                // Update token counts if present
+                if input_tokens.is_some()
+                    || output_tokens.is_some()
+                    || cache_creation.is_some()
+                    || cache_read.is_some()
+                {
+                    if let Err(e) = diesel::update(sessions::table.find(session_id))
+                        .set((
+                            sessions::input_tokens.eq(input_tokens.unwrap_or(0)),
+                            sessions::output_tokens.eq(output_tokens.unwrap_or(0)),
+                            sessions::cache_creation_tokens.eq(cache_creation.unwrap_or(0)),
+                            sessions::cache_read_tokens.eq(cache_read.unwrap_or(0)),
+                        ))
+                        .execute(&mut conn)
+                    {
+                        error!("Failed to update session tokens: {}", e);
                     }
                 }
             }
