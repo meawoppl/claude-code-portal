@@ -992,8 +992,10 @@ pub enum SessionViewMsg {
     HistoryDown,
     /// Voice recording state changed
     VoiceRecordingChanged(bool),
-    /// Voice transcription received
+    /// Voice transcription received (final)
     VoiceTranscription(String),
+    /// Interim (partial) voice transcription received
+    VoiceInterimTranscription(String),
     /// Voice error occurred
     VoiceError(String),
 }
@@ -1027,6 +1029,8 @@ pub struct SessionView {
     draft_input: String,
     /// Whether voice recording is active
     is_recording: bool,
+    /// Interim (partial) voice transcription being displayed
+    interim_transcription: Option<String>,
 }
 
 impl Component for SessionView {
@@ -1184,6 +1188,7 @@ impl Component for SessionView {
             history_position: None,
             draft_input: String::new(),
             is_recording: false,
+            interim_transcription: None,
         }
     }
 
@@ -1715,10 +1720,15 @@ impl Component for SessionView {
             }
             SessionViewMsg::VoiceRecordingChanged(recording) => {
                 self.is_recording = recording;
+                // Clear interim transcription when recording stops
+                if !recording {
+                    self.interim_transcription = None;
+                }
                 true
             }
             SessionViewMsg::VoiceTranscription(text) => {
-                // Append transcribed text to input field
+                // Final transcription - append to input field and clear interim
+                self.interim_transcription = None;
                 if !text.is_empty() {
                     if self.input_value.is_empty() {
                         self.input_value = text;
@@ -1729,9 +1739,15 @@ impl Component for SessionView {
                 }
                 true
             }
+            SessionViewMsg::VoiceInterimTranscription(text) => {
+                // Show interim transcription as preview
+                self.interim_transcription = if text.is_empty() { None } else { Some(text) };
+                true
+            }
             SessionViewMsg::VoiceError(err) => {
                 log::error!("Voice error: {}", err);
                 self.is_recording = false;
+                self.interim_transcription = None;
                 true
             }
         }
@@ -1866,10 +1882,23 @@ impl Component for SessionView {
 
                 <form class="session-view-input" onsubmit={handle_submit}>
                     <span class="input-prompt">{ ">" }</span>
+                    {
+                        // Show interim transcription overlay when recording
+                        if let Some(ref interim) = self.interim_transcription {
+                            html! {
+                                <div class="interim-transcription">{ interim }</div>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                     <input
                         ref={self.input_ref.clone()}
                         type="text"
-                        class="message-input"
+                        class={classes!(
+                            "message-input",
+                            self.interim_transcription.is_some().then_some("has-interim")
+                        )}
                         placeholder="Type your message..."
                         value={self.input_value.clone()}
                         oninput={handle_input}
@@ -1881,12 +1910,14 @@ impl Component for SessionView {
                             let session_id = ctx.props().session.id;
                             let on_recording_change = link.callback(SessionViewMsg::VoiceRecordingChanged);
                             let on_transcription = link.callback(SessionViewMsg::VoiceTranscription);
+                            let on_interim_transcription = link.callback(SessionViewMsg::VoiceInterimTranscription);
                             let on_error = link.callback(SessionViewMsg::VoiceError);
                             html! {
                                 <VoiceInput
                                     {session_id}
                                     {on_recording_change}
                                     {on_transcription}
+                                    on_interim_transcription={Some(on_interim_transcription)}
                                     {on_error}
                                     disabled={!self.ws_connected}
                                 />

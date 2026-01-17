@@ -19,6 +19,28 @@ use web_sys::{
 };
 use yew::prelude::*;
 
+/// Check if the browser supports AudioWorklet (required for voice input)
+fn is_audio_worklet_supported() -> bool {
+    if let Some(window) = web_sys::window() {
+        // Check if AudioContext exists and has audioWorklet property
+        let audio_ctx = js_sys::Reflect::get(&window, &JsValue::from_str("AudioContext"))
+            .or_else(|_| js_sys::Reflect::get(&window, &JsValue::from_str("webkitAudioContext")));
+
+        if let Ok(ctx_constructor) = audio_ctx {
+            if !ctx_constructor.is_undefined() && !ctx_constructor.is_null() {
+                // Check if prototype has audioWorklet
+                if let Ok(proto) =
+                    js_sys::Reflect::get(&ctx_constructor, &JsValue::from_str("prototype"))
+                {
+                    return js_sys::Reflect::has(&proto, &JsValue::from_str("audioWorklet"))
+                        .unwrap_or(false);
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Props for the VoiceInput component
 #[derive(Properties, PartialEq)]
 pub struct VoiceInputProps {
@@ -26,8 +48,11 @@ pub struct VoiceInputProps {
     pub session_id: Uuid,
     /// Callback when recording state changes
     pub on_recording_change: Callback<bool>,
-    /// Callback when transcription is received
+    /// Callback when final transcription is received
     pub on_transcription: Callback<String>,
+    /// Callback when interim (partial) transcription is received
+    #[prop_or_default]
+    pub on_interim_transcription: Option<Callback<String>>,
     /// Callback when an error occurs
     pub on_error: Callback<String>,
     /// Whether the component is disabled
@@ -82,6 +107,7 @@ pub struct VoiceSession {
 pub struct VoiceInput {
     is_recording: bool,
     voice_session: Option<VoiceSession>,
+    browser_supported: bool,
 }
 
 impl Component for VoiceInput {
@@ -92,6 +118,7 @@ impl Component for VoiceInput {
         Self {
             is_recording: false,
             voice_session: None,
+            browser_supported: is_audio_worklet_supported(),
         }
     }
 
@@ -99,6 +126,12 @@ impl Component for VoiceInput {
         match msg {
             VoiceInputMsg::StartRecording => {
                 if self.is_recording {
+                    return false;
+                }
+
+                // Check browser support first
+                if !self.browser_supported {
+                    ctx.props().on_error.emit("Voice input is not supported in this browser. Please use Chrome, Edge, or another modern browser.".to_string());
                     return false;
                 }
 
@@ -151,6 +184,8 @@ impl Component for VoiceInput {
                     } => {
                         if is_final {
                             ctx.props().on_transcription.emit(transcript);
+                        } else if let Some(ref callback) = ctx.props().on_interim_transcription {
+                            callback.emit(transcript);
                         }
                     }
                     ProxyMessage::VoiceError { message, .. } => {
@@ -177,14 +212,17 @@ impl Component for VoiceInput {
             ctx.link().callback(|_| VoiceInputMsg::StartRecording)
         };
 
-        let disabled = ctx.props().disabled;
+        let disabled = ctx.props().disabled || !self.browser_supported;
         let button_class = classes!(
             "voice-button",
             self.is_recording.then_some("recording"),
             disabled.then_some("disabled"),
+            (!self.browser_supported).then_some("unsupported"),
         );
 
-        let title = if self.is_recording {
+        let title = if !self.browser_supported {
+            "Voice input not supported in this browser"
+        } else if self.is_recording {
             "Stop recording"
         } else {
             "Start voice input"
@@ -200,6 +238,8 @@ impl Component for VoiceInput {
             >
                 if self.is_recording {
                     <span class="voice-icon recording-icon">{ "\u{1F534}" }</span> // Red circle
+                } else if !self.browser_supported {
+                    <span class="voice-icon mic-icon unsupported">{ "\u{1F507}" }</span> // Muted speaker
                 } else {
                     <span class="voice-icon mic-icon">{ "\u{1F3A4}" }</span> // Microphone
                 }

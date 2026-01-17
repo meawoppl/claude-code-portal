@@ -1,4 +1,5 @@
 mod copy_command;
+mod markdown;
 mod message_renderer;
 mod proxy_token_setup;
 mod voice_input;
