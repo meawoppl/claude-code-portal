@@ -196,30 +196,9 @@ async fn run_recognition(
     });
 
     // Process recognition results
-    // Google can send multiple results per response - log ALL of them for debugging
     while let Some(response) = result_receiver.recv().await {
-        let result_count = response.results.len();
-        info!("Received STT response with {} result(s)", result_count);
-
-        // Log ALL results in the response for debugging
-        for (idx, result) in response.results.iter().enumerate() {
-            let alternatives_count = result.alternatives.len();
-            info!(
-                "  Result[{}]: is_final={}, stability={:.3}, alternatives={}",
-                idx, result.is_final, result.stability, alternatives_count
-            );
-
-            for (alt_idx, alt) in result.alternatives.iter().enumerate() {
-                info!(
-                    "    Alt[{}]: confidence={:.3}, transcript=\"{}\"",
-                    alt_idx, alt.confidence, alt.transcript
-                );
-            }
-        }
-
         // Concatenate all results to get the full transcript
         // Google splits responses into stable (high stability) and unstable (low stability) portions
-        // Result[0] is typically the stable/confirmed text, Result[1+] are new tentative words
         let mut full_transcript = String::new();
         let mut is_final = false;
         let mut max_confidence = 0.0f32;
@@ -231,18 +210,12 @@ async fn run_recognition(
                     max_confidence = alt.confidence;
                 }
             }
-            // If any result is final, the whole response is final
             if result.is_final {
                 is_final = true;
             }
         }
 
         if !full_transcript.is_empty() {
-            info!(
-                ">>> Sending to frontend: is_final={}, transcript=\"{}\"",
-                is_final, full_transcript
-            );
-
             let transcription = TranscriptionResult {
                 transcript: full_transcript,
                 is_final,
