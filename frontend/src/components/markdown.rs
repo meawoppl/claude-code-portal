@@ -208,28 +208,25 @@ fn render_table(events: &[Event], alignments: &[pulldown_cmark::Alignment]) -> H
     // We need to process the events to build proper thead/tbody structure
     let mut parts: Vec<Html> = Vec::new();
     let mut i = 0;
-    let mut in_head = false;
+    let mut head_processed = false;
     let alignments = alignments.to_vec();
 
     while i < events.len() {
         match &events[i] {
             Event::Start(Tag::TableHead) => {
-                in_head = true;
                 // Find the end of TableHead and render it
                 let (inner, consumed) = collect_until_end(&events[i..], &TagEnd::TableHead);
                 let head_html = render_table_head(&inner, &alignments);
                 parts.push(head_html);
                 i += consumed;
+                head_processed = true;
             }
-            Event::Start(Tag::TableRow) if !in_head => {
+            Event::Start(Tag::TableRow) if head_processed => {
+                // Body rows come after head is processed
                 let (inner, consumed) = collect_until_end(&events[i..], &TagEnd::TableRow);
                 let row_html = render_table_row(&inner, &alignments);
                 parts.push(row_html);
                 i += consumed;
-            }
-            Event::End(TagEnd::TableHead) => {
-                in_head = false;
-                i += 1;
             }
             _ => {
                 i += 1;
@@ -253,6 +250,7 @@ fn render_table(events: &[Event], alignments: &[pulldown_cmark::Alignment]) -> H
 }
 
 /// Render table header row
+/// Note: pulldown-cmark puts TableCells directly inside TableHead (no TableRow wrapper)
 fn render_table_head(events: &[Event], alignments: &[pulldown_cmark::Alignment]) -> Html {
     let mut cells: Vec<Html> = Vec::new();
     let mut i = 0;
@@ -260,12 +258,6 @@ fn render_table_head(events: &[Event], alignments: &[pulldown_cmark::Alignment])
 
     while i < events.len() {
         match &events[i] {
-            Event::Start(Tag::TableRow) => {
-                i += 1;
-            }
-            Event::End(TagEnd::TableRow) => {
-                i += 1;
-            }
             Event::Start(Tag::TableCell) => {
                 let (inner, consumed) = collect_until_end(&events[i..], &TagEnd::TableCell);
                 let inner_html = render_events(&inner);
@@ -608,5 +600,39 @@ mod tests {
         assert!(is_valid_url("https://sub.domain.com/path"));
         assert!(!is_valid_url("https://"));
         assert!(!is_valid_url("https://nodot"));
+    }
+
+    #[test]
+    fn test_table_parsing_events() {
+        // Test that pulldown-cmark generates expected events for a simple table
+        let markdown = r#"| A | B |
+|---|---|
+| 1 | 2 |
+| 3 | 4 |"#;
+
+        let mut options = Options::empty();
+        options.insert(Options::ENABLE_TABLES);
+        let parser = Parser::new_ext(markdown, options);
+        let events: Vec<Event> = parser.collect();
+
+        // Count table rows - body rows only (header cells are in TableHead directly)
+        let row_starts: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, Event::Start(Tag::TableRow)))
+            .collect();
+        assert_eq!(row_starts.len(), 2, "Expected 2 body table rows");
+
+        // Count table cells - should have 2 per row = 6 total
+        let cell_starts: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, Event::Start(Tag::TableCell)))
+            .collect();
+        assert_eq!(cell_starts.len(), 6, "Expected 6 table cells");
+
+        // Verify table head is present
+        let has_table_head = events
+            .iter()
+            .any(|e| matches!(e, Event::Start(Tag::TableHead)));
+        assert!(has_table_head, "Expected TableHead event");
     }
 }
