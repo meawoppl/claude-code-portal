@@ -1,7 +1,9 @@
-name: Build and Push Container
+name: Container
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
 
 env:
@@ -9,8 +11,8 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
-    name: Build and Push Container
+  build:
+    name: Build Container
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,6 +38,7 @@ jobs:
         run: cd frontend && trunk build
 
       - name: Log in to Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -51,7 +54,18 @@ jobs:
             type=sha,prefix=
             type=raw,value=latest
 
+      - name: Build Docker image
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
       - name: Build and push Docker image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v5
         with:
           context: .
