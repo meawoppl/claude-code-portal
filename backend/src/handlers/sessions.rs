@@ -9,10 +9,7 @@ use std::sync::Arc;
 use tower_cookies::Cookies;
 use uuid::Uuid;
 
-use crate::{
-    models::{Message, Session},
-    AppState,
-};
+use crate::{models::Message, models::Session, AppState};
 
 const SESSION_COOKIE_NAME: &str = "cc_session";
 
@@ -33,11 +30,13 @@ pub async fn list_sessions(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    use crate::schema::sessions;
+    use crate::schema::{session_members, sessions};
 
-    // Filter sessions by user_id - return all sessions for UI to group by status
+    // Get all sessions the user is a member of (owner, editor, or viewer)
     let results = sessions::table
-        .filter(sessions::user_id.eq(current_user_id))
+        .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
+        .filter(session_members::user_id.eq(current_user_id))
+        .select(Session::as_select())
         .order(sessions::last_activity.desc())
         .load::<Session>(&mut conn)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -90,13 +89,14 @@ pub async fn get_session(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    use crate::schema::messages;
-    use crate::schema::sessions;
+    use crate::schema::{messages, session_members, sessions};
 
-    // Only return session if it belongs to the authenticated user
+    // Only return session if user is a member (owner, editor, or viewer)
     let session = sessions::table
+        .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
         .filter(sessions::id.eq(session_id))
-        .filter(sessions::user_id.eq(current_user_id))
+        .filter(session_members::user_id.eq(current_user_id))
+        .select(Session::as_select())
         .first::<Session>(&mut conn)
         .optional()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -127,12 +127,15 @@ pub async fn delete_session(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    use crate::schema::{deleted_session_costs, sessions};
+    use crate::schema::{deleted_session_costs, session_members, sessions};
 
-    // Get session cost before deleting (only if session belongs to user)
+    // Only owners can delete sessions - verify user is an owner
     let session = sessions::table
+        .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
         .filter(sessions::id.eq(session_id))
-        .filter(sessions::user_id.eq(current_user_id))
+        .filter(session_members::user_id.eq(current_user_id))
+        .filter(session_members::role.eq("owner"))
+        .select(Session::as_select())
         .first::<Session>(&mut conn)
         .optional()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?

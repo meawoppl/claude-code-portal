@@ -165,6 +165,30 @@ pub struct NewDeletedSessionCosts {
 }
 
 // ============================================================================
+// Session Member Models
+// ============================================================================
+
+#[allow(dead_code)] // Will be used for querying session membership in UI
+#[derive(Debug, Queryable, Selectable, Serialize, Deserialize, Clone)]
+#[diesel(table_name = crate::schema::session_members)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct SessionMember {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub user_id: Uuid,
+    pub role: String,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = crate::schema::session_members)]
+pub struct NewSessionMember {
+    pub session_id: Uuid,
+    pub user_id: Uuid,
+    pub role: String,
+}
+
+// ============================================================================
 // Raw Message Log Models
 // ============================================================================
 

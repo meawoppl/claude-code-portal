@@ -71,6 +71,17 @@ diesel::table! {
 }
 
 diesel::table! {
+    session_members (id) {
+        id -> Uuid,
+        session_id -> Uuid,
+        user_id -> Uuid,
+        #[max_length = 20]
+        role -> Varchar,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     sessions (id) {
         id -> Uuid,
         user_id -> Uuid,
@@ -119,6 +130,8 @@ diesel::joinable!(pending_permission_requests -> sessions (session_id));
 diesel::joinable!(proxy_auth_tokens -> users (user_id));
 diesel::joinable!(raw_message_log -> sessions (session_id));
 diesel::joinable!(raw_message_log -> users (user_id));
+diesel::joinable!(session_members -> sessions (session_id));
+diesel::joinable!(session_members -> users (user_id));
 diesel::joinable!(sessions -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
@@ -127,6 +140,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     pending_permission_requests,
     proxy_auth_tokens,
     raw_message_log,
+    session_members,
     sessions,
     users,
 );

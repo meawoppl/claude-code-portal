@@ -64,16 +64,18 @@ fn extract_user_id(app_state: &AppState, cookies: &Cookies) -> Result<Uuid, Stat
     cookie.value().parse().map_err(|_| StatusCode::UNAUTHORIZED)
 }
 
-/// Verify that a session belongs to the authenticated user
-fn verify_session_ownership(
+/// Verify that a user has access to a session (is a member with any role)
+fn verify_session_access(
     conn: &mut diesel::pg::PgConnection,
     session_id: Uuid,
     user_id: Uuid,
 ) -> Result<crate::models::Session, StatusCode> {
-    use crate::schema::sessions;
+    use crate::schema::{session_members, sessions};
     sessions::table
+        .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
         .filter(sessions::id.eq(session_id))
-        .filter(sessions::user_id.eq(user_id))
+        .filter(session_members::user_id.eq(user_id))
+        .select(crate::models::Session::as_select())
         .first::<crate::models::Session>(conn)
         .map_err(|_| StatusCode::NOT_FOUND)
 }
@@ -93,8 +95,8 @@ pub async fn create_message(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Verify the session belongs to the authenticated user
-    let session = verify_session_ownership(&mut conn, session_id, current_user_id)?;
+    // Verify the user has access to the session
+    let session = verify_session_access(&mut conn, session_id, current_user_id)?;
 
     let new_message = NewMessage {
         session_id,
@@ -131,8 +133,8 @@ pub async fn list_messages(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Verify the session belongs to the authenticated user
-    let _session = verify_session_ownership(&mut conn, session_id, current_user_id)?;
+    // Verify the user has access to the session
+    let _session = verify_session_access(&mut conn, session_id, current_user_id)?;
 
     let message_list: Vec<Message> = messages::table
         .filter(messages::session_id.eq(session_id))
