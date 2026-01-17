@@ -1,0 +1,830 @@
+/* ==========================================================================
+   Focus Flow Layout - Main dashboard with horizontal session carousel
+   ========================================================================== */
+
+.focus-flow-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--bg-dark);
+    outline: none;
+}
+
+.focus-flow-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1.5rem;
+    background: var(--bg-darker);
+    border-bottom: 1px solid var(--border);
+}
+
+.focus-flow-header h1 {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.focus-flow-header .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.total-spend-badge {
+    background: rgba(158, 206, 106, 0.2);
+    color: var(--success);
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: monospace;
+}
+
+.waiting-badge {
+    background: rgba(247, 118, 142, 0.2);
+    color: var(--error);
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    animation: pulse 2s infinite;
+}
+
+/* Reconnection banner */
+.reconnection-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: rgba(247, 118, 142, 0.15);
+    border-bottom: 1px solid rgba(247, 118, 142, 0.3);
+}
+
+.reconnection-banner .reconnection-spinner {
+    color: var(--error);
+    font-size: 1rem;
+    animation: spin 1s linear infinite;
+}
+
+.reconnection-banner .reconnection-text {
+    color: var(--error);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.focus-flow-header .new-session-button {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+    background: rgba(122, 162, 247, 0.1);
+    color: var(--accent);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.focus-flow-header .new-session-button:hover {
+    border-color: var(--accent-hover);
+    background: var(--accent);
+    color: var(--bg-dark);
+}
+
+.focus-flow-header .new-session-button:active {
+    transform: scale(0.98);
+}
+
+.focus-flow-header .new-session-button.active {
+    background: var(--text-secondary);
+    border-color: var(--text-secondary);
+    color: var(--bg-dark);
+}
+
+/* ==========================================================================
+   Session Rail - Horizontal Carousel
+   ========================================================================== */
+
+.session-rail {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-darker);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.session-rail::-webkit-scrollbar {
+    height: 4px;
+}
+
+.session-rail::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.session-rail::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+.session-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.session-pill:hover {
+    border-color: var(--accent);
+    background: rgba(122, 162, 247, 0.1);
+}
+
+.session-pill.focused {
+    border-color: var(--accent);
+    background: rgba(122, 162, 247, 0.2);
+    box-shadow: 0 0 0 2px rgba(122, 162, 247, 0.3);
+}
+
+.session-pill.awaiting {
+    border-color: var(--error);
+    animation: awaitingPulse 2s ease-in-out infinite;
+}
+
+@keyframes awaitingPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(247, 118, 142, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 4px rgba(247, 118, 142, 0.2);
+    }
+}
+
+.session-pill.focused.awaiting {
+    border-color: var(--error);
+    background: rgba(247, 118, 142, 0.15);
+}
+
+.pill-indicator {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+.session-pill.awaiting .pill-indicator {
+    color: var(--error);
+}
+
+.pill-name {
+    display: flex;
+    flex-direction: column;
+    max-width: 200px;
+    overflow: hidden;
+}
+
+.pill-project {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pill-hostname {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pill-branch {
+    font-size: 0.7rem;
+    color: var(--accent);
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pill-branch::before {
+    content: "\1F33F ";  /* Seedling/branch emoji */
+    font-style: normal;
+}
+
+.session-pill.status-disconnected .pill-branch {
+    color: var(--text-secondary);
+}
+
+.pill-no-branch {
+    font-size: 0.7rem;
+    color: var(--error);
+    font-style: italic;
+    white-space: nowrap;
+}
+
+.session-pill.status-disconnected .pill-no-branch {
+    color: var(--text-secondary);
+}
+
+.pill-status {
+    font-size: 0.6rem;
+    line-height: 1;
+}
+
+.pill-status.connected {
+    color: var(--success);
+}
+
+.pill-status.disconnected {
+    color: var(--text-secondary);
+}
+
+.pill-cost {
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: var(--success);
+    padding: 0.1rem 0.3rem;
+    background: rgba(158, 206, 106, 0.15);
+    border-radius: 3px;
+}
+
+.pill-delete {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    background: rgba(247, 118, 142, 0.1);
+    color: var(--error);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pill-delete:hover {
+    background: var(--error);
+    border-color: var(--error);
+    color: white;
+}
+
+/* Disconnected session (DB status) styling */
+.session-pill.status-disconnected {
+    opacity: 0.6;
+    background: rgba(127, 132, 156, 0.1);
+    border-color: var(--text-secondary);
+}
+
+.session-pill.status-disconnected:hover {
+    opacity: 0.8;
+    background: rgba(127, 132, 156, 0.15);
+}
+
+.session-pill.status-disconnected.focused {
+    opacity: 0.85;
+    border-color: var(--text-secondary);
+    box-shadow: 0 0 0 2px rgba(127, 132, 156, 0.3);
+}
+
+.session-pill.status-disconnected .pill-project,
+.session-pill.status-disconnected .pill-hostname {
+    color: var(--text-secondary);
+}
+
+/* Paused session styling */
+.session-pill.paused {
+    opacity: 0.5;
+    border-style: dashed;
+}
+
+.session-pill.paused:hover {
+    opacity: 0.75;
+}
+
+.session-pill.paused.focused {
+    opacity: 0.7;
+}
+
+.pill-paused-badge {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.pill-pause {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    background: rgba(122, 162, 247, 0.1);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pill-pause:hover {
+    background: rgba(122, 162, 247, 0.3);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.pill-pause.active {
+    background: rgba(122, 162, 247, 0.2);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.pill-pause.active:hover {
+    background: rgba(158, 206, 106, 0.2);
+    border-color: var(--success);
+    color: var(--success);
+}
+
+/* Number annotation for nav mode (1-9 keys) */
+.pill-number {
+    display: none;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--accent);
+    background: rgba(122, 162, 247, 0.3);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+.session-pill.nav-mode .pill-number {
+    display: inline-block;
+}
+
+/* Nav mode selection highlight */
+.session-pill.nav-mode.focused {
+    border-color: var(--accent);
+    background: rgba(122, 162, 247, 0.25);
+    box-shadow: 0 0 0 3px rgba(122, 162, 247, 0.4);
+}
+
+/* ==========================================================================
+   Session View - Main Terminal Area
+   ========================================================================== */
+
+/* Container holds all session views stacked */
+.session-views-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Wrapper controls visibility of each session view */
+.session-view-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.session-view-wrapper.hidden {
+    display: none;
+}
+
+.session-view-wrapper.focused {
+    /* Focused session is visible */
+}
+
+.session-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.session-view-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--border);
+}
+
+.session-view-header .session-name {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.session-view-header .session-hostname {
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
+.session-view-header .session-path {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-family: monospace;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-view-header .status {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+}
+
+.session-view-header .status.connected {
+    background: rgba(158, 206, 106, 0.2);
+    color: var(--success);
+}
+
+.session-view-header .status.disconnected {
+    background: rgba(247, 118, 142, 0.2);
+    color: var(--error);
+}
+
+.session-view-header .session-cost {
+    font-size: 0.85rem;
+    font-family: monospace;
+    color: var(--success);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(158, 206, 106, 0.1);
+    transition: background 0.3s ease;
+}
+
+.session-view-header .session-cost.flash {
+    animation: cost-flash 0.5s ease-out, cost-shake 0.4s ease-in-out;
+}
+
+@keyframes cost-flash {
+    0% {
+        background: rgba(158, 206, 106, 0.6);
+    }
+    100% {
+        background: rgba(158, 206, 106, 0.1);
+    }
+}
+
+@keyframes cost-shake {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    15% { transform: translateX(-2px) rotate(-2deg); }
+    30% { transform: translateX(2px) rotate(2deg); }
+    45% { transform: translateX(-2px) rotate(-1deg); }
+    60% { transform: translateX(2px) rotate(1deg); }
+    75% { transform: translateX(-1px) rotate(-0.5deg); }
+    90% { transform: translateX(1px) rotate(0.5deg); }
+}
+
+.session-view-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.5rem;
+}
+
+/* Permission Prompt */
+.permission-prompt {
+    background: linear-gradient(135deg, rgba(247, 118, 142, 0.15) 0%, rgba(255, 158, 100, 0.15) 100%);
+    border: 1px solid rgba(247, 118, 142, 0.4);
+    border-radius: 8px;
+    margin: 0.5rem 1.5rem;
+    padding: 1rem;
+    animation: permission-slide-in 0.3s ease-out;
+}
+
+@keyframes permission-slide-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.permission-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.permission-icon {
+    font-size: 1.2rem;
+}
+
+.permission-title {
+    font-weight: 600;
+    color: var(--error);
+    font-size: 0.95rem;
+}
+
+.permission-body {
+    margin-bottom: 1rem;
+}
+
+.permission-tool {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.permission-tool .tool-label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.permission-tool .tool-name {
+    font-weight: 600;
+    color: var(--accent);
+    font-family: monospace;
+}
+
+.permission-input {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    padding: 0.75rem;
+    max-height: 150px;
+    overflow: auto;
+}
+
+.permission-input pre {
+    margin: 0;
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.permission-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+/* Vertical permission options */
+.permission-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+}
+
+.permission-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.permission-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.permission-option:active {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.permission-option .option-cursor {
+    color: var(--accent);
+    font-weight: bold;
+    width: 1ch;
+}
+
+.permission-option .option-label {
+    color: var(--text-secondary);
+}
+
+.permission-option.selected .option-label {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.permission-option.selected.allow .option-label {
+    color: var(--success);
+}
+
+.permission-option.selected.remember .option-label {
+    color: var(--accent);
+}
+
+.permission-option.selected.deny .option-label {
+    color: var(--error);
+}
+
+.permission-hint {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+.permission-prompt:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.session-view-input {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    background: var(--bg-darker);
+    border-top: 1px solid var(--border);
+    position: relative;
+}
+
+.session-view-input .input-prompt {
+    color: var(--accent);
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.session-view-input .message-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.session-view-input .message-input:focus {
+    border-color: var(--accent);
+}
+
+.session-view-input .message-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.session-view-input .send-button {
+    padding: 0.75rem 1.5rem;
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: var(--bg-dark);
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.session-view-input .send-button:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.session-view-input .send-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Voice input button */
+.voice-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.voice-button:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.voice-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.voice-button.recording {
+    background: rgba(247, 118, 142, 0.15);
+    border-color: var(--error);
+    color: var(--error);
+    animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-recording {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(247, 118, 142, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(247, 118, 142, 0);
+    }
+}
+
+.voice-button svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+.voice-button .voice-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* Voice button unsupported state (browser doesn't have AudioWorklet) */
+.voice-button.unsupported {
+    opacity: 0.3;
+    cursor: not-allowed;
+    border-style: dashed;
+}
+
+.voice-button.unsupported:hover {
+    border-color: var(--border);
+    color: var(--text-secondary);
+}
+
+/* Interim transcription display during voice recording */
+.interim-transcription {
+    position: absolute;
+    left: 48px;
+    right: 100px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.9rem;
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 1;
+}
+
+.message-input.has-interim {
+    color: transparent;
+}
+
+.message-input.has-interim::placeholder {
+    color: transparent;
+}
+
+/* Nav mode: dim the input area to indicate it's not active */
+.session-views-container.nav-mode .session-view-input {
+    opacity: 0.5;
+    pointer-events: none;
+    border-top: 1px dashed var(--accent);
+}
+
+.session-views-container.nav-mode .session-view-input .message-input {
+    border-color: var(--accent);
+    background: rgba(122, 162, 247, 0.05);
+}
+

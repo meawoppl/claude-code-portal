@@ -1,0 +1,445 @@
+/* ==========================================================================
+   Markdown Rendering Styles
+   ========================================================================== */
+
+/* Headings */
+.md-heading {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin: 1rem 0 0.5rem 0;
+    line-height: 1.3;
+}
+
+.md-h1 {
+    font-size: 1.5rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.3rem;
+}
+
+.md-h2 {
+    font-size: 1.3rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.2rem;
+}
+
+.md-h3 {
+    font-size: 1.15rem;
+}
+
+.md-h4 {
+    font-size: 1.05rem;
+}
+
+.md-h5 {
+    font-size: 1rem;
+}
+
+.md-h6 {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+}
+
+/* First heading in a message shouldn't have top margin */
+.assistant-text > .md-heading:first-child,
+.user-text > .md-heading:first-child {
+    margin-top: 0;
+}
+
+/* Paragraphs */
+.md-paragraph {
+    margin: 0.5rem 0;
+    line-height: 1.6;
+}
+
+.md-paragraph:first-child {
+    margin-top: 0;
+}
+
+.md-paragraph:last-child {
+    margin-bottom: 0;
+}
+
+/* Text formatting */
+.md-strong {
+    font-weight: 600;
+}
+
+.md-emphasis {
+    font-style: italic;
+}
+
+.md-strikethrough {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+
+/* Links */
+.md-link {
+    color: var(--link-color);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+    transition: all 0.15s ease;
+}
+
+.md-link:hover {
+    color: var(--accent-hover);
+    text-decoration-style: solid;
+}
+
+.md-link:visited {
+    color: var(--link-visited);
+}
+
+/* Inline code */
+.md-inline-code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.15rem 0.35rem;
+    border-radius: 4px;
+    color: var(--accent);
+}
+
+/* Code blocks */
+.md-code-block {
+    margin: 0.75rem 0;
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow-x: auto;
+}
+
+.md-code-block .md-code {
+    display: block;
+    padding: 0.75rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-primary);
+    white-space: pre;
+}
+
+/* Blockquotes */
+.md-blockquote {
+    margin: 0.75rem 0;
+    padding: 0.5rem 1rem;
+    border-left: 3px solid var(--accent);
+    background: rgba(122, 162, 247, 0.08);
+    color: var(--text-secondary);
+}
+
+.md-blockquote .md-paragraph {
+    margin: 0.25rem 0;
+}
+
+/* Lists */
+.md-list {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+}
+
+.md-ordered-list {
+    list-style-type: decimal;
+}
+
+.md-unordered-list {
+    list-style-type: disc;
+}
+
+.md-list-item {
+    margin: 0.25rem 0;
+    line-height: 1.5;
+}
+
+/* Nested lists */
+.md-list .md-list {
+    margin: 0.25rem 0;
+}
+
+/* Horizontal rule */
+.md-rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1rem 0;
+}
+
+/* Tables */
+.md-table-wrapper {
+    margin: 0.75rem 0;
+    overflow-x: auto;
+}
+
+.md-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.md-table-head {
+    background: var(--bg-darker);
+}
+
+.md-table-header {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.md-table-cell {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.md-table-row:nth-child(even) {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+/* Images */
+.md-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin: 0.5rem 0;
+}
+
+/* Remove pre-wrap on markdown-rendered text since we handle whitespace */
+.assistant-text:has(.md-paragraph),
+.assistant-text:has(.md-heading),
+.assistant-text:has(.md-list),
+.assistant-text:has(.md-table),
+.user-text:has(.md-paragraph),
+.user-text:has(.md-heading) {
+    white-space: normal;
+}
+
+/* Tool Use Styling */
+.tool-use {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(99, 102, 241, 0.1);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 4px 4px 0;
+    margin: 0.5rem 0;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+.tool-use-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tool-icon {
+    font-size: 0.9rem;
+}
+
+.tool-name {
+    color: var(--accent);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.tool-args {
+    color: var(--text-secondary);
+    margin: 0;
+    padding: 0.25rem 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.tool-input {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Tool Result Styling */
+.tool-result {
+    padding: 0.5rem 0.75rem;
+    background: rgba(34, 197, 94, 0.1);
+    border-left: 3px solid var(--success);
+    border-radius: 0 4px 4px 0;
+    margin: 0.5rem 0;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+.tool-result.error {
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: var(--error);
+}
+
+.tool-result-content {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.tool-result-message {
+    padding: 0;
+}
+
+.tool-result-message .message-body {
+    padding: 0;
+}
+
+/* Edit Tool Diff Styling */
+.edit-tool {
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.edit-tool .tool-use-header {
+    flex-wrap: wrap;
+}
+
+.edit-file-path {
+    color: var(--text-primary);
+    font-weight: 500;
+    word-break: break-all;
+}
+
+.edit-replace-all {
+    color: var(--warning);
+    font-size: 0.75rem;
+    padding: 0.1rem 0.4rem;
+    background: rgba(245, 158, 11, 0.15);
+    border-radius: 3px;
+}
+
+.diff-container {
+    margin-top: 0.5rem;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.diff-view {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.diff-line {
+    display: flex;
+    padding: 0 0.5rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.diff-line.context {
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.diff-line.removed {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+
+.diff-line.added {
+    background: rgba(34, 197, 94, 0.2);
+    color: #86efac;
+}
+
+.diff-marker {
+    flex-shrink: 0;
+    width: 1.5rem;
+    text-align: center;
+    user-select: none;
+    color: var(--text-muted);
+}
+
+.diff-line.removed .diff-marker {
+    color: #f87171;
+}
+
+.diff-line.added .diff-marker {
+    color: #4ade80;
+}
+
+.diff-content {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Write Tool Styling */
+.write-tool {
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.write-tool .tool-use-header {
+    flex-wrap: wrap;
+}
+
+.write-file-path {
+    color: var(--text-primary);
+    font-weight: 500;
+    word-break: break-all;
+}
+
+.write-size {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.write-preview {
+    margin-top: 0.5rem;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.write-content {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0.5rem;
+}
+
+.write-line {
+    display: flex;
+}
+
+.write-line .line-number {
+    flex-shrink: 0;
+    width: 3rem;
+    text-align: right;
+    padding-right: 0.75rem;
+    color: var(--text-muted);
+    user-select: none;
+}
+
+.write-line .line-content {
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary);
+}
+
+.write-truncated {
+    padding: 0.5rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+    border-top: 1px solid var(--border-color);
+}
+
