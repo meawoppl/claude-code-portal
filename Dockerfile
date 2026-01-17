@@ -16,6 +16,7 @@ RUN apt-get update && \
     pkg-config \
     libssl-dev \
     libpq-dev \
+    protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy workspace files (only what's needed for backend)
