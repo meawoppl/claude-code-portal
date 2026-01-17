@@ -216,25 +216,41 @@ async fn run_recognition(
             }
         }
 
-        // Use the last result which is typically the most complete/stable
-        // Earlier results in the array may be partial word fragments
-        if let Some(result) = response.results.last() {
-            if let Some(alternative) = result.alternatives.first() {
-                info!(
-                    ">>> Sending to frontend: is_final={}, transcript=\"{}\"",
-                    result.is_final, alternative.transcript
-                );
+        // Concatenate all results to get the full transcript
+        // Google splits responses into stable (high stability) and unstable (low stability) portions
+        // Result[0] is typically the stable/confirmed text, Result[1+] are new tentative words
+        let mut full_transcript = String::new();
+        let mut is_final = false;
+        let mut max_confidence = 0.0f32;
 
-                let transcription = TranscriptionResult {
-                    transcript: alternative.transcript.clone(),
-                    is_final: result.is_final,
-                    confidence: alternative.confidence,
-                };
-
-                if result_tx.send(transcription).is_err() {
-                    warn!("Result receiver closed, stopping recognition");
-                    break;
+        for result in &response.results {
+            if let Some(alt) = result.alternatives.first() {
+                full_transcript.push_str(&alt.transcript);
+                if alt.confidence > max_confidence {
+                    max_confidence = alt.confidence;
                 }
+            }
+            // If any result is final, the whole response is final
+            if result.is_final {
+                is_final = true;
+            }
+        }
+
+        if !full_transcript.is_empty() {
+            info!(
+                ">>> Sending to frontend: is_final={}, transcript=\"{}\"",
+                is_final, full_transcript
+            );
+
+            let transcription = TranscriptionResult {
+                transcript: full_transcript,
+                is_final,
+                confidence: max_confidence,
+            };
+
+            if result_tx.send(transcription).is_err() {
+                warn!("Result receiver closed, stopping recognition");
+                break;
             }
         }
     }
