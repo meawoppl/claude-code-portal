@@ -27,10 +27,12 @@ class PCMProcessor extends AudioWorkletProcessor {
         // Track if we're actively recording
         this.isRecording = true;
 
-        // Volume level tracking
+        // Volume level tracking with smoothing
         this.volumeSampleCount = 0;
         this.volumeSum = 0;
-        this.volumeReportInterval = 128; // Report volume every ~8ms at 16kHz
+        this.volumeReportInterval = 512; // Report volume every ~32ms at 16kHz (slower updates)
+        this.smoothedVolume = 0;
+        this.smoothingFactor = 0.3; // Lower = smoother (0.3 means 30% new, 70% old)
 
         // Listen for control messages from main thread
         this.port.onmessage = (event) => {
@@ -105,12 +107,14 @@ class PCMProcessor extends AudioWorkletProcessor {
                 this.volumeSum += sample * sample;
                 this.volumeSampleCount++;
 
-                // Report volume at regular intervals
+                // Report volume at regular intervals with smoothing
                 if (this.volumeSampleCount >= this.volumeReportInterval) {
                     const rms = Math.sqrt(this.volumeSum / this.volumeSampleCount);
                     // Convert to 0-1 range with some amplification for better visual feedback
-                    const volumeLevel = Math.min(1.0, rms * 3);
-                    this.port.postMessage({ volumeLevel });
+                    const rawLevel = Math.min(1.0, rms * 3);
+                    // Apply exponential smoothing for less frantic display
+                    this.smoothedVolume = this.smoothingFactor * rawLevel + (1 - this.smoothingFactor) * this.smoothedVolume;
+                    this.port.postMessage({ volumeLevel: this.smoothedVolume });
                     this.volumeSum = 0;
                     this.volumeSampleCount = 0;
                 }
