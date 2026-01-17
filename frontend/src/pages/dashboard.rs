@@ -67,6 +67,8 @@ struct MessageData {
     #[allow(dead_code)]
     role: String,
     content: String,
+    /// ISO 8601 timestamp when message was created
+    created_at: String,
 }
 
 #[derive(Clone, PartialEq, serde::Deserialize)]
@@ -318,6 +320,35 @@ pub fn dashboard_page() -> Html {
         })
     };
 
+    // Get all sessions for the rail, sorted by status (active first), then repo name, then hostname
+    // NOTE: This must be computed BEFORE navigation callbacks so they use the same sorted order
+    let active_sessions: Vec<_> = {
+        let mut sorted: Vec<_> = sessions.iter().cloned().collect();
+        sorted.sort_by(|a, b| {
+            // Active sessions come before disconnected/inactive
+            let a_is_active = a.status.as_str() == "active";
+            let b_is_active = b.status.as_str() == "active";
+            match (a_is_active, b_is_active) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => {
+                    // Same status - sort by repo name then hostname
+                    let (project_a, hostname_a) = get_session_display_parts(a);
+                    let (project_b, hostname_b) = get_session_display_parts(b);
+                    let repo_a = project_a.as_deref().unwrap_or("");
+                    let repo_b = project_b.as_deref().unwrap_or("");
+                    match repo_a.to_lowercase().cmp(&repo_b.to_lowercase()) {
+                        std::cmp::Ordering::Equal => {
+                            hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
+                        }
+                        other => other,
+                    }
+                }
+            }
+        });
+        sorted
+    };
+
     // Navigation callbacks
     let on_select_session = {
         let focused_index = focused_index.clone();
@@ -328,27 +359,22 @@ pub fn dashboard_page() -> Html {
 
     let on_navigate = {
         let focused_index = focused_index.clone();
-        let sessions = sessions.clone();
+        let active_sessions = active_sessions.clone();
         let paused_sessions = paused_sessions.clone();
         Callback::from(move |delta: i32| {
-            let active: Vec<_> = sessions
-                .iter()
-                .filter(|s| s.status.as_str() == "active")
-                .cloned()
-                .collect();
-            let len = active.len();
+            let len = active_sessions.len();
             if len == 0 {
                 return;
             }
 
             // Count non-paused sessions
-            let non_pauseed_count = active
+            let non_paused_count = active_sessions
                 .iter()
                 .filter(|s| !paused_sessions.contains(&s.id))
                 .count();
 
             // If all sessions are paused, allow normal navigation
-            if non_pauseed_count == 0 {
+            if non_paused_count == 0 {
                 let current = *focused_index as i32;
                 let new_index = (current + delta).rem_euclid(len as i32) as usize;
                 focused_index.set(new_index);
@@ -362,7 +388,7 @@ pub fn dashboard_page() -> Html {
 
             for _ in 0..len {
                 new_index = (new_index + step) % len;
-                if let Some(session) = active.get(new_index) {
+                if let Some(session) = active_sessions.get(new_index) {
                     if !paused_sessions.contains(&session.id) {
                         focused_index.set(new_index);
                         return;
@@ -374,10 +400,10 @@ pub fn dashboard_page() -> Html {
 
     let on_next_active = {
         let focused_index = focused_index.clone();
-        let sessions = sessions.clone();
+        let active_sessions = active_sessions.clone();
         let paused_sessions = paused_sessions.clone();
         Callback::from(move |_| {
-            let len = sessions.len();
+            let len = active_sessions.len();
             if len == 0 {
                 return;
             }
@@ -385,7 +411,7 @@ pub fn dashboard_page() -> Html {
             // Find next non-paused session after current (wraps around)
             for i in 1..=len {
                 let idx = (current + i) % len;
-                if let Some(session) = sessions.get(idx) {
+                if let Some(session) = active_sessions.get(idx) {
                     if !paused_sessions.contains(&session.id) {
                         focused_index.set(idx);
                         return;
@@ -466,33 +492,6 @@ pub fn dashboard_page() -> Html {
             sessions.set(updated);
         })
     };
-
-    // Get all sessions for the rail, sorted by status (active first), then repo name, then hostname
-    let mut active_sessions: Vec<_> = sessions.iter().cloned().collect();
-
-    // Sort by: active status first, then repo name, then hostname
-    active_sessions.sort_by(|a, b| {
-        // Active sessions come before disconnected/inactive
-        let a_is_active = a.status.as_str() == "active";
-        let b_is_active = b.status.as_str() == "active";
-        match (a_is_active, b_is_active) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => {
-                // Same status - sort by repo name then hostname
-                let (project_a, hostname_a) = get_session_display_parts(a);
-                let (project_b, hostname_b) = get_session_display_parts(b);
-                let repo_a = project_a.as_deref().unwrap_or("");
-                let repo_b = project_b.as_deref().unwrap_or("");
-                match repo_a.to_lowercase().cmp(&repo_b.to_lowercase()) {
-                    std::cmp::Ordering::Equal => {
-                        hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
-                    }
-                    other => other,
-                }
-            }
-        }
-    });
 
     let waiting_count = awaiting_sessions.len();
 
@@ -960,7 +959,8 @@ pub enum SessionViewMsg {
     SendInput,
     UpdateInput(String),
     /// Bulk load historical messages (no per-message scroll)
-    LoadHistory(Vec<String>),
+    /// Contains (messages, last_message_timestamp) for replay_after tracking
+    LoadHistory(Vec<String>, Option<String>),
     /// Single new message from WebSocket (triggers scroll)
     ReceivedOutput(String),
     WebSocketConnected(WsSender),
@@ -1031,6 +1031,9 @@ pub struct SessionView {
     is_recording: bool,
     /// Interim (partial) voice transcription being displayed
     interim_transcription: Option<String>,
+    /// Timestamp of the last received message (ISO 8601 format)
+    /// Used for replay_after on reconnection to avoid duplicate messages
+    last_message_timestamp: Option<String>,
 }
 
 impl Component for SessionView {
@@ -1042,39 +1045,42 @@ impl Component for SessionView {
         let session_id = ctx.props().session.id;
         let on_awaiting_change = ctx.props().on_awaiting_change.clone();
 
-        // Fetch existing messages
-        {
-            let link = link.clone();
-            let on_awaiting_change = on_awaiting_change.clone();
-            spawn_local(async move {
-                let api_endpoint =
-                    utils::api_url(&format!("/api/sessions/{}/messages", session_id));
-                if let Ok(response) = Request::get(&api_endpoint).send().await {
-                    if let Ok(data) = response.json::<MessagesResponse>().await {
-                        // Check if awaiting input
-                        let is_awaiting = data.messages.last().is_some_and(|msg| {
-                            serde_json::from_str::<serde_json::Value>(&msg.content)
-                                .ok()
-                                .and_then(|p| {
-                                    p.get("type")
-                                        .and_then(|t| t.as_str())
-                                        .map(|t| t == "result")
-                                })
-                                .unwrap_or(false)
-                        });
-                        on_awaiting_change.emit((session_id, is_awaiting));
-
-                        // Bulk load all historical messages at once
-                        let messages: Vec<String> =
-                            data.messages.into_iter().map(|m| m.content).collect();
-                        link.send_message(SessionViewMsg::LoadHistory(messages));
-                    }
-                }
-            });
-        }
-
-        // Connect WebSocket
+        // Fetch existing messages via REST, then connect WebSocket with replay_after
+        // This ensures we don't get duplicate messages
         spawn_local(async move {
+            // Step 1: Fetch existing messages via REST API
+            let mut last_message_time: Option<String> = None;
+            let api_endpoint = utils::api_url(&format!("/api/sessions/{}/messages", session_id));
+            if let Ok(response) = Request::get(&api_endpoint).send().await {
+                if let Ok(data) = response.json::<MessagesResponse>().await {
+                    // Check if awaiting input
+                    let is_awaiting = data.messages.last().is_some_and(|msg| {
+                        serde_json::from_str::<serde_json::Value>(&msg.content)
+                            .ok()
+                            .and_then(|p| {
+                                p.get("type")
+                                    .and_then(|t| t.as_str())
+                                    .map(|t| t == "result")
+                            })
+                            .unwrap_or(false)
+                    });
+                    on_awaiting_change.emit((session_id, is_awaiting));
+
+                    // Get last message timestamp for WebSocket replay_after
+                    last_message_time = data.messages.last().map(|m| m.created_at.clone());
+
+                    // Bulk load all historical messages at once (with timestamp for reconnection)
+                    let messages: Vec<String> =
+                        data.messages.into_iter().map(|m| m.content).collect();
+                    link.send_message(SessionViewMsg::LoadHistory(
+                        messages,
+                        last_message_time.clone(),
+                    ));
+                }
+            }
+
+            // Step 2: Connect WebSocket with replay_after set to last message time
+            // This prevents duplicate messages from being sent
             let ws_endpoint = utils::ws_url("/ws/client");
             match WebSocket::open(&ws_endpoint) {
                 Ok(ws) => {
@@ -1087,6 +1093,7 @@ impl Component for SessionView {
                         working_directory: String::new(),
                         resuming: false,
                         git_branch: None,
+                        replay_after: last_message_time,
                     };
 
                     if let Ok(json) = serde_json::to_string(&register_msg) {
@@ -1189,6 +1196,7 @@ impl Component for SessionView {
             draft_input: String::new(),
             is_recording: false,
             interim_transcription: None,
+            last_message_timestamp: None,
         }
     }
 
@@ -1298,9 +1306,13 @@ impl Component for SessionView {
                 }
                 true
             }
-            SessionViewMsg::LoadHistory(messages) => {
+            SessionViewMsg::LoadHistory(messages, last_timestamp) => {
                 // Bulk load - set all at once, no per-message renders
                 self.messages = messages;
+                // Store timestamp for reconnection replay_after
+                self.last_message_timestamp = last_timestamp;
+                // Trigger CheckAwaiting to update parent state based on loaded messages
+                ctx.link().send_message(SessionViewMsg::CheckAwaiting);
                 true
             }
             SessionViewMsg::ReceivedOutput(output) => {
@@ -1327,6 +1339,13 @@ impl Component for SessionView {
                     }
                 }
                 self.messages.push(output);
+                // Update timestamp for reconnection - use current time for real-time messages
+                self.last_message_timestamp = Some(
+                    js_sys::Date::new_0()
+                        .to_iso_string()
+                        .as_string()
+                        .unwrap_or_default(),
+                );
                 true
             }
             SessionViewMsg::ClearCostFlash => {
@@ -1542,6 +1561,7 @@ impl Component for SessionView {
             SessionViewMsg::AttemptReconnect => {
                 let link = ctx.link().clone();
                 let session_id = ctx.props().session.id;
+                let replay_after = self.last_message_timestamp.clone();
 
                 spawn_local(async move {
                     let ws_endpoint = utils::ws_url("/ws/client");
@@ -1556,6 +1576,7 @@ impl Component for SessionView {
                                 working_directory: String::new(),
                                 resuming: true, // Mark as resuming connection
                                 git_branch: None,
+                                replay_after, // Only get messages after last seen
                             };
 
                             if let Ok(json) = serde_json::to_string(&register_msg) {

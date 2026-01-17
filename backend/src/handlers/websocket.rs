@@ -11,13 +11,28 @@ use dashmap::DashMap;
 use diesel::prelude::*;
 use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
+use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tower_cookies::Cookies;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 const SESSION_COOKIE_NAME: &str = "cc_session";
+
+/// Maximum number of messages to queue per session when proxy is disconnected
+const MAX_PENDING_MESSAGES_PER_SESSION: usize = 100;
+
+/// Maximum age of pending messages before they're dropped (5 minutes)
+const MAX_PENDING_MESSAGE_AGE: Duration = Duration::from_secs(300);
+
+/// A message queued for a disconnected proxy
+#[derive(Clone)]
+struct PendingMessage {
+    msg: ProxyMessage,
+    queued_at: Instant,
+}
 
 pub type SessionId = String;
 pub type ClientSender = mpsc::UnboundedSender<ProxyMessage>;
@@ -32,6 +47,8 @@ pub struct SessionManager {
     pub user_clients: Arc<DashMap<Uuid, Vec<ClientSender>>>,
     // Map of session_id -> last acknowledged sequence number (for deduplication)
     pub last_ack_seq: Arc<DashMap<Uuid, u64>>,
+    // Map of session_key -> pending messages for disconnected proxies
+    pending_messages: Arc<DashMap<SessionId, VecDeque<PendingMessage>>>,
 }
 
 impl Default for SessionManager {
@@ -41,6 +58,7 @@ impl Default for SessionManager {
             web_clients: Arc::new(DashMap::new()),
             user_clients: Arc::new(DashMap::new()),
             last_ack_seq: Arc::new(DashMap::new()),
+            pending_messages: Arc::new(DashMap::new()),
         }
     }
 }
@@ -52,12 +70,56 @@ impl SessionManager {
 
     pub fn register_session(&self, session_key: SessionId, sender: ClientSender) {
         info!("Registering session: {}", session_key);
+
+        // Replay any pending messages before registering the new sender
+        let pending_count = self.replay_pending_messages(&session_key, &sender);
+        if pending_count > 0 {
+            info!(
+                "Replayed {} pending messages to reconnected proxy for session: {}",
+                pending_count, session_key
+            );
+        }
+
         self.sessions.insert(session_key, sender);
+    }
+
+    /// Replay pending messages to a newly connected proxy
+    /// Returns the number of messages replayed
+    fn replay_pending_messages(&self, session_key: &SessionId, sender: &ClientSender) -> usize {
+        let mut replayed = 0;
+        let now = Instant::now();
+
+        if let Some(mut pending) = self.pending_messages.get_mut(session_key) {
+            // Filter out expired messages and send valid ones
+            while let Some(pending_msg) = pending.pop_front() {
+                if now.duration_since(pending_msg.queued_at) < MAX_PENDING_MESSAGE_AGE {
+                    if sender.send(pending_msg.msg).is_ok() {
+                        replayed += 1;
+                    } else {
+                        // Sender failed, stop replaying
+                        warn!("Failed to replay pending message, sender closed");
+                        break;
+                    }
+                } else {
+                    debug!(
+                        "Dropping expired pending message (age: {:?})",
+                        now.duration_since(pending_msg.queued_at)
+                    );
+                }
+            }
+        }
+
+        // Clean up the pending queue for this session
+        self.pending_messages.remove(session_key);
+
+        replayed
     }
 
     pub fn unregister_session(&self, session_key: &SessionId) {
         info!("Unregistering session: {}", session_key);
         self.sessions.remove(session_key);
+        // Note: We keep pending_messages around so messages can still be queued
+        // and will be delivered when the proxy reconnects
     }
 
     pub fn add_web_client(&self, session_key: SessionId, sender: ClientSender) {
@@ -74,12 +136,59 @@ impl SessionManager {
         }
     }
 
+    /// Send a message to a session's proxy.
+    /// If the proxy is disconnected, the message is queued for delivery when it reconnects.
+    /// Returns true if the message was sent or queued successfully.
     pub fn send_to_session(&self, session_key: &SessionId, msg: ProxyMessage) -> bool {
         if let Some(sender) = self.sessions.get(session_key) {
-            sender.send(msg).is_ok()
-        } else {
-            false
+            if sender.send(msg.clone()).is_ok() {
+                return true;
+            }
         }
+
+        // Proxy not connected or send failed - queue the message
+        self.queue_pending_message(session_key, msg)
+    }
+
+    /// Queue a message for a disconnected proxy
+    fn queue_pending_message(&self, session_key: &SessionId, msg: ProxyMessage) -> bool {
+        let mut queue = self
+            .pending_messages
+            .entry(session_key.clone())
+            .or_default();
+
+        // Enforce size limit - drop oldest messages if queue is full
+        while queue.len() >= MAX_PENDING_MESSAGES_PER_SESSION {
+            if let Some(dropped) = queue.pop_front() {
+                warn!(
+                    "Pending message queue full for session {}, dropping oldest message (age: {:?})",
+                    session_key,
+                    Instant::now().duration_since(dropped.queued_at)
+                );
+            }
+        }
+
+        queue.push_back(PendingMessage {
+            msg,
+            queued_at: Instant::now(),
+        });
+
+        info!(
+            "Queued message for disconnected proxy, session: {}, queue size: {}",
+            session_key,
+            queue.len()
+        );
+
+        true
+    }
+
+    /// Get the number of pending messages for a session (for monitoring/debugging)
+    #[allow(dead_code)]
+    pub fn pending_message_count(&self, session_key: &SessionId) -> usize {
+        self.pending_messages
+            .get(session_key)
+            .map(|q| q.len())
+            .unwrap_or(0)
     }
 
     pub fn add_user_client(&self, user_id: Uuid, sender: ClientSender) {
@@ -282,6 +391,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             working_directory,
                             resuming,
                             git_branch,
+                            replay_after: _, // Not used for proxy connections
                         } => {
                             // Use session_id as the key for in-memory tracking
                             let key = claude_session_id.to_string();
@@ -741,6 +851,7 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                             working_directory: _,
                             resuming: _,
                             git_branch: _,
+                            replay_after,
                         } => {
                             // Verify the user owns this session before allowing connection
                             match verify_session_ownership(&app_state, session_id, user_id) {
@@ -758,18 +869,45 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                                     );
 
                                     // Send existing messages from DB as history
+                                    // If replay_after is set, only send messages after that timestamp
                                     if let Ok(mut conn) = db_pool.get() {
                                         use crate::schema::messages;
 
-                                        let history: Vec<crate::models::Message> = messages::table
-                                            .filter(messages::session_id.eq(session_id))
-                                            .order(messages::created_at.asc())
-                                            .load(&mut conn)
-                                            .unwrap_or_default();
+                                        // Parse replay_after timestamp if provided
+                                        let replay_after_time =
+                                            replay_after.as_ref().and_then(|ts| {
+                                                chrono::NaiveDateTime::parse_from_str(
+                                                    ts,
+                                                    "%Y-%m-%dT%H:%M:%S%.f",
+                                                )
+                                                .or_else(|_| {
+                                                    chrono::NaiveDateTime::parse_from_str(
+                                                        ts,
+                                                        "%Y-%m-%dT%H:%M:%S",
+                                                    )
+                                                })
+                                                .ok()
+                                            });
+
+                                        let history: Vec<crate::models::Message> =
+                                            if let Some(after) = replay_after_time {
+                                                messages::table
+                                                    .filter(messages::session_id.eq(session_id))
+                                                    .filter(messages::created_at.gt(after))
+                                                    .order(messages::created_at.asc())
+                                                    .load(&mut conn)
+                                                    .unwrap_or_default()
+                                            } else {
+                                                messages::table
+                                                    .filter(messages::session_id.eq(session_id))
+                                                    .order(messages::created_at.asc())
+                                                    .load(&mut conn)
+                                                    .unwrap_or_default()
+                                            };
 
                                         info!(
-                                            "Sending {} historical messages to web client",
-                                            history.len()
+                                            "Sending {} historical messages to web client (replay_after: {:?})",
+                                            history.len(), replay_after
                                         );
 
                                         for msg in history {

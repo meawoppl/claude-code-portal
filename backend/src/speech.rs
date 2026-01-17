@@ -143,9 +143,19 @@ async fn run_recognition(
     mut audio_rx: mpsc::UnboundedReceiver<Vec<u8>>,
     result_tx: mpsc::UnboundedSender<TranscriptionResult>,
 ) -> Result<(), String> {
-    // Create recognizer
+    // Read credentials JSON content from file
+    let credentials_json = tokio::fs::read_to_string(&credentials_path)
+        .await
+        .map_err(|e| {
+            format!(
+                "Failed to read credentials file '{}': {}",
+                credentials_path, e
+            )
+        })?;
+
+    // Create recognizer with credentials JSON content
     let mut recognizer =
-        Recognizer::create_streaming_recognizer(credentials_path, config, Some(1000))
+        Recognizer::create_streaming_recognizer(credentials_json, config, Some(1000))
             .await
             .map_err(|e| format!("Failed to create recognizer: {:?}", e))?;
 

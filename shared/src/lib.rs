@@ -32,6 +32,10 @@ pub enum ProxyMessage {
         /// Current git branch (if in a git repo)
         #[serde(default)]
         git_branch: Option<String>,
+        /// Only replay messages created after this timestamp (ISO 8601 format)
+        /// If None, replay all history. Used by web clients to avoid duplicate messages.
+        #[serde(default)]
+        replay_after: Option<String>,
     },
 
     /// Output from Claude Code to be displayed
