@@ -1100,8 +1100,14 @@ pub fn admin_page() -> Html {
             // Raw message viewer modal
             {
                 if let Some(ref msg) = *viewing_raw_message {
-                    let pretty_json = serde_json::to_string_pretty(&msg.message_content)
-                        .unwrap_or_else(|_| msg.message_content.to_string());
+                    // Display as plain text - if it's a JSON string, extract the string content,
+                    // otherwise show the raw JSON representation. This avoids confusing escape
+                    // sequences when the original content wasn't valid JSON.
+                    let display_content = match &msg.message_content {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => serde_json::to_string_pretty(other)
+                            .unwrap_or_else(|_| other.to_string()),
+                    };
                     html! {
                         <div class="modal-overlay" onclick={on_close_raw_message_viewer.clone()}>
                             <div class="modal-content raw-message-modal" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
@@ -1114,7 +1120,7 @@ pub fn admin_page() -> Html {
                                     <span><strong>{ "Reason: " }</strong>{ msg.render_reason.as_deref().unwrap_or("-") }</span>
                                     <span><strong>{ "Time: " }</strong>{ format_timestamp(&msg.created_at) }</span>
                                 </div>
-                                <pre class="raw-message-modal-content">{ pretty_json }</pre>
+                                <pre class="raw-message-modal-content">{ display_content }</pre>
                             </div>
                         </div>
                     }
