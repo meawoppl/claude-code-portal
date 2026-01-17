@@ -21,6 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.92.0
         with:
@@ -34,8 +37,17 @@ jobs:
       - name: Install trunk
         run: cargo install trunk --locked
 
+      - name: Build backend
+        run: cargo build --release -p backend
+
       - name: Build frontend
         run: cd frontend && trunk build
+
+      - name: Prepare build artifacts
+        run: |
+          mkdir -p build-output
+          cp target/release/backend build-output/
+          cp -r frontend/dist build-output/frontend-dist
 
       - name: Log in to Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
