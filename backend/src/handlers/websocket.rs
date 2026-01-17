@@ -1,4 +1,7 @@
-use crate::{models::NewSessionWithId, AppState};
+use crate::{
+    models::{NewSessionMember, NewSessionWithId},
+    AppState,
+};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -473,6 +476,24 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                             .get_result::<crate::models::Session>(&mut conn)
                                         {
                                             Ok(session) => {
+                                                // Create session_members entry for the owner
+                                                use crate::schema::session_members;
+                                                let new_member = NewSessionMember {
+                                                    session_id: session.id,
+                                                    user_id,
+                                                    role: "owner".to_string(),
+                                                };
+                                                if let Err(e) =
+                                                    diesel::insert_into(session_members::table)
+                                                        .values(&new_member)
+                                                        .execute(&mut conn)
+                                                {
+                                                    error!(
+                                                        "Failed to create session_member: {}",
+                                                        e
+                                                    );
+                                                }
+
                                                 db_session_id = Some(session.id);
                                                 registration_success = true;
                                                 info!(
@@ -518,6 +539,24 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                             .get_result::<crate::models::Session>(&mut conn)
                                         {
                                             Ok(session) => {
+                                                // Create session_members entry for the owner
+                                                use crate::schema::session_members;
+                                                let new_member = NewSessionMember {
+                                                    session_id: session.id,
+                                                    user_id,
+                                                    role: "owner".to_string(),
+                                                };
+                                                if let Err(e) =
+                                                    diesel::insert_into(session_members::table)
+                                                        .values(&new_member)
+                                                        .execute(&mut conn)
+                                                {
+                                                    error!(
+                                                        "Failed to create session_member: {}",
+                                                        e
+                                                    );
+                                                }
+
                                                 db_session_id = Some(session.id);
                                                 registration_success = true;
                                                 info!(
@@ -782,17 +821,19 @@ fn extract_user_id_from_cookies(app_state: &AppState, cookies: &Cookies) -> Opti
     cookie.value().parse().ok()
 }
 
-/// Verify that a session belongs to a specific user
-fn verify_session_ownership(
+/// Verify that a user has access to a session (is a member with any role)
+fn verify_session_access(
     app_state: &AppState,
     session_id: Uuid,
     user_id: Uuid,
 ) -> Result<crate::models::Session, ()> {
     let mut conn = app_state.db_pool.get().map_err(|_| ())?;
-    use crate::schema::sessions;
+    use crate::schema::{session_members, sessions};
     sessions::table
+        .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
         .filter(sessions::id.eq(session_id))
-        .filter(sessions::user_id.eq(user_id))
+        .filter(session_members::user_id.eq(user_id))
+        .select(crate::models::Session::as_select())
         .first::<crate::models::Session>(&mut conn)
         .map_err(|_| ())
 }
@@ -853,10 +894,10 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                             git_branch: _,
                             replay_after,
                         } => {
-                            // Verify the user owns this session before allowing connection
-                            match verify_session_ownership(&app_state, session_id, user_id) {
+                            // Verify the user has access to this session before allowing connection
+                            match verify_session_access(&app_state, session_id, user_id) {
                                 Ok(_session) => {
-                                    // User owns this session, allow connection
+                                    // User has access to this session, allow connection
                                     let key = session_id.to_string();
                                     session_key = Some(key.clone());
                                     verified_session_id = Some(session_id);

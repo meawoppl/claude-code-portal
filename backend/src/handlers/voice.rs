@@ -60,17 +60,18 @@ fn check_voice_enabled(app_state: &AppState, user_id: Uuid) -> bool {
         .unwrap_or(false)
 }
 
-/// Verify that a session belongs to a specific user
-fn verify_session_ownership(app_state: &AppState, session_id: Uuid, user_id: Uuid) -> bool {
+/// Verify that a user has access to a session (is a member with any role)
+fn verify_session_access(app_state: &AppState, session_id: Uuid, user_id: Uuid) -> bool {
     let mut conn = match app_state.db_pool.get() {
         Ok(c) => c,
         Err(_) => return false,
     };
 
-    use crate::schema::sessions;
+    use crate::schema::{session_members, sessions};
     sessions::table
+        .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
         .filter(sessions::id.eq(session_id))
-        .filter(sessions::user_id.eq(user_id))
+        .filter(session_members::user_id.eq(user_id))
         .count()
         .get_result::<i64>(&mut conn)
         .unwrap_or(0)
@@ -108,10 +109,10 @@ pub async fn handle_voice_websocket(
         return StatusCode::FORBIDDEN.into_response();
     }
 
-    // Verify session ownership
-    if !verify_session_ownership(&app_state, session_id, user_id) {
+    // Verify session access
+    if !verify_session_access(&app_state, session_id, user_id) {
         warn!(
-            "User {} attempted voice WebSocket for session {} they don't own",
+            "User {} attempted voice WebSocket for session {} they don't have access to",
             user_id, session_id
         );
         return StatusCode::FORBIDDEN.into_response();
