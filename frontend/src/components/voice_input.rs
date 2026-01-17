@@ -387,8 +387,7 @@ async fn start_recording(
 
     // Create audio context at default sample rate (matches microphone)
     // The PCM processor handles resampling to 16kHz for Speech-to-Text
-    let audio_context =
-        AudioContext::new().map_err(|_| "Failed to create audio context")?;
+    let audio_context = AudioContext::new().map_err(|_| "Failed to create audio context")?;
 
     // Load the PCM processor worklet
     let worklet = audio_context
