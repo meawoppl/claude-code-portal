@@ -1748,9 +1748,11 @@ impl Component for SessionView {
                 true
             }
             SessionViewMsg::VoiceTranscription(text) => {
-                // Final transcription - append to input field and clear interim
+                // Final transcription - commit to input field and clear interim
+                // The final text replaces any interim for this utterance
                 self.interim_transcription = None;
                 if !text.is_empty() {
+                    // Append final transcription to input_value
                     if self.input_value.is_empty() {
                         self.input_value = text;
                     } else {
@@ -1761,7 +1763,9 @@ impl Component for SessionView {
                 true
             }
             SessionViewMsg::VoiceInterimTranscription(text) => {
-                // Show interim transcription as preview
+                // Interim transcription - this is Google's current best guess for the utterance
+                // It replaces previous interim (not accumulates) because Google sends the full
+                // current guess each time, not incremental words
                 self.interim_transcription = if text.is_empty() { None } else { Some(text) };
                 true
             }
@@ -1904,10 +1908,16 @@ impl Component for SessionView {
                 <form class="session-view-input" onsubmit={handle_submit}>
                     <span class="input-prompt">{ ">" }</span>
                     {
-                        // Show interim transcription overlay when recording
+                        // Show combined text (committed + interim) as overlay when recording
                         if let Some(ref interim) = self.interim_transcription {
+                            // Build the full preview: committed text + interim
+                            let preview = if self.input_value.is_empty() {
+                                interim.clone()
+                            } else {
+                                format!("{} {}", self.input_value, interim)
+                            };
                             html! {
-                                <div class="interim-transcription">{ interim }</div>
+                                <div class="interim-transcription">{ preview }</div>
                             }
                         } else {
                             html! {}

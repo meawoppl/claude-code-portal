@@ -67,6 +67,7 @@ pub enum VoiceInputMsg {
     RecordingStarted(VoiceSession),
     WebSocketMessage(ProxyMessage),
     VolumeLevel(f32),
+    SilenceDetected,
     Error(String),
 }
 
@@ -195,6 +196,11 @@ impl Component for VoiceInput {
                     ProxyMessage::VoiceError { message, .. } => {
                         ctx.props().on_error.emit(message);
                     }
+                    ProxyMessage::VoiceEnded { .. } => {
+                        // Speech recognition detected end of speech - auto-stop recording
+                        log::info!("Voice session ended by server (end of speech detected)");
+                        ctx.link().send_message(VoiceInputMsg::StopRecording);
+                    }
                     _ => {}
                 }
                 false
@@ -202,6 +208,12 @@ impl Component for VoiceInput {
             VoiceInputMsg::VolumeLevel(level) => {
                 self.volume_level = level;
                 true
+            }
+            VoiceInputMsg::SilenceDetected => {
+                // Client-side silence detection triggered - auto-stop recording
+                log::info!("Silence detected, auto-stopping voice recording");
+                ctx.link().send_message(VoiceInputMsg::StopRecording);
+                false
             }
             VoiceInputMsg::Error(msg) => {
                 log::error!("Voice input error: {}", msg);
@@ -237,14 +249,15 @@ impl Component for VoiceInput {
             "Start voice input"
         };
 
-        // Calculate volume ring style when recording
+        // Calculate volume level bar style when recording
+        // Uses a green gradient fill from bottom based on volume level
         let volume_style = if self.is_recording {
-            // Scale volume to a visible ring size (2-8px)
-            let ring_size = 2.0 + (self.volume_level * 6.0);
-            let opacity = 0.3 + (self.volume_level * 0.5);
+            // Volume level as percentage (0-100%)
+            let fill_percent = (self.volume_level * 100.0).min(100.0);
+            // Green gradient from bottom - matches success/code highlight color
             format!(
-                "box-shadow: 0 0 0 {}px rgba(247, 118, 142, {})",
-                ring_size, opacity
+                "background: linear-gradient(to top, rgba(158, 206, 106, 0.6) {}%, rgba(247, 118, 142, 0.15) {}%)",
+                fill_percent, fill_percent
             )
         } else {
             String::new()
@@ -427,6 +440,14 @@ async fn start_recording(
             if let Ok(volume_val) = js_sys::Reflect::get(&data, &JsValue::from_str("volumeLevel")) {
                 if let Some(volume) = volume_val.as_f64() {
                     link.send_message(VoiceInputMsg::VolumeLevel(volume as f32));
+                }
+            }
+            // Check for silence detection signal
+            if let Ok(silence_val) =
+                js_sys::Reflect::get(&data, &JsValue::from_str("silenceDetected"))
+            {
+                if silence_val.is_truthy() {
+                    link.send_message(VoiceInputMsg::SilenceDetected);
                 }
             }
         }

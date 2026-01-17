@@ -166,6 +166,13 @@ pub enum ProxyMessage {
         /// Error message
         message: String,
     },
+
+    /// Voice session ended (backend -> frontend)
+    /// Sent when speech recognition detects end of speech (single_utterance mode)
+    VoiceEnded {
+        /// The session that ended
+        session_id: Uuid,
+    },
 }
 
 fn default_language_code() -> String {

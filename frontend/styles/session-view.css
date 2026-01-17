@@ -768,19 +768,9 @@
 }
 
 .voice-button.recording {
-    background: rgba(247, 118, 142, 0.15);
+    /* Background gradient is set via inline style for real-time volume feedback */
     border-color: var(--error);
     color: var(--error);
-    animation: pulse-recording 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-recording {
-    0%, 100% {
-        box-shadow: 0 0 0 0 rgba(247, 118, 142, 0.4);
-    }
-    50% {
-        box-shadow: 0 0 0 8px rgba(247, 118, 142, 0);
-    }
 }
 
 .voice-button svg {

@@ -38,6 +38,8 @@ pub struct SpeechConfig {
     pub encoding: AudioEncoding,
     /// Enable interim results during recognition
     pub interim_results: bool,
+    /// Enable single utterance mode - auto-end recognition when speaker stops
+    pub single_utterance: bool,
 }
 
 impl Default for SpeechConfig {
@@ -48,6 +50,7 @@ impl Default for SpeechConfig {
             language_code: "en-US".to_string(),
             encoding: AudioEncoding::Linear16,
             interim_results: true,
+            single_utterance: true, // Auto-stop when speaker finishes
         }
     }
 }
@@ -116,7 +119,7 @@ impl SpeechService {
         let streaming_config = StreamingRecognitionConfig {
             config: Some(recognition_config),
             interim_results: self.config.interim_results,
-            ..Default::default()
+            single_utterance: self.config.single_utterance,
         };
 
         // Create channels for audio input and transcription output
