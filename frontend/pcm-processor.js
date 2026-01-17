@@ -34,6 +34,12 @@ class PCMProcessor extends AudioWorkletProcessor {
         this.smoothedVolume = 0;
         this.smoothingFactor = 0.3; // Lower = smoother (0.3 means 30% new, 70% old)
 
+        // Silence detection - auto-stop after sustained silence
+        this.silenceThreshold = 0.01; // RMS level below which is considered silence
+        this.silenceDuration = 0; // How long we've been in silence (in samples)
+        this.silenceTimeout = 32000; // ~2 seconds at 16kHz before auto-stop
+        this.hasSpokenOnce = false; // Only trigger timeout after speech has started
+
         // Listen for control messages from main thread
         this.port.onmessage = (event) => {
             if (event.data.command === 'stop') {
@@ -115,6 +121,24 @@ class PCMProcessor extends AudioWorkletProcessor {
                     // Apply exponential smoothing for less frantic display
                     this.smoothedVolume = this.smoothingFactor * rawLevel + (1 - this.smoothingFactor) * this.smoothedVolume;
                     this.port.postMessage({ volumeLevel: this.smoothedVolume });
+
+                    // Silence detection
+                    if (rms > this.silenceThreshold) {
+                        // Sound detected - mark that speech has started and reset silence counter
+                        this.hasSpokenOnce = true;
+                        this.silenceDuration = 0;
+                    } else if (this.hasSpokenOnce) {
+                        // In silence after speech - accumulate silence duration
+                        this.silenceDuration += this.volumeSampleCount;
+
+                        // Check if we've exceeded the silence timeout
+                        if (this.silenceDuration >= this.silenceTimeout) {
+                            // Signal auto-stop due to silence
+                            this.port.postMessage({ silenceDetected: true });
+                            this.silenceDuration = 0; // Reset to avoid repeated signals
+                        }
+                    }
+
                     this.volumeSum = 0;
                     this.volumeSampleCount = 0;
                 }

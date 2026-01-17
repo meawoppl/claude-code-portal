@@ -235,6 +235,10 @@ async fn handle_voice_socket(
                                     let client_tx_clone = client_tx.clone();
                                     tokio::spawn(async move {
                                         while let Some(result) = result_rx.recv().await {
+                                            info!(
+                                                "Forwarding to WebSocket: is_final={}, transcript=\"{}\"",
+                                                result.is_final, result.transcript
+                                            );
                                             let msg = ProxyMessage::Transcription {
                                                 session_id,
                                                 transcript: result.transcript,
@@ -242,9 +246,18 @@ async fn handle_voice_socket(
                                                 confidence: result.confidence,
                                             };
                                             if client_tx_clone.send(msg).is_err() {
+                                                info!("Client disconnected, stopping transcription forwarding");
                                                 break;
                                             }
                                         }
+                                        // Recognition stream ended (e.g., single_utterance detected end of speech)
+                                        // Signal the frontend to stop recording
+                                        let _ = client_tx_clone
+                                            .send(ProxyMessage::VoiceEnded { session_id });
+                                        info!(
+                                            "Speech recognition stream ended for session {}",
+                                            session_id
+                                        );
                                     });
 
                                     info!("Speech recognition session started for {}", session_id);

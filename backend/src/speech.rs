@@ -38,6 +38,8 @@ pub struct SpeechConfig {
     pub encoding: AudioEncoding,
     /// Enable interim results during recognition
     pub interim_results: bool,
+    /// Enable single utterance mode - auto-end recognition when speaker stops
+    pub single_utterance: bool,
 }
 
 impl Default for SpeechConfig {
@@ -48,6 +50,7 @@ impl Default for SpeechConfig {
             language_code: "en-US".to_string(),
             encoding: AudioEncoding::Linear16,
             interim_results: true,
+            single_utterance: true, // Auto-end when speaker stops, sends final result immediately
         }
     }
 }
@@ -116,7 +119,7 @@ impl SpeechService {
         let streaming_config = StreamingRecognitionConfig {
             config: Some(recognition_config),
             interim_results: self.config.interim_results,
-            ..Default::default()
+            single_utterance: self.config.single_utterance,
         };
 
         // Create channels for audio input and transcription output
@@ -192,9 +195,36 @@ async fn run_recognition(
     });
 
     // Process recognition results
+    // Google can send multiple results per response - log ALL of them for debugging
     while let Some(response) = result_receiver.recv().await {
-        for result in response.results {
+        let result_count = response.results.len();
+        info!("Received STT response with {} result(s)", result_count);
+
+        // Log ALL results in the response for debugging
+        for (idx, result) in response.results.iter().enumerate() {
+            let alternatives_count = result.alternatives.len();
+            info!(
+                "  Result[{}]: is_final={}, stability={:.3}, alternatives={}",
+                idx, result.is_final, result.stability, alternatives_count
+            );
+
+            for (alt_idx, alt) in result.alternatives.iter().enumerate() {
+                info!(
+                    "    Alt[{}]: confidence={:.3}, transcript=\"{}\"",
+                    alt_idx, alt.confidence, alt.transcript
+                );
+            }
+        }
+
+        // Use the last result which is typically the most complete/stable
+        // Earlier results in the array may be partial word fragments
+        if let Some(result) = response.results.last() {
             if let Some(alternative) = result.alternatives.first() {
+                info!(
+                    ">>> Sending to frontend: is_final={}, transcript=\"{}\"",
+                    result.is_final, alternative.transcript
+                );
+
                 let transcription = TranscriptionResult {
                     transcript: alternative.transcript.clone(),
                     is_final: result.is_final,

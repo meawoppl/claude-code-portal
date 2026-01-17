@@ -998,6 +998,8 @@ pub enum SessionViewMsg {
     VoiceInterimTranscription(String),
     /// Voice error occurred
     VoiceError(String),
+    /// Toggle voice recording (for keyboard shortcut)
+    ToggleVoice,
 }
 
 pub struct SessionView {
@@ -1034,6 +1036,8 @@ pub struct SessionView {
     /// Timestamp of the last received message (ISO 8601 format)
     /// Used for replay_after on reconnection to avoid duplicate messages
     last_message_timestamp: Option<String>,
+    /// NodeRef to voice button for keyboard shortcut
+    voice_button_ref: NodeRef,
 }
 
 impl Component for SessionView {
@@ -1197,6 +1201,7 @@ impl Component for SessionView {
             is_recording: false,
             interim_transcription: None,
             last_message_timestamp: None,
+            voice_button_ref: NodeRef::default(),
         }
     }
 
@@ -1748,20 +1753,26 @@ impl Component for SessionView {
                 true
             }
             SessionViewMsg::VoiceTranscription(text) => {
-                // Final transcription - append to input field and clear interim
+                // Final transcription - commit to input field, clear interim, and auto-send
+                // With single_utterance mode, this is the complete spoken message
                 self.interim_transcription = None;
                 if !text.is_empty() {
+                    // Append final transcription to input_value
                     if self.input_value.is_empty() {
                         self.input_value = text;
                     } else {
                         self.input_value.push(' ');
                         self.input_value.push_str(&text);
                     }
+                    // Auto-send the message now that we have a complete utterance
+                    ctx.link().send_message(SessionViewMsg::SendInput);
                 }
                 true
             }
             SessionViewMsg::VoiceInterimTranscription(text) => {
-                // Show interim transcription as preview
+                // Interim transcription - this is Google's current best guess for the utterance
+                // It replaces previous interim (not accumulates) because Google sends the full
+                // current guess each time, not incremental words
                 self.interim_transcription = if text.is_empty() { None } else { Some(text) };
                 true
             }
@@ -1770,6 +1781,13 @@ impl Component for SessionView {
                 self.is_recording = false;
                 self.interim_transcription = None;
                 true
+            }
+            SessionViewMsg::ToggleVoice => {
+                // Programmatically click the voice button if it exists
+                if let Some(button) = self.voice_button_ref.cast::<web_sys::HtmlElement>() {
+                    button.click();
+                }
+                false
             }
         }
     }
@@ -1788,6 +1806,12 @@ impl Component for SessionView {
         });
 
         let handle_keydown = link.callback(|e: KeyboardEvent| {
+            // Ctrl+Shift+M or Ctrl+M to toggle voice recording
+            if e.ctrl_key() && e.key().to_lowercase() == "m" {
+                e.prevent_default();
+                return SessionViewMsg::ToggleVoice;
+            }
+
             match e.key().as_str() {
                 "ArrowUp" => {
                     e.prevent_default();
@@ -1904,10 +1928,16 @@ impl Component for SessionView {
                 <form class="session-view-input" onsubmit={handle_submit}>
                     <span class="input-prompt">{ ">" }</span>
                     {
-                        // Show interim transcription overlay when recording
+                        // Show combined text (committed + interim) as overlay when recording
                         if let Some(ref interim) = self.interim_transcription {
+                            // Build the full preview: committed text + interim
+                            let preview = if self.input_value.is_empty() {
+                                interim.clone()
+                            } else {
+                                format!("{} {}", self.input_value, interim)
+                            };
                             html! {
-                                <div class="interim-transcription">{ interim }</div>
+                                <div class="interim-transcription">{ preview }</div>
                             }
                         } else {
                             html! {}
@@ -1933,6 +1963,7 @@ impl Component for SessionView {
                             let on_transcription = link.callback(SessionViewMsg::VoiceTranscription);
                             let on_interim_transcription = link.callback(SessionViewMsg::VoiceInterimTranscription);
                             let on_error = link.callback(SessionViewMsg::VoiceError);
+                            let button_ref = self.voice_button_ref.clone();
                             html! {
                                 <VoiceInput
                                     {session_id}
@@ -1941,6 +1972,7 @@ impl Component for SessionView {
                                     on_interim_transcription={Some(on_interim_transcription)}
                                     {on_error}
                                     disabled={!self.ws_connected}
+                                    button_ref={Some(button_ref)}
                                 />
                             }
                         } else {
