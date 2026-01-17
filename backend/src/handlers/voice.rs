@@ -245,6 +245,14 @@ async fn handle_voice_socket(
                                                 break;
                                             }
                                         }
+                                        // Recognition stream ended (e.g., single_utterance detected end of speech)
+                                        // Signal the frontend to stop recording
+                                        let _ = client_tx_clone
+                                            .send(ProxyMessage::VoiceEnded { session_id });
+                                        info!(
+                                            "Speech recognition stream ended for session {}",
+                                            session_id
+                                        );
                                     });
 
                                     info!("Speech recognition session started for {}", session_id);
