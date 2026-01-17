@@ -1,0 +1,111 @@
+/* ==========================================================================
+   Keyboard Hints Footer
+   ========================================================================== */
+
+.keyboard-hints {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-darker);
+    border-top: 1px solid var(--border);
+}
+
+.keyboard-hints span {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.keyboard-hints kbd {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+    font-family: monospace;
+    font-size: 0.7rem;
+}
+
+/* Nav mode indicator badge */
+.keyboard-hints .mode-indicator {
+    font-weight: 700;
+    font-size: 0.75rem;
+    background: var(--accent);
+    color: var(--bg-dark);
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+
+/* Nav mode styling for keyboard hints bar */
+.keyboard-hints.nav-mode {
+    background: rgba(122, 162, 247, 0.15);
+    border-top-color: var(--accent);
+}
+
+/* ==========================================================================
+   Delete Confirmation Modal
+   ========================================================================== */
+
+/* Delete confirmation modals should be narrower */
+.modal-content.delete-confirm {
+    max-width: 400px;
+}
+
+.modal-content h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+}
+
+.modal-content p {
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.modal-content .modal-warning {
+    color: var(--error);
+    font-size: 0.85rem;
+    margin-bottom: 1.5rem;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+.modal-cancel {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-primary);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.modal-cancel:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.modal-confirm {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--error);
+    background: var(--error);
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.modal-confirm:hover {
+    background: #ff5a72;
+    border-color: #ff5a72;
+}
+

@@ -1,0 +1,352 @@
+/* ==========================================================================
+   Admin Dashboard Styles
+   ========================================================================== */
+
+.admin-container {
+    min-height: 100vh;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    padding: 1.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.admin-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.admin-header h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.admin-header .back-button {
+    padding: 0.5rem 1rem;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.admin-header .back-button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.admin-error {
+    background: rgba(247, 118, 142, 0.15);
+    border: 1px solid var(--error);
+    color: var(--error);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.admin-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem;
+    color: var(--text-secondary);
+}
+
+/* Admin Tabs */
+.admin-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+}
+
+.admin-tabs .tab-btn {
+    padding: 0.75rem 1.5rem;
+    background: transparent;
+    border: none;
+    border-radius: 6px 6px 0 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.admin-tabs .tab-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.admin-tabs .tab-btn.active {
+    background: var(--accent);
+    color: var(--bg-primary);
+}
+
+/* Stats Grid */
+.admin-overview {
+    padding: 1rem 0;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.admin-stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    text-align: center;
+}
+
+.admin-stat-card .stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.admin-stat-card .stat-label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.admin-stat-card .stat-subvalue {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+}
+
+.admin-stat-card.spend-card .stat-value {
+    color: var(--success);
+}
+
+/* Admin Tables */
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.admin-table th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    border-bottom: 2px solid var(--border);
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+}
+
+.admin-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+}
+
+.admin-table tr:hover {
+    background: var(--bg-hover);
+}
+
+.admin-table tr.self-row {
+    background: rgba(122, 162, 247, 0.1);
+}
+
+.admin-table .numeric {
+    text-align: right;
+    font-family: monospace;
+}
+
+.admin-table .timestamp {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.admin-table .actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+/* User Status Badges */
+.user-status {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.user-status.admin {
+    background: rgba(122, 162, 247, 0.2);
+    color: var(--accent);
+}
+
+.user-status.active {
+    background: rgba(158, 206, 106, 0.2);
+    color: var(--success);
+}
+
+.user-status.disabled {
+    background: rgba(247, 118, 142, 0.2);
+    color: var(--error);
+}
+
+.you-badge {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
+}
+
+/* Session Status Badges */
+.session-status {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.session-status.connected {
+    background: rgba(158, 206, 106, 0.2);
+    color: var(--success);
+}
+
+.session-status.active {
+    background: rgba(224, 175, 104, 0.2);
+    color: var(--warning);
+}
+
+.session-status.disconnected {
+    background: rgba(247, 118, 142, 0.2);
+    color: var(--error);
+}
+
+/* Admin Action Buttons */
+.admin-toggle,
+.disable-toggle,
+.delete-btn {
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.admin-toggle:hover:not(:disabled),
+.disable-toggle:hover:not(:disabled),
+.delete-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.admin-toggle:disabled,
+.disable-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.admin-toggle.active {
+    background: rgba(122, 162, 247, 0.2);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.disable-toggle.active {
+    background: rgba(247, 118, 142, 0.2);
+    border-color: var(--error);
+    color: var(--error);
+}
+
+.voice-toggle {
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+}
+
+.voice-toggle:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.voice-toggle.active {
+    background: rgba(158, 206, 106, 0.2);
+    border-color: var(--green);
+    color: var(--green);
+}
+
+.delete-btn {
+    border-color: var(--error);
+    color: var(--error);
+}
+
+.delete-btn:hover:not(:disabled) {
+    background: rgba(247, 118, 142, 0.2);
+}
+
+/* Admin link in dashboard header */
+.admin-link {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--warning);
+    background: rgba(224, 175, 104, 0.1);
+    color: var(--warning);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.admin-link:hover {
+    background: rgba(224, 175, 104, 0.2);
+}
+
+/* Responsive Admin */
+@media (max-width: 768px) {
+    .admin-container {
+        padding: 1rem;
+    }
+
+    .admin-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .admin-table {
+        font-size: 0.8rem;
+    }
+
+    .admin-table th,
+    .admin-table td {
+        padding: 0.5rem;
+    }
+
+    .admin-table .actions {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+}

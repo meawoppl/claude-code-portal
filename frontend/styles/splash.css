@@ -1,0 +1,188 @@
+/* Splash Page */
+.splash-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 2rem;
+}
+
+.splash-content {
+    max-width: 800px;
+    text-align: center;
+}
+
+.splash-header h1 {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, var(--accent), var(--success));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.tagline {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+    margin-bottom: 3rem;
+}
+
+.terminal-preview {
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 2rem 0;
+}
+
+.terminal-preview .terminal-header {
+    background: var(--border);
+    padding: 0.4rem 0.75rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.terminal-title {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.terminal-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.terminal-btn {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1;
+    cursor: default;
+}
+
+.terminal-btn.close:hover {
+    background: var(--error);
+    color: white;
+}
+
+.terminal-body {
+    padding: 1rem;
+    font-family: 'Courier New', monospace;
+    text-align: left;
+}
+
+.terminal-line {
+    margin-bottom: 0.5rem;
+}
+
+.prompt {
+    color: var(--accent);
+    font-weight: bold;
+}
+
+.command {
+    color: var(--text-primary);
+}
+
+.output {
+    color: var(--success);
+}
+
+.cursor {
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+.splash-features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 2rem;
+    margin: 3rem 0;
+}
+
+.feature h3 {
+    margin-bottom: 0.5rem;
+}
+
+.feature p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.login-button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: background 0.3s;
+}
+
+.login-button:hover {
+    background: var(--accent-hover);
+}
+
+.google-icon {
+    font-weight: bold;
+}
+
+.splash-footer {
+    margin-top: 2rem;
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.footer-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: color 0.2s, background 0.2s;
+}
+
+.footer-link:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.footer-link.bug-report:hover {
+    color: var(--warning);
+}
+
+.github-icon {
+    font-size: 1.1rem;
+}
+
+.bug-icon {
+    font-size: 1rem;
+}
+
+.version {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    opacity: 0.7;
+    padding: 0.5rem 1rem;
+}
+

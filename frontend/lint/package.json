@@ -4,8 +4,8 @@
   "private": true,
   "description": "CSS linting for cc-proxy frontend",
   "scripts": {
-    "lint:css": "stylelint \"../*.css\"",
-    "lint:css:fix": "stylelint \"../*.css\" --fix"
+    "lint:css": "stylelint \"../styles/**/*.css\"",
+    "lint:css:fix": "stylelint \"../styles/**/*.css\" --fix"
   },
   "devDependencies": {
     "stylelint": "^16.2.0",
