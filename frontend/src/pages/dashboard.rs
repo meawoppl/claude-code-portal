@@ -67,6 +67,8 @@ struct MessageData {
     #[allow(dead_code)]
     role: String,
     content: String,
+    /// ISO 8601 timestamp when message was created
+    created_at: String,
 }
 
 #[derive(Clone, PartialEq, serde::Deserialize)]
@@ -960,7 +962,8 @@ pub enum SessionViewMsg {
     SendInput,
     UpdateInput(String),
     /// Bulk load historical messages (no per-message scroll)
-    LoadHistory(Vec<String>),
+    /// Contains (messages, last_message_timestamp) for replay_after tracking
+    LoadHistory(Vec<String>, Option<String>),
     /// Single new message from WebSocket (triggers scroll)
     ReceivedOutput(String),
     WebSocketConnected(WsSender),
@@ -1031,6 +1034,9 @@ pub struct SessionView {
     is_recording: bool,
     /// Interim (partial) voice transcription being displayed
     interim_transcription: Option<String>,
+    /// Timestamp of the last received message (ISO 8601 format)
+    /// Used for replay_after on reconnection to avoid duplicate messages
+    last_message_timestamp: Option<String>,
 }
 
 impl Component for SessionView {
@@ -1042,39 +1048,42 @@ impl Component for SessionView {
         let session_id = ctx.props().session.id;
         let on_awaiting_change = ctx.props().on_awaiting_change.clone();
 
-        // Fetch existing messages
-        {
-            let link = link.clone();
-            let on_awaiting_change = on_awaiting_change.clone();
-            spawn_local(async move {
-                let api_endpoint =
-                    utils::api_url(&format!("/api/sessions/{}/messages", session_id));
-                if let Ok(response) = Request::get(&api_endpoint).send().await {
-                    if let Ok(data) = response.json::<MessagesResponse>().await {
-                        // Check if awaiting input
-                        let is_awaiting = data.messages.last().is_some_and(|msg| {
-                            serde_json::from_str::<serde_json::Value>(&msg.content)
-                                .ok()
-                                .and_then(|p| {
-                                    p.get("type")
-                                        .and_then(|t| t.as_str())
-                                        .map(|t| t == "result")
-                                })
-                                .unwrap_or(false)
-                        });
-                        on_awaiting_change.emit((session_id, is_awaiting));
-
-                        // Bulk load all historical messages at once
-                        let messages: Vec<String> =
-                            data.messages.into_iter().map(|m| m.content).collect();
-                        link.send_message(SessionViewMsg::LoadHistory(messages));
-                    }
-                }
-            });
-        }
-
-        // Connect WebSocket
+        // Fetch existing messages via REST, then connect WebSocket with replay_after
+        // This ensures we don't get duplicate messages
         spawn_local(async move {
+            // Step 1: Fetch existing messages via REST API
+            let mut last_message_time: Option<String> = None;
+            let api_endpoint = utils::api_url(&format!("/api/sessions/{}/messages", session_id));
+            if let Ok(response) = Request::get(&api_endpoint).send().await {
+                if let Ok(data) = response.json::<MessagesResponse>().await {
+                    // Check if awaiting input
+                    let is_awaiting = data.messages.last().is_some_and(|msg| {
+                        serde_json::from_str::<serde_json::Value>(&msg.content)
+                            .ok()
+                            .and_then(|p| {
+                                p.get("type")
+                                    .and_then(|t| t.as_str())
+                                    .map(|t| t == "result")
+                            })
+                            .unwrap_or(false)
+                    });
+                    on_awaiting_change.emit((session_id, is_awaiting));
+
+                    // Get last message timestamp for WebSocket replay_after
+                    last_message_time = data.messages.last().map(|m| m.created_at.clone());
+
+                    // Bulk load all historical messages at once (with timestamp for reconnection)
+                    let messages: Vec<String> =
+                        data.messages.into_iter().map(|m| m.content).collect();
+                    link.send_message(SessionViewMsg::LoadHistory(
+                        messages,
+                        last_message_time.clone(),
+                    ));
+                }
+            }
+
+            // Step 2: Connect WebSocket with replay_after set to last message time
+            // This prevents duplicate messages from being sent
             let ws_endpoint = utils::ws_url("/ws/client");
             match WebSocket::open(&ws_endpoint) {
                 Ok(ws) => {
@@ -1087,6 +1096,7 @@ impl Component for SessionView {
                         working_directory: String::new(),
                         resuming: false,
                         git_branch: None,
+                        replay_after: last_message_time,
                     };
 
                     if let Ok(json) = serde_json::to_string(&register_msg) {
@@ -1189,6 +1199,7 @@ impl Component for SessionView {
             draft_input: String::new(),
             is_recording: false,
             interim_transcription: None,
+            last_message_timestamp: None,
         }
     }
 
@@ -1298,9 +1309,11 @@ impl Component for SessionView {
                 }
                 true
             }
-            SessionViewMsg::LoadHistory(messages) => {
+            SessionViewMsg::LoadHistory(messages, last_timestamp) => {
                 // Bulk load - set all at once, no per-message renders
                 self.messages = messages;
+                // Store timestamp for reconnection replay_after
+                self.last_message_timestamp = last_timestamp;
                 true
             }
             SessionViewMsg::ReceivedOutput(output) => {
@@ -1327,6 +1340,13 @@ impl Component for SessionView {
                     }
                 }
                 self.messages.push(output);
+                // Update timestamp for reconnection - use current time for real-time messages
+                self.last_message_timestamp = Some(
+                    js_sys::Date::new_0()
+                        .to_iso_string()
+                        .as_string()
+                        .unwrap_or_default(),
+                );
                 true
             }
             SessionViewMsg::ClearCostFlash => {
@@ -1542,6 +1562,7 @@ impl Component for SessionView {
             SessionViewMsg::AttemptReconnect => {
                 let link = ctx.link().clone();
                 let session_id = ctx.props().session.id;
+                let replay_after = self.last_message_timestamp.clone();
 
                 spawn_local(async move {
                     let ws_endpoint = utils::ws_url("/ws/client");
@@ -1556,6 +1577,7 @@ impl Component for SessionView {
                                 working_directory: String::new(),
                                 resuming: true, // Mark as resuming connection
                                 git_branch: None,
+                                replay_after, // Only get messages after last seen
                             };
 
                             if let Ok(json) = serde_json::to_string(&register_msg) {

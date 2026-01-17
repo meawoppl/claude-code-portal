@@ -282,6 +282,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             working_directory,
                             resuming,
                             git_branch,
+                            replay_after: _, // Not used for proxy connections
                         } => {
                             // Use session_id as the key for in-memory tracking
                             let key = claude_session_id.to_string();
@@ -741,6 +742,7 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                             working_directory: _,
                             resuming: _,
                             git_branch: _,
+                            replay_after,
                         } => {
                             // Verify the user owns this session before allowing connection
                             match verify_session_ownership(&app_state, session_id, user_id) {
@@ -758,18 +760,45 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                                     );
 
                                     // Send existing messages from DB as history
+                                    // If replay_after is set, only send messages after that timestamp
                                     if let Ok(mut conn) = db_pool.get() {
                                         use crate::schema::messages;
 
-                                        let history: Vec<crate::models::Message> = messages::table
-                                            .filter(messages::session_id.eq(session_id))
-                                            .order(messages::created_at.asc())
-                                            .load(&mut conn)
-                                            .unwrap_or_default();
+                                        // Parse replay_after timestamp if provided
+                                        let replay_after_time =
+                                            replay_after.as_ref().and_then(|ts| {
+                                                chrono::NaiveDateTime::parse_from_str(
+                                                    ts,
+                                                    "%Y-%m-%dT%H:%M:%S%.f",
+                                                )
+                                                .or_else(|_| {
+                                                    chrono::NaiveDateTime::parse_from_str(
+                                                        ts,
+                                                        "%Y-%m-%dT%H:%M:%S",
+                                                    )
+                                                })
+                                                .ok()
+                                            });
+
+                                        let history: Vec<crate::models::Message> =
+                                            if let Some(after) = replay_after_time {
+                                                messages::table
+                                                    .filter(messages::session_id.eq(session_id))
+                                                    .filter(messages::created_at.gt(after))
+                                                    .order(messages::created_at.asc())
+                                                    .load(&mut conn)
+                                                    .unwrap_or_default()
+                                            } else {
+                                                messages::table
+                                                    .filter(messages::session_id.eq(session_id))
+                                                    .order(messages::created_at.asc())
+                                                    .load(&mut conn)
+                                                    .unwrap_or_default()
+                                            };
 
                                         info!(
-                                            "Sending {} historical messages to web client",
-                                            history.len()
+                                            "Sending {} historical messages to web client (replay_after: {:?})",
+                                            history.len(), replay_after
                                         );
 
                                         for msg in history {

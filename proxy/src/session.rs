@@ -346,6 +346,7 @@ async fn register_session(
         working_directory: config.working_directory.clone(),
         resuming: config.resuming,
         git_branch: config.git_branch.clone(),
+        replay_after: None, // Proxy doesn't need history replay
     };
 
     if let Err(e) = conn.send(&register_msg).await {
