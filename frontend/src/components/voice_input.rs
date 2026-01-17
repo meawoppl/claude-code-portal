@@ -14,7 +14,7 @@ use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    AudioContext, AudioContextOptions, AudioWorkletNode, AudioWorkletNodeOptions, MediaStream,
+    AudioContext, AudioWorkletNode, AudioWorkletNodeOptions, MediaStream,
     MediaStreamAudioSourceNode, MediaStreamConstraints, MessageEvent,
 };
 use yew::prelude::*;
@@ -66,6 +66,7 @@ pub enum VoiceInputMsg {
     StopRecording,
     RecordingStarted(VoiceSession),
     WebSocketMessage(ProxyMessage),
+    VolumeLevel(f32),
     Error(String),
 }
 
@@ -108,6 +109,7 @@ pub struct VoiceInput {
     is_recording: bool,
     voice_session: Option<VoiceSession>,
     browser_supported: bool,
+    volume_level: f32,
 }
 
 impl Component for VoiceInput {
@@ -119,6 +121,7 @@ impl Component for VoiceInput {
             is_recording: false,
             voice_session: None,
             browser_supported: is_audio_worklet_supported(),
+            volume_level: 0.0,
         }
     }
 
@@ -166,6 +169,7 @@ impl Component for VoiceInput {
                 // Drop the voice session to clean up
                 self.voice_session = None;
                 self.is_recording = false;
+                self.volume_level = 0.0;
                 ctx.props().on_recording_change.emit(false);
                 true
             }
@@ -195,10 +199,15 @@ impl Component for VoiceInput {
                 }
                 false
             }
+            VoiceInputMsg::VolumeLevel(level) => {
+                self.volume_level = level;
+                true
+            }
             VoiceInputMsg::Error(msg) => {
                 log::error!("Voice input error: {}", msg);
                 self.voice_session = None;
                 self.is_recording = false;
+                self.volume_level = 0.0;
                 ctx.props().on_recording_change.emit(false);
                 true
             }
@@ -228,6 +237,19 @@ impl Component for VoiceInput {
             "Start voice input"
         };
 
+        // Calculate volume ring style when recording
+        let volume_style = if self.is_recording {
+            // Scale volume to a visible ring size (2-8px)
+            let ring_size = 2.0 + (self.volume_level * 6.0);
+            let opacity = 0.3 + (self.volume_level * 0.5);
+            format!(
+                "box-shadow: 0 0 0 {}px rgba(247, 118, 142, {})",
+                ring_size, opacity
+            )
+        } else {
+            String::new()
+        };
+
         html! {
             <button
                 class={button_class}
@@ -235,6 +257,7 @@ impl Component for VoiceInput {
                 disabled={disabled}
                 title={title}
                 type="button"
+                style={volume_style}
             >
                 if self.is_recording {
                     <span class="voice-icon recording-icon">{ "\u{1F534}" }</span> // Red circle
@@ -329,7 +352,7 @@ async fn start_voice_session(
     });
 
     // Start audio recording
-    let recording_state = start_recording(audio_sender.clone()).await?;
+    let recording_state = start_recording(audio_sender.clone(), link.clone()).await?;
 
     Ok(VoiceSession {
         _recording_state: recording_state,
@@ -338,7 +361,10 @@ async fn start_voice_session(
 }
 
 /// Start recording audio from the microphone
-async fn start_recording(audio_sender: AudioSender) -> Result<VoiceRecordingState, String> {
+async fn start_recording(
+    audio_sender: AudioSender,
+    link: yew::html::Scope<VoiceInput>,
+) -> Result<VoiceRecordingState, String> {
     // Get user media (microphone)
     let navigator = window().navigator();
     let media_devices = navigator
@@ -359,12 +385,9 @@ async fn start_recording(audio_sender: AudioSender) -> Result<VoiceRecordingStat
         .dyn_into()
         .map_err(|_| "Invalid media stream")?;
 
-    // Create audio context at 16kHz (matching Speech-to-Text requirement)
-    let audio_options = AudioContextOptions::new();
-    audio_options.set_sample_rate(16000.0);
-
-    let audio_context = AudioContext::new_with_context_options(&audio_options)
-        .map_err(|_| "Failed to create audio context")?;
+    // Create audio context at default sample rate (matches microphone)
+    // The PCM processor handles resampling to 16kHz for Speech-to-Text
+    let audio_context = AudioContext::new().map_err(|_| "Failed to create audio context")?;
 
     // Load the PCM processor worklet
     let worklet = audio_context
@@ -385,9 +408,10 @@ async fn start_recording(audio_sender: AudioSender) -> Result<VoiceRecordingStat
         AudioWorkletNode::new_with_options(&audio_context, "pcm-processor", &worklet_options)
             .map_err(|_| "Failed to create worklet node")?;
 
-    // Set up message handler for audio data from worklet
+    // Set up message handler for audio data and volume levels from worklet
     let onmessage = Closure::wrap(Box::new(move |event: MessageEvent| {
         if let Ok(data) = event.data().dyn_into::<js_sys::Object>() {
+            // Check for audio data
             if let Ok(audio_buffer) = js_sys::Reflect::get(&data, &JsValue::from_str("audioData")) {
                 if let Ok(array_buffer) = audio_buffer.dyn_into::<js_sys::ArrayBuffer>() {
                     let uint8_array = js_sys::Uint8Array::new(&array_buffer);
@@ -397,6 +421,12 @@ async fn start_recording(audio_sender: AudioSender) -> Result<VoiceRecordingStat
                     if let Some(ref sender) = *audio_sender.borrow() {
                         let _ = sender.unbounded_send(bytes);
                     }
+                }
+            }
+            // Check for volume level
+            if let Ok(volume_val) = js_sys::Reflect::get(&data, &JsValue::from_str("volumeLevel")) {
+                if let Some(volume) = volume_val.as_f64() {
+                    link.send_message(VoiceInputMsg::VolumeLevel(volume as f32));
                 }
             }
         }

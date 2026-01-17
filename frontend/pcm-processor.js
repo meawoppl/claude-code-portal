@@ -27,6 +27,11 @@ class PCMProcessor extends AudioWorkletProcessor {
         // Track if we're actively recording
         this.isRecording = true;
 
+        // Volume level tracking
+        this.volumeSampleCount = 0;
+        this.volumeSum = 0;
+        this.volumeReportInterval = 128; // Report volume every ~8ms at 16kHz
+
         // Listen for control messages from main thread
         this.port.onmessage = (event) => {
             if (event.data.command === 'stop') {
@@ -93,7 +98,22 @@ class PCMProcessor extends AudioWorkletProcessor {
             if (this.resampleAccumulator >= this.resampleRatio) {
                 this.resampleAccumulator -= this.resampleRatio;
 
-                this.buffer[this.bufferIndex++] = inputChannel[i];
+                const sample = inputChannel[i];
+                this.buffer[this.bufferIndex++] = sample;
+
+                // Track volume (RMS)
+                this.volumeSum += sample * sample;
+                this.volumeSampleCount++;
+
+                // Report volume at regular intervals
+                if (this.volumeSampleCount >= this.volumeReportInterval) {
+                    const rms = Math.sqrt(this.volumeSum / this.volumeSampleCount);
+                    // Convert to 0-1 range with some amplification for better visual feedback
+                    const volumeLevel = Math.min(1.0, rms * 3);
+                    this.port.postMessage({ volumeLevel });
+                    this.volumeSum = 0;
+                    this.volumeSampleCount = 0;
+                }
 
                 // Buffer full - send to main thread
                 if (this.bufferIndex >= this.bufferSize) {
