@@ -320,6 +320,35 @@ pub fn dashboard_page() -> Html {
         })
     };
 
+    // Get all sessions for the rail, sorted by status (active first), then repo name, then hostname
+    // NOTE: This must be computed BEFORE navigation callbacks so they use the same sorted order
+    let active_sessions: Vec<_> = {
+        let mut sorted: Vec<_> = sessions.iter().cloned().collect();
+        sorted.sort_by(|a, b| {
+            // Active sessions come before disconnected/inactive
+            let a_is_active = a.status.as_str() == "active";
+            let b_is_active = b.status.as_str() == "active";
+            match (a_is_active, b_is_active) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => {
+                    // Same status - sort by repo name then hostname
+                    let (project_a, hostname_a) = get_session_display_parts(a);
+                    let (project_b, hostname_b) = get_session_display_parts(b);
+                    let repo_a = project_a.as_deref().unwrap_or("");
+                    let repo_b = project_b.as_deref().unwrap_or("");
+                    match repo_a.to_lowercase().cmp(&repo_b.to_lowercase()) {
+                        std::cmp::Ordering::Equal => {
+                            hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
+                        }
+                        other => other,
+                    }
+                }
+            }
+        });
+        sorted
+    };
+
     // Navigation callbacks
     let on_select_session = {
         let focused_index = focused_index.clone();
@@ -330,27 +359,22 @@ pub fn dashboard_page() -> Html {
 
     let on_navigate = {
         let focused_index = focused_index.clone();
-        let sessions = sessions.clone();
+        let active_sessions = active_sessions.clone();
         let paused_sessions = paused_sessions.clone();
         Callback::from(move |delta: i32| {
-            let active: Vec<_> = sessions
-                .iter()
-                .filter(|s| s.status.as_str() == "active")
-                .cloned()
-                .collect();
-            let len = active.len();
+            let len = active_sessions.len();
             if len == 0 {
                 return;
             }
 
             // Count non-paused sessions
-            let non_pauseed_count = active
+            let non_paused_count = active_sessions
                 .iter()
                 .filter(|s| !paused_sessions.contains(&s.id))
                 .count();
 
             // If all sessions are paused, allow normal navigation
-            if non_pauseed_count == 0 {
+            if non_paused_count == 0 {
                 let current = *focused_index as i32;
                 let new_index = (current + delta).rem_euclid(len as i32) as usize;
                 focused_index.set(new_index);
@@ -364,7 +388,7 @@ pub fn dashboard_page() -> Html {
 
             for _ in 0..len {
                 new_index = (new_index + step) % len;
-                if let Some(session) = active.get(new_index) {
+                if let Some(session) = active_sessions.get(new_index) {
                     if !paused_sessions.contains(&session.id) {
                         focused_index.set(new_index);
                         return;
@@ -376,10 +400,10 @@ pub fn dashboard_page() -> Html {
 
     let on_next_active = {
         let focused_index = focused_index.clone();
-        let sessions = sessions.clone();
+        let active_sessions = active_sessions.clone();
         let paused_sessions = paused_sessions.clone();
         Callback::from(move |_| {
-            let len = sessions.len();
+            let len = active_sessions.len();
             if len == 0 {
                 return;
             }
@@ -387,7 +411,7 @@ pub fn dashboard_page() -> Html {
             // Find next non-paused session after current (wraps around)
             for i in 1..=len {
                 let idx = (current + i) % len;
-                if let Some(session) = sessions.get(idx) {
+                if let Some(session) = active_sessions.get(idx) {
                     if !paused_sessions.contains(&session.id) {
                         focused_index.set(idx);
                         return;
@@ -468,33 +492,6 @@ pub fn dashboard_page() -> Html {
             sessions.set(updated);
         })
     };
-
-    // Get all sessions for the rail, sorted by status (active first), then repo name, then hostname
-    let mut active_sessions: Vec<_> = sessions.iter().cloned().collect();
-
-    // Sort by: active status first, then repo name, then hostname
-    active_sessions.sort_by(|a, b| {
-        // Active sessions come before disconnected/inactive
-        let a_is_active = a.status.as_str() == "active";
-        let b_is_active = b.status.as_str() == "active";
-        match (a_is_active, b_is_active) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => {
-                // Same status - sort by repo name then hostname
-                let (project_a, hostname_a) = get_session_display_parts(a);
-                let (project_b, hostname_b) = get_session_display_parts(b);
-                let repo_a = project_a.as_deref().unwrap_or("");
-                let repo_b = project_b.as_deref().unwrap_or("");
-                match repo_a.to_lowercase().cmp(&repo_b.to_lowercase()) {
-                    std::cmp::Ordering::Equal => {
-                        hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
-                    }
-                    other => other,
-                }
-            }
-        }
-    });
 
     let waiting_count = awaiting_sessions.len();
 
