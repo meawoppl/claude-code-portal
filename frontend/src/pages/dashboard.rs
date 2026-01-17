@@ -1314,6 +1314,8 @@ impl Component for SessionView {
                 self.messages = messages;
                 // Store timestamp for reconnection replay_after
                 self.last_message_timestamp = last_timestamp;
+                // Trigger CheckAwaiting to update parent state based on loaded messages
+                ctx.link().send_message(SessionViewMsg::CheckAwaiting);
                 true
             }
             SessionViewMsg::ReceivedOutput(output) => {
