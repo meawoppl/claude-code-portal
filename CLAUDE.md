@@ -657,6 +657,22 @@ use uuid::Uuid;
 3. **Frontend**: Use `use_memo` for expensive computations in Yew
 4. **Backend**: Database connection pool already configured in `db.rs`
 
+## SHIP Workflow
+
+When the user says **"SHIP"**, execute this workflow:
+
+1. **Create PR**: `gh pr create` with appropriate title and body
+2. **Watch CI**: `gh pr checks <PR_NUMBER> --watch` to monitor all checks
+3. **Fix minor CI failures**: If `cargo fmt` or `clippy` fails, fix automatically and push
+4. **Merge if passing**: `gh pr merge <PR_NUMBER> --squash --delete-branch`
+5. **Update local**: `git checkout main && git pull`
+
+**CI Failure Handling**:
+- **Minor issues** (formatting, clippy warnings): Fix automatically, commit, push, and re-watch CI
+- **Substantive issues** (test failures, build errors): Ask the user before making changes
+
+This is a shorthand for the full PR review cycle when the user is confident in the changes.
+
 ## When in Doubt
 
 1. Check existing code for similar patterns
