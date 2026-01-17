@@ -1,40 +1,8 @@
 # =============================================================================
-# Multi-stage Dockerfile for CC-Proxy Backend
-# Downloads pre-built claude-proxy binary from GitHub releases
+# Dockerfile for CC-Proxy Backend
+# Uses pre-built binaries from CI (faster builds with caching)
 # =============================================================================
 
-# -----------------------------------------------------------------------------
-# Stage 1: Builder (backend only)
-# -----------------------------------------------------------------------------
-FROM rust:1.92-slim AS builder
-
-WORKDIR /app
-
-# Install build dependencies
-RUN apt-get update && \
-    apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    libpq-dev \
-    protobuf-compiler \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy workspace files (only what's needed for backend)
-COPY Cargo.toml Cargo.lock ./
-COPY shared ./shared
-COPY backend ./backend
-COPY frontend ./frontend
-
-# Remove proxy and cli-tools from workspace (not needed - proxy downloaded from releases)
-RUN sed -i 's/, "cli-tools"//' Cargo.toml && \
-    sed -i 's/, "proxy"//' Cargo.toml
-
-# Build release binary (backend only)
-RUN cargo build --release -p backend
-
-# -----------------------------------------------------------------------------
-# Stage 2: Runtime
-# -----------------------------------------------------------------------------
 FROM debian:bookworm-slim
 
 WORKDIR /app
@@ -48,18 +16,17 @@ RUN apt-get update && \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy backend binary from builder
-COPY --from=builder /app/target/release/backend /app/backend
+# Copy pre-built backend binary from CI
+COPY build-output/backend /app/backend
 
 # Download pre-built claude-proxy binary from GitHub releases
-# This ensures consistency with the published binaries and faster builds
 RUN mkdir -p /app/bin && \
     curl -fsSL https://github.com/meawoppl/cc-proxy/releases/download/latest/claude-proxy-linux-x86_64 \
     -o /app/bin/claude-proxy && \
     chmod +x /app/bin/claude-proxy
 
-# Copy pre-built frontend dist (built locally with trunk)
-COPY frontend/dist /app/frontend/dist
+# Copy pre-built frontend dist from CI
+COPY build-output/frontend-dist /app/frontend/dist
 
 # Set proxy binary path for the download endpoint
 ENV PROXY_BINARY_PATH=/app/bin/claude-proxy
