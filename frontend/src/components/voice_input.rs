@@ -14,7 +14,7 @@ use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    AudioContext, AudioContextOptions, AudioWorkletNode, AudioWorkletNodeOptions, MediaStream,
+    AudioContext, AudioWorkletNode, AudioWorkletNodeOptions, MediaStream,
     MediaStreamAudioSourceNode, MediaStreamConstraints, MessageEvent,
 };
 use yew::prelude::*;
@@ -385,12 +385,10 @@ async fn start_recording(
         .dyn_into()
         .map_err(|_| "Invalid media stream")?;
 
-    // Create audio context at 16kHz (matching Speech-to-Text requirement)
-    let audio_options = AudioContextOptions::new();
-    audio_options.set_sample_rate(16000.0);
-
-    let audio_context = AudioContext::new_with_context_options(&audio_options)
-        .map_err(|_| "Failed to create audio context")?;
+    // Create audio context at default sample rate (matches microphone)
+    // The PCM processor handles resampling to 16kHz for Speech-to-Text
+    let audio_context =
+        AudioContext::new().map_err(|_| "Failed to create audio context")?;
 
     // Load the PCM processor worklet
     let worklet = audio_context
