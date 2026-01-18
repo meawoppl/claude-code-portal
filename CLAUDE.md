@@ -354,6 +354,22 @@ trunk serve  # Auto-reload on changes
 cargo run -p claude-proxy -- --backend-url ws://localhost:3000
 ```
 
+### GitHub CI / Waiting for Checks
+
+**Avoid using `sleep` to wait for CI checks.** Instead, use `gh run watch` to wait for GitHub Actions workflows:
+
+```bash
+# Wait for a specific workflow run to complete
+gh run watch <run-id> --exit-status
+
+# Example: Wait for CI then merge PR
+gh run watch 21103370620 --exit-status && gh pr merge 137 --squash
+```
+
+The `--exit-status` flag makes the command exit with non-zero status if the workflow fails, which is useful for chaining commands.
+
+To find the run ID, use `gh pr view <pr-number> --json statusCheckRollup` and look at the `detailsUrl` which contains the run ID.
+
 ## Important Constraints
 
 ### WASM Compatibility Checklist
