@@ -6,6 +6,7 @@ pub mod downloads;
 pub mod helpers;
 pub mod messages;
 pub mod proxy_tokens;
+pub mod retention;
 pub mod sessions;
 pub mod voice;
 pub mod websocket;

@@ -52,6 +52,10 @@ pub struct AppState {
     pub allowed_email_domain: Option<String>,
     /// Allowed email addresses (comma-separated in env var)
     pub allowed_emails: Option<Vec<String>>,
+    /// Maximum messages to keep per session (default: 100)
+    pub message_retention_count: i64,
+    /// Days to retain messages before deletion (default: 30, 0 = disabled)
+    pub message_retention_days: u32,
 }
 
 #[tokio::main]
@@ -243,6 +247,22 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Message retention settings
+    let message_retention_count: i64 = env::var("MESSAGE_RETENTION_COUNT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100);
+    let message_retention_days: u32 = env::var("MESSAGE_RETENTION_DAYS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30);
+
+    tracing::info!(
+        "Message retention: max {} messages/session, {} days",
+        message_retention_count,
+        message_retention_days
+    );
+
     // Create app state
     let app_state = Arc::new(AppState {
         dev_mode: args.dev_mode,
@@ -261,6 +281,8 @@ async fn main() -> anyhow::Result<()> {
         app_title,
         allowed_email_domain,
         allowed_emails,
+        message_retention_count,
+        message_retention_days,
     });
 
     // Setup CORS
@@ -400,17 +422,17 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Started user spend broadcast task (every 5 seconds)");
     }
 
-    // Spawn background task to batch message truncation (runs every 60 seconds)
+    // Spawn background task for message retention cleanup (runs every 60 seconds)
     {
         let app_state = app_state.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
             loop {
                 interval.tick().await;
-                run_batched_truncation(&app_state).await;
+                run_retention_cleanup(&app_state).await;
             }
         });
-        tracing::info!("Started message truncation task (every 60 seconds)");
+        tracing::info!("Started message retention task (every 60 seconds)");
     }
 
     // Run the server with graceful shutdown
@@ -515,39 +537,29 @@ async fn broadcast_user_spend_updates(app_state: &Arc<AppState>) {
     }
 }
 
-/// Run batched message truncation for all queued sessions
-/// This is more efficient than truncating after every message insert
-async fn run_batched_truncation(app_state: &Arc<AppState>) {
+/// Run retention cleanup: delete old messages and truncate per-session counts
+async fn run_retention_cleanup(app_state: &Arc<AppState>) {
+    use handlers::retention::{run_retention_cleanup, RetentionConfig};
+
     let session_ids = app_state.session_manager.drain_pending_truncations();
 
-    if session_ids.is_empty() {
-        return;
-    }
-
-    tracing::debug!(
-        "Running batched truncation for {} sessions",
-        session_ids.len()
-    );
-
     let Ok(mut conn) = app_state.db_pool.get() else {
-        tracing::error!("Failed to get DB connection for truncation");
+        tracing::error!("Failed to get DB connection for retention cleanup");
         return;
     };
 
-    let mut total_deleted = 0;
-    for session_id in session_ids {
-        match handlers::messages::truncate_session_messages_internal(&mut conn, session_id) {
-            Ok(deleted) => total_deleted += deleted,
-            Err(e) => {
-                tracing::error!("Failed to truncate session {}: {:?}", session_id, e);
-            }
-        }
-    }
+    let config = RetentionConfig::new(
+        app_state.message_retention_count,
+        app_state.message_retention_days,
+    );
 
-    if total_deleted > 0 {
+    let (age_deleted, count_deleted) = run_retention_cleanup(&mut conn, session_ids, config);
+
+    if age_deleted > 0 || count_deleted > 0 {
         tracing::info!(
-            "Batched truncation complete: deleted {} messages total",
-            total_deleted
+            "Retention cleanup complete: {} old, {} over-limit",
+            age_deleted,
+            count_deleted
         );
     }
 }
