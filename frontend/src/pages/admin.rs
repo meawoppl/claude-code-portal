@@ -292,11 +292,13 @@ fn session_row(props: &SessionRowProps) -> Html {
         &session.status
     };
 
+    let hostname = utils::extract_hostname(&session.session_name);
     let project_name = utils::extract_folder(&session.working_directory);
 
     html! {
         <tr>
             <td class="session-user">{ &session.user_email }</td>
+            <td class="session-hostname">{ hostname }</td>
             <td class="session-project">{ project_name }</td>
             <td class="session-branch">{ session.git_branch.as_deref().unwrap_or("-") }</td>
             <td class={status_class}>{ status_text }</td>
@@ -1089,6 +1091,7 @@ pub fn admin_page() -> Html {
                                                         <thead>
                                                             <tr>
                                                                 <th>{ "User" }</th>
+                                                                <th>{ "Hostname" }</th>
                                                                 <th>{ "Project" }</th>
                                                                 <th>{ "Branch" }</th>
                                                                 <th>{ "Status" }</th>
