@@ -170,10 +170,10 @@ fn get_git_branch(cwd: &str) -> Option<String> {
 }
 
 /// Handle --check-update: check for updates without installing
-fn handle_check_update() -> Result<()> {
+async fn handle_check_update() -> Result<()> {
     ui::print_checking_for_updates();
 
-    match update::check_for_update_github(true) {
+    match update::check_for_update_github(true).await {
         Ok(update::UpdateResult::UpToDate) => {
             ui::print_up_to_date();
             Ok(())
@@ -198,10 +198,10 @@ fn handle_check_update() -> Result<()> {
 }
 
 /// Handle --update: force update from GitHub releases
-fn handle_force_update() -> Result<()> {
+async fn handle_force_update() -> Result<()> {
     ui::print_updating_from_github();
 
-    match update::check_for_update_github(false) {
+    match update::check_for_update_github(false).await {
         Ok(update::UpdateResult::UpToDate) => {
             ui::print_up_to_date();
             Ok(())
@@ -242,17 +242,17 @@ async fn main() -> Result<()> {
 
     // Handle explicit update commands first
     if args.check_update {
-        return handle_check_update();
+        return handle_check_update().await;
     }
 
     if args.update {
-        return handle_force_update();
+        return handle_force_update().await;
     }
 
     // Check for updates before anything else (unless --no-update or --init/--logout)
     if !args.no_update && args.init.is_none() && !args.logout {
         let backend_url = update::get_update_backend_url();
-        match update::check_for_update_with_fallback(backend_url.as_deref(), false) {
+        match update::check_for_update_with_fallback(backend_url.as_deref(), false).await {
             Ok(update::UpdateResult::UpToDate) => {
                 // Continue normally
             }

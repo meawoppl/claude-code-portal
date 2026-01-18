@@ -110,7 +110,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// # Platform Notes
 /// - Works on Unix (Linux, macOS) where running binaries can be overwritten
 /// - Windows support is TODO (requires different approach due to exe locking)
-pub fn check_for_update(backend_url: &str) -> Result<UpdateResult> {
+pub async fn check_for_update(backend_url: &str) -> Result<UpdateResult> {
     let self_path = std::env::current_exe().context("Failed to get current executable path")?;
     let self_bytes = fs::read(&self_path).context("Failed to read current binary")?;
     let self_hash = sha256_hex(&self_bytes);
@@ -127,7 +127,7 @@ pub fn check_for_update(backend_url: &str) -> Result<UpdateResult> {
 
     // HEAD request to get remote hash
     info!("Checking for updates at {}", download_url);
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .user_agent("claude-portal")
         .build()
         .context("Failed to create HTTP client")?;
@@ -135,6 +135,7 @@ pub fn check_for_update(backend_url: &str) -> Result<UpdateResult> {
     let resp = client
         .head(&download_url)
         .send()
+        .await
         .context("Failed to check for updates")?;
 
     if !resp.status().is_success() {
@@ -161,13 +162,17 @@ pub fn check_for_update(backend_url: &str) -> Result<UpdateResult> {
     let resp = client
         .get(&download_url)
         .send()
+        .await
         .context("Failed to download update")?;
 
     if !resp.status().is_success() {
         bail!("Download failed: server returned {}", resp.status());
     }
 
-    let new_binary = resp.bytes().context("Failed to read download response")?;
+    let new_binary = resp
+        .bytes()
+        .await
+        .context("Failed to read download response")?;
 
     // Verify downloaded binary hash matches what we expected
     let download_hash = sha256_hex(&new_binary);
@@ -186,7 +191,7 @@ pub fn check_for_update(backend_url: &str) -> Result<UpdateResult> {
 /// Check for updates from GitHub releases
 ///
 /// This is a fallback when no backend is configured or backend is unreachable.
-pub fn check_for_update_github(check_only: bool) -> Result<UpdateResult> {
+pub async fn check_for_update_github(check_only: bool) -> Result<UpdateResult> {
     let self_path = std::env::current_exe().context("Failed to get current executable path")?;
     let self_bytes = fs::read(&self_path).context("Failed to read current binary")?;
     let self_hash = sha256_hex(&self_bytes);
@@ -205,7 +210,7 @@ pub fn check_for_update_github(check_only: bool) -> Result<UpdateResult> {
     info!("Checking for updates from GitHub releases...");
     info!("Platform: {} {}", platform.os, platform.arch);
 
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .user_agent("claude-portal")
         .build()
         .context("Failed to create HTTP client")?;
@@ -219,13 +224,17 @@ pub fn check_for_update_github(check_only: bool) -> Result<UpdateResult> {
     let resp = client
         .get(&api_url)
         .send()
+        .await
         .context("Failed to fetch GitHub release info")?;
 
     if !resp.status().is_success() {
         bail!("GitHub API returned {}", resp.status());
     }
 
-    let release: GitHubRelease = resp.json().context("Failed to parse GitHub release JSON")?;
+    let release: GitHubRelease = resp
+        .json()
+        .await
+        .context("Failed to parse GitHub release JSON")?;
     info!("Latest release: {} ({})", release.name, release.tag_name);
 
     // Find the asset for our platform
@@ -249,13 +258,17 @@ pub fn check_for_update_github(check_only: bool) -> Result<UpdateResult> {
     let resp = client
         .get(&asset.browser_download_url)
         .send()
+        .await
         .context("Failed to download from GitHub")?;
 
     if !resp.status().is_success() {
         bail!("Download failed: GitHub returned {}", resp.status());
     }
 
-    let new_binary = resp.bytes().context("Failed to read download response")?;
+    let new_binary = resp
+        .bytes()
+        .await
+        .context("Failed to read download response")?;
     let new_hash = sha256_hex(&new_binary);
 
     info!("Downloaded binary hash: {}", &new_hash[..16]);
@@ -381,13 +394,13 @@ pub fn apply_pending_update() -> Result<bool> {
 }
 
 /// Check for updates, trying backend first then falling back to GitHub
-pub fn check_for_update_with_fallback(
+pub async fn check_for_update_with_fallback(
     backend_url: Option<&str>,
     check_only: bool,
 ) -> Result<UpdateResult> {
     // Try backend first if available
     if let Some(url) = backend_url {
-        match check_for_update(url) {
+        match check_for_update(url).await {
             Ok(result) => return Ok(result),
             Err(e) => {
                 warn!(
@@ -399,7 +412,7 @@ pub fn check_for_update_with_fallback(
     }
 
     // Fall back to GitHub releases
-    check_for_update_github(check_only)
+    check_for_update_github(check_only).await
 }
 
 /// Get the backend URL for update checks from config
