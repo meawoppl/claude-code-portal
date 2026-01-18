@@ -1,0 +1,150 @@
+//! Hook for managing the client WebSocket connection with spend updates.
+
+use crate::utils;
+use futures_util::StreamExt;
+use gloo_net::websocket::{futures::WebSocket, Message};
+use shared::{ProxyMessage, SessionCost};
+use std::collections::HashMap;
+use uuid::Uuid;
+use wasm_bindgen_futures::spawn_local;
+use yew::prelude::*;
+
+/// Return value from the use_client_websocket hook.
+pub struct UseClientWebSocket {
+    /// Total user spend across all sessions
+    pub total_spend: f64,
+    /// Per-session costs (session_id -> cost)
+    pub session_costs: HashMap<Uuid, f64>,
+    /// Server shutdown reason (if server is shutting down)
+    pub shutdown_reason: Option<String>,
+}
+
+/// Calculate exponential backoff delay for reconnection attempts.
+fn calculate_backoff(attempt: u32) -> u32 {
+    const INITIAL_MS: u32 = 1000;
+    const MAX_MS: u32 = 30000;
+    INITIAL_MS
+        .saturating_mul(2u32.saturating_pow(attempt.min(5)))
+        .min(MAX_MS)
+}
+
+/// Hook for managing the client WebSocket connection.
+///
+/// Connects to /ws/client and receives spend updates and server shutdown notifications.
+/// Automatically reconnects with exponential backoff on disconnection.
+///
+/// # Returns
+/// * `UseClientWebSocket` - The current spend data and shutdown status
+///
+/// # Example
+/// ```ignore
+/// let ws = use_client_websocket();
+/// if let Some(reason) = &ws.shutdown_reason {
+///     // Show shutdown banner
+/// }
+/// // Display total spend
+/// html! { <span>{ format!("${:.2}", ws.total_spend) }</span> }
+/// ```
+#[hook]
+pub fn use_client_websocket() -> UseClientWebSocket {
+    let total_spend = use_state(|| 0.0f64);
+    let session_costs = use_state(HashMap::<Uuid, f64>::new);
+    let shutdown_reason = use_state(|| None::<String>);
+
+    {
+        let total_spend = total_spend.clone();
+        let session_costs = session_costs.clone();
+        let shutdown_reason = shutdown_reason.clone();
+
+        use_effect_with((), move |_| {
+            let total_spend = total_spend.clone();
+            let session_costs = session_costs.clone();
+            let shutdown_reason = shutdown_reason.clone();
+
+            spawn_local(async move {
+                let mut attempt: u32 = 0;
+                const MAX_ATTEMPTS: u32 = 10;
+
+                loop {
+                    let ws_endpoint = utils::ws_url("/ws/client");
+                    match WebSocket::open(&ws_endpoint) {
+                        Ok(ws) => {
+                            attempt = 0; // Reset on successful connection
+                            shutdown_reason.set(None); // Clear shutdown banner
+                            let (_sender, mut receiver) = ws.split();
+
+                            while let Some(msg) = receiver.next().await {
+                                match msg {
+                                    Ok(Message::Text(text)) => {
+                                        if let Ok(proxy_msg) =
+                                            serde_json::from_str::<ProxyMessage>(&text)
+                                        {
+                                            match proxy_msg {
+                                                ProxyMessage::UserSpendUpdate {
+                                                    total_spend_usd,
+                                                    session_costs: costs,
+                                                } => {
+                                                    total_spend.set(total_spend_usd);
+                                                    let mut map = (*session_costs).clone();
+                                                    for SessionCost {
+                                                        session_id,
+                                                        total_cost_usd,
+                                                    } in costs
+                                                    {
+                                                        map.insert(session_id, total_cost_usd);
+                                                    }
+                                                    session_costs.set(map);
+                                                }
+                                                ProxyMessage::ServerShutdown {
+                                                    reason,
+                                                    reconnect_delay_ms,
+                                                } => {
+                                                    log::info!(
+                                                        "Server shutdown: {} (reconnect in {}ms)",
+                                                        reason,
+                                                        reconnect_delay_ms
+                                                    );
+                                                    shutdown_reason.set(Some(reason));
+                                                }
+                                                _ => {}
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::error!("Client WebSocket error: {:?}", e);
+                                        break;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to connect client WebSocket: {:?}", e);
+                        }
+                    }
+
+                    // Reconnection with exponential backoff
+                    if attempt >= MAX_ATTEMPTS {
+                        log::error!("Client WebSocket: max reconnection attempts reached");
+                        break;
+                    }
+                    let delay_ms = calculate_backoff(attempt);
+                    attempt += 1;
+                    log::info!(
+                        "Client WebSocket reconnecting in {}ms (attempt {})",
+                        delay_ms,
+                        attempt
+                    );
+                    gloo::timers::future::TimeoutFuture::new(delay_ms).await;
+                }
+            });
+            || ()
+        });
+    }
+
+    UseClientWebSocket {
+        total_spend: *total_spend,
+        session_costs: (*session_costs).clone(),
+        shutdown_reason: (*shutdown_reason).clone(),
+    }
+}
