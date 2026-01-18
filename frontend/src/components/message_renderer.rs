@@ -2,6 +2,7 @@ use super::markdown::render_markdown;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use shared::ToolResultContent;
 use uuid::Uuid;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -195,7 +196,7 @@ pub enum ContentBlock {
     #[serde(rename = "tool_result")]
     ToolResult {
         tool_use_id: String,
-        content: Option<String>,
+        content: Option<ToolResultContent>,
         #[serde(default)]
         is_error: bool,
     },
@@ -657,12 +658,24 @@ fn render_content_blocks(blocks: &[ContentBlock]) -> Html {
                         }
                         ContentBlock::ToolResult { tool_use_id: _, content, is_error } => {
                             let class = if *is_error { "tool-result error" } else { "tool-result" };
-                            let text = content.as_deref().unwrap_or("");
+                            // Extract text from ToolResultContent (can be plain string or array of content blocks)
+                            let text = match content {
+                                Some(ToolResultContent::Text(s)) => s.clone(),
+                                Some(ToolResultContent::Structured(blocks)) => {
+                                    // Extract text from content blocks array
+                                    blocks
+                                        .iter()
+                                        .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                }
+                                None => String::new(),
+                            };
                             // Truncate long results (using safe UTF-8 boundary)
                             let display = if text.len() > 500 {
-                                format!("{}...", truncate_str(text, 500))
+                                format!("{}...", truncate_str(&text, 500))
                             } else {
-                                text.to_string()
+                                text
                             };
                             html! {
                                 <div class={class}>
