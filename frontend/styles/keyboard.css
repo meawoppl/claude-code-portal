@@ -4,14 +4,21 @@
 
 .keyboard-hints {
     display: flex;
-    justify-content: center;
-    gap: 2rem;
+    justify-content: space-between;
+    align-items: center;
     padding: 0.5rem 1rem;
     background: var(--bg-darker);
     border-top: 1px solid var(--border);
 }
 
-.keyboard-hints span {
+.keyboard-hints .hints-content {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    flex: 1;
+}
+
+.keyboard-hints .hints-content span {
     font-size: 0.75rem;
     color: var(--text-secondary);
     display: flex;
@@ -43,6 +50,22 @@
 .keyboard-hints.nav-mode {
     background: rgba(122, 162, 247, 0.15);
     border-top-color: var(--accent);
+}
+
+/* Bug report link in keyboard hints bar */
+.keyboard-hints .bug-report-link {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: color 0.2s, background 0.2s;
+    white-space: nowrap;
+}
+
+.keyboard-hints .bug-report-link:hover {
+    color: var(--warning);
+    background: rgba(0, 0, 0, 0.3);
 }
 
 /* ==========================================================================

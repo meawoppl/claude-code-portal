@@ -783,31 +783,41 @@ pub fn dashboard_page() -> Html {
 
                     // Keyboard hints - context-sensitive based on mode
                     <div class={classes!("keyboard-hints", if *nav_mode { Some("nav-mode") } else { None })}>
-                        {
-                            if *nav_mode {
-                                html! {
-                                    <>
-                                        <span class="mode-indicator">{ "NAV" }</span>
-                                        <span>{ "↑↓ or jk = navigate" }</span>
-                                        <span>{ "1-9 = select" }</span>
-                                        <span>{ "w = next waiting" }</span>
-                                        <span>{ "Enter/Esc = edit mode" }</span>
-                                    </>
-                                }
-                            } else {
-                                html! {
-                                    <>
-                                        <span>{ "Esc = nav mode" }</span>
-                                        <span>{ "Shift+Tab = next (skip paused)" }</span>
-                                        <span>{ "Ctrl+Shift+P = pause" }</span>
-                                        if *voice_enabled {
-                                            <span>{ "Ctrl+M = voice" }</span>
-                                        }
-                                        <span>{ "Enter = send" }</span>
-                                    </>
+                        <div class="hints-content">
+                            {
+                                if *nav_mode {
+                                    html! {
+                                        <>
+                                            <span class="mode-indicator">{ "NAV" }</span>
+                                            <span>{ "↑↓ or jk = navigate" }</span>
+                                            <span>{ "1-9 = select" }</span>
+                                            <span>{ "w = next waiting" }</span>
+                                            <span>{ "Enter/Esc = edit mode" }</span>
+                                        </>
+                                    }
+                                } else {
+                                    html! {
+                                        <>
+                                            <span>{ "Esc = nav mode" }</span>
+                                            <span>{ "Shift+Tab = next (skip paused)" }</span>
+                                            <span>{ "Ctrl+Shift+P = pause" }</span>
+                                            if *voice_enabled {
+                                                <span>{ "Ctrl+M = voice" }</span>
+                                            }
+                                            <span>{ "Enter = send" }</span>
+                                        </>
+                                    }
                                 }
                             }
-                        }
+                        </div>
+                        <a
+                            href="https://github.com/meawoppl/cc-proxy/issues/new"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="bug-report-link"
+                        >
+                            { "🐛 Report a Bug" }
+                        </a>
                     </div>
                 </>
             }
@@ -840,19 +850,6 @@ pub fn dashboard_page() -> Html {
                     html! {}
                 }
             }
-
-            // Footer with bug report link
-            <footer class="dashboard-footer">
-                <a
-                    href="https://github.com/meawoppl/cc-proxy/issues/new"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="footer-link bug-report"
-                >
-                    <span class="bug-icon">{ "🐛" }</span>
-                    { "Report a Bug" }
-                </a>
-            </footer>
         </div>
     }
 }
