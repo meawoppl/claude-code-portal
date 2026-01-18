@@ -106,6 +106,7 @@ use std::collections::HashMap;
 
 #[function_component(DashboardPage)]
 pub fn dashboard_page() -> Html {
+    let navigator = use_navigator().unwrap();
     let sessions = use_state(Vec::<SessionInfo>::new);
     let loading = use_state(|| true);
     let refresh_trigger = use_state(|| 0u32);
@@ -115,7 +116,6 @@ pub fn dashboard_page() -> Html {
     let paused_sessions = use_state(load_paused_sessions);
     let session_costs = use_state(HashMap::<Uuid, f64>::new);
     let connected_sessions = use_state(HashSet::<Uuid>::new);
-    let pending_delete = use_state(|| None::<Uuid>);
     let pending_leave = use_state(|| None::<Uuid>);
     let nav_mode = use_state(|| false);
     let total_user_spend = use_state(|| 0.0f64);
@@ -293,48 +293,22 @@ pub fn dashboard_page() -> Html {
         });
     }
 
-    // Show delete confirmation modal
-    let on_delete = {
-        let pending_delete = pending_delete.clone();
-        Callback::from(move |session_id: Uuid| {
-            pending_delete.set(Some(session_id));
-        })
+    // Navigation callbacks
+    let go_to_admin = {
+        let navigator = navigator.clone();
+        Callback::from(move |_| navigator.push(&Route::Admin))
     };
 
-    // Cancel delete
-    let on_cancel_delete = {
-        let pending_delete = pending_delete.clone();
-        Callback::from(move |_| {
-            pending_delete.set(None);
-        })
+    let go_to_settings = {
+        let navigator = navigator.clone();
+        Callback::from(move |_| navigator.push(&Route::Settings))
     };
 
-    // Confirm delete
-    let on_confirm_delete = {
-        let pending_delete = pending_delete.clone();
-        let refresh_trigger = refresh_trigger.clone();
-        Callback::from(move |_| {
-            if let Some(session_id) = *pending_delete {
-                let refresh_trigger = refresh_trigger.clone();
-                let pending_delete = pending_delete.clone();
-                spawn_local(async move {
-                    let api_endpoint = utils::api_url(&format!("/api/sessions/{}", session_id));
-                    match Request::delete(&api_endpoint).send().await {
-                        Ok(response) if response.status() == 204 => {
-                            refresh_trigger.set(*refresh_trigger + 1);
-                        }
-                        Ok(response) => {
-                            log::error!("Failed to delete session: status {}", response.status());
-                        }
-                        Err(e) => {
-                            log::error!("Failed to delete session: {:?}", e);
-                        }
-                    }
-                    pending_delete.set(None);
-                });
-            }
-        })
-    };
+    let do_logout = Callback::from(move |_| {
+        if let Some(window) = web_sys::window() {
+            let _ = window.location().set_href("/api/auth/logout");
+        }
+    });
 
     // Show leave confirmation modal (for non-owners)
     let on_leave = {
@@ -714,20 +688,20 @@ pub fn dashboard_page() -> Html {
                     {
                         if *is_admin {
                             html! {
-                                <Link<Route> to={Route::Admin} classes="admin-link">
+                                <button class="header-button" onclick={go_to_admin.clone()}>
                                     { "Admin" }
-                                </Link<Route>>
+                                </button>
                             }
                         } else {
                             html! {}
                         }
                     }
-                    <Link<Route> to={Route::Settings} classes="settings-button">
+                    <button class="header-button" onclick={go_to_settings.clone()}>
                         { "Settings" }
-                    </Link<Route>>
-                    <a href="/api/auth/logout" class="logout-button">
+                    </button>
+                    <button class="header-button logout" onclick={do_logout.clone()}>
                         { "Logout" }
-                    </a>
+                    </button>
                 </div>
             </header>
 
@@ -776,7 +750,6 @@ pub fn dashboard_page() -> Html {
                         connected_sessions={(*connected_sessions).clone()}
                         nav_mode={*nav_mode}
                         on_select={on_select_session.clone()}
-                        on_delete={on_delete.clone()}
                         on_leave={on_leave.clone()}
                         on_toggle_pause={on_toggle_pause.clone()}
                     />
@@ -839,35 +812,6 @@ pub fn dashboard_page() -> Html {
                 </>
             }
 
-            // Delete confirmation modal
-            {
-                if let Some(session_id) = *pending_delete {
-                    let session_name = sessions.iter()
-                        .find(|s| s.id == session_id)
-                        .map(|s| {
-                            let (project, hostname) = get_session_display_parts(s);
-                            project.unwrap_or(hostname)
-                        })
-                        .unwrap_or_else(|| "this session".to_string());
-
-                    html! {
-                        <div class="modal-overlay" onclick={on_cancel_delete.clone()}>
-                            <div class="modal-content delete-confirm" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
-                                <h2>{ "Delete Session?" }</h2>
-                                <p>{ format!("Are you sure you want to delete \"{}\"?", session_name) }</p>
-                                <p class="modal-warning">{ "This action cannot be undone." }</p>
-                                <div class="modal-actions">
-                                    <button class="modal-cancel" onclick={on_cancel_delete.clone()}>{ "Cancel" }</button>
-                                    <button class="modal-confirm" onclick={on_confirm_delete.clone()}>{ "Delete" }</button>
-                                </div>
-                            </div>
-                        </div>
-                    }
-                } else {
-                    html! {}
-                }
-            }
-
             // Leave confirmation modal (for non-owners)
             {
                 if let Some(session_id) = *pending_leave {
@@ -927,7 +871,6 @@ struct SessionRailProps {
     connected_sessions: HashSet<Uuid>,
     nav_mode: bool,
     on_select: Callback<usize>,
-    on_delete: Callback<Uuid>,
     on_leave: Callback<Uuid>,
     on_toggle_pause: Callback<Uuid>,
 }
@@ -964,15 +907,6 @@ fn session_rail(props: &SessionRailProps) -> Html {
                     let on_click = {
                         let on_select = props.on_select.clone();
                         Callback::from(move |_| on_select.emit(index))
-                    };
-
-                    let on_delete = {
-                        let on_delete = props.on_delete.clone();
-                        let session_id = session.id;
-                        Callback::from(move |e: MouseEvent| {
-                            e.stop_propagation();
-                            on_delete.emit(session_id);
-                        })
                     };
 
                     let on_pause = {
@@ -1076,16 +1010,14 @@ fn session_rail(props: &SessionRailProps) -> Html {
                             >
                                 { if is_paused { "▶" } else { "⏸" } }
                             </button>
-                            // Delete for owners, Leave for non-owners
+                            // Leave button for non-owners (delete is in Settings)
                             {
-                                if session.my_role == "owner" {
-                                    html! {
-                                        <button class="pill-delete" onclick={on_delete} title="Delete session">{ "×" }</button>
-                                    }
-                                } else {
+                                if session.my_role != "owner" {
                                     html! {
                                         <button class="pill-leave" onclick={on_leave} title="Leave session">{ "↩" }</button>
                                     }
+                                } else {
+                                    html! {}
                                 }
                             }
                         </div>

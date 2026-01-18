@@ -516,13 +516,17 @@ pub fn settings_page() -> Html {
     html! {
         <div class="settings-container">
             <header class="settings-header">
-                <button class="back-button" onclick={go_back}>
-                    { "< Back to Dashboard" }
+                <button class="header-button" onclick={go_back}>
+                    { "< Back" }
                 </button>
                 <h1>{ "Settings" }</h1>
-                <a href="/api/auth/logout" class="logout-button">
+                <button class="header-button logout" onclick={Callback::from(|_| {
+                    if let Some(window) = web_sys::window() {
+                        let _ = window.location().set_href("/api/auth/logout");
+                    }
+                })}>
                     { "Logout" }
-                </a>
+                </button>
             </header>
 
             <nav class="settings-tabs">
