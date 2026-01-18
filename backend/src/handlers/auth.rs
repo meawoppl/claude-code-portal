@@ -101,6 +101,11 @@ pub async fn callback(
 
     info!("User authenticated: {}", user_info.email);
 
+    // Check email access control
+    if let Err(redirect) = check_email_allowed(&app_state, &user_info.email) {
+        return Ok(redirect);
+    }
+
     // Save or update user in database
     let mut conn = app_state.db_pool.get().map_err(|e| {
         error!("Failed to get db connection: {}", e);
@@ -301,4 +306,35 @@ pub async fn dev_login(
 
     // Redirect to dashboard
     Ok(Redirect::temporary("/dashboard"))
+}
+
+/// Check if an email is allowed based on ALLOWED_EMAIL_DOMAIN and ALLOWED_EMAILS
+///
+/// Returns Ok(()) if allowed, or Err(Redirect) to the access denied page
+fn check_email_allowed(app_state: &AppState, email: &str) -> Result<(), Redirect> {
+    let email_lower = email.to_lowercase();
+
+    // If no restrictions are set, allow all
+    if app_state.allowed_email_domain.is_none() && app_state.allowed_emails.is_none() {
+        return Ok(());
+    }
+
+    // Check domain allowlist
+    if let Some(ref domain) = app_state.allowed_email_domain {
+        let domain_lower = domain.to_lowercase();
+        if email_lower.ends_with(&format!("@{}", domain_lower)) {
+            return Ok(());
+        }
+    }
+
+    // Check specific email allowlist
+    if let Some(ref emails) = app_state.allowed_emails {
+        if emails.contains(&email_lower) {
+            return Ok(());
+        }
+    }
+
+    // Access denied
+    info!("Access denied for email: {} (not in allowlist)", email);
+    Err(Redirect::temporary("/access-denied"))
 }

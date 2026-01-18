@@ -48,6 +48,10 @@ pub struct AppState {
     pub jwt_secret: String,
     pub speech_credentials_path: Option<String>,
     pub app_title: String,
+    /// Allowed email domain (e.g., "company.com")
+    pub allowed_email_domain: Option<String>,
+    /// Allowed email addresses (comma-separated in env var)
+    pub allowed_emails: Option<Vec<String>>,
 }
 
 #[tokio::main]
@@ -222,6 +226,23 @@ async fn main() -> anyhow::Result<()> {
         env::var("APP_TITLE").unwrap_or_else(|_| "Claude Code Sessions".to_string())
     };
 
+    // Email access control (optional)
+    let allowed_email_domain = env::var("ALLOWED_EMAIL_DOMAIN").ok();
+    let allowed_emails = env::var("ALLOWED_EMAILS").ok().map(|s| {
+        s.split(',')
+            .map(|e| e.trim().to_lowercase())
+            .filter(|e| !e.is_empty())
+            .collect::<Vec<_>>()
+    });
+
+    if allowed_email_domain.is_some() || allowed_emails.is_some() {
+        tracing::info!(
+            "Email access control enabled: domain={:?}, specific_emails={}",
+            allowed_email_domain,
+            allowed_emails.as_ref().map(|e| e.len()).unwrap_or(0)
+        );
+    }
+
     // Create app state
     let app_state = Arc::new(AppState {
         dev_mode: args.dev_mode,
@@ -238,6 +259,8 @@ async fn main() -> anyhow::Result<()> {
         jwt_secret,
         speech_credentials_path,
         app_title,
+        allowed_email_domain,
+        allowed_emails,
     });
 
     // Setup CORS
