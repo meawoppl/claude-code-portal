@@ -36,17 +36,26 @@
     background: var(--text-secondary);
 }
 
-.logout-button {
+/* Header buttons (Admin, Settings, Logout) */
+.header-button {
     background: transparent;
     border: 1px solid var(--border);
     color: var(--text-primary);
     padding: 0.5rem 1rem;
     border-radius: 4px;
     cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
 }
 
-.logout-button:hover {
-    border-color: var(--text-secondary);
+.header-button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.header-button.logout:hover {
+    border-color: var(--error);
+    color: var(--error);
 }
 
 /* Modal Overlay */

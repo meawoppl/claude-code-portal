@@ -26,21 +26,7 @@
     margin: 0;
 }
 
-.admin-header .back-button {
-    padding: 0.5rem 1rem;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-}
-
-.admin-header .back-button:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-}
+/* Header buttons - use shared .header-button class from dashboard.css */
 
 .admin-error {
     background: rgba(247, 118, 142, 0.15);
@@ -226,8 +212,8 @@
 }
 
 .session-status.active {
-    background: rgba(224, 175, 104, 0.2);
-    color: var(--warning);
+    background: rgba(158, 206, 106, 0.2);
+    color: var(--success);
 }
 
 .session-status.disconnected {
@@ -303,22 +289,6 @@
 
 .delete-btn:hover:not(:disabled) {
     background: rgba(247, 118, 142, 0.2);
-}
-
-/* Admin link in dashboard header */
-.admin-link {
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    border: 1px solid var(--warning);
-    background: rgba(224, 175, 104, 0.1);
-    color: var(--warning);
-    text-decoration: none;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-}
-
-.admin-link:hover {
-    background: rgba(224, 175, 104, 0.2);
 }
 
 /* Raw Messages Section */

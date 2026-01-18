@@ -867,8 +867,8 @@ pub fn admin_page() -> Html {
     html! {
         <div class="admin-container">
             <header class="admin-header">
-                <button class="back-button" onclick={go_back}>
-                    { "< Back to Dashboard" }
+                <button class="header-button" onclick={go_back}>
+                    { "< Back" }
                 </button>
                 <h1>{ "Admin Dashboard" }</h1>
             </header>

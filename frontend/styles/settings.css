@@ -24,38 +24,7 @@
     color: var(--text-primary);
 }
 
-.back-button {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-}
-
-.back-button:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-.settings-button {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    cursor: pointer;
-    text-decoration: none;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-}
-
-.settings-button:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-}
+/* Header buttons - use shared .header-button class from dashboard.css */
 
 /* Settings Tabs */
 .settings-tabs {
@@ -254,9 +223,8 @@
 }
 
 .session-status.active {
-    background: rgba(158, 206, 106, 0.25);
-    color: #9ece6a;
-    font-weight: 600;
+    background: rgba(158, 206, 106, 0.2);
+    color: var(--success);
 }
 
 .session-status.inactive {
@@ -272,7 +240,7 @@
 /* Actions column */
 .session-actions {
     white-space: nowrap;
-    text-align: right;
+    text-align: center;
 }
 
 .session-actions button {
@@ -280,9 +248,9 @@
     vertical-align: middle;
 }
 
-/* Action buttons */
-.revoke-button,
-.delete-button {
+/* Action buttons - use specific selectors to override dashboard.css */
+.settings-container .revoke-button,
+.settings-container .delete-button {
     background: transparent;
     border: 1px solid var(--error);
     color: var(--error);
@@ -291,10 +259,18 @@
     cursor: pointer;
     font-size: 0.8rem;
     transition: all 0.2s;
+    /* Override dashboard.css absolute positioning */
+    position: static;
+    opacity: 1;
+    width: auto;
+    height: auto;
+    top: auto;
+    right: auto;
+    z-index: auto;
 }
 
-.revoke-button:hover,
-.delete-button:hover {
+.settings-container .revoke-button:hover,
+.settings-container .delete-button:hover {
     background: var(--error);
     color: white;
 }
