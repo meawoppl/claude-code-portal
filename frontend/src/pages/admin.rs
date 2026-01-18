@@ -376,6 +376,9 @@ pub fn admin_page() -> Html {
     let error = use_state(|| None::<String>);
     let current_user_id = use_state(|| None::<Uuid>);
     let confirm_action = use_state(|| None::<(String, Callback<MouseEvent>)>);
+    // Ban dialog state - when set, shows ban modal with reason input
+    let ban_dialog = use_state(|| None::<Uuid>);
+    let ban_reason_input = use_state(String::new);
 
     let navigator = use_navigator().unwrap();
 
@@ -631,29 +634,80 @@ pub fn admin_page() -> Html {
         })
     };
 
-    // Toggle disabled handler
+    // Toggle disabled/ban handler
     let on_toggle_disabled = {
         let users = users.clone();
         let confirm_action = confirm_action.clone();
+        let ban_dialog = ban_dialog.clone();
+        let ban_reason_input = ban_reason_input.clone();
         Callback::from(move |user_id: Uuid| {
             let users_inner = users.clone();
             let confirm_inner = confirm_action.clone();
+            let ban_dialog = ban_dialog.clone();
+            let ban_reason_input = ban_reason_input.clone();
 
             let target_user = users_inner.iter().find(|u| u.id == user_id).cloned();
             let is_currently_disabled = target_user.as_ref().map(|u| u.disabled).unwrap_or(false);
-            let action_text = if is_currently_disabled {
-                "Enable this user account?"
-            } else {
-                "Disable this user account? They will be unable to log in."
-            };
 
-            let action = Callback::from(move |_: MouseEvent| {
-                let users = users_inner.clone();
-                let confirm = confirm_inner.clone();
-                let new_disabled_status = !is_currently_disabled;
+            if is_currently_disabled {
+                // Unbanning - use simple confirmation
+                let action_text = "Enable this user account?";
+                let action = Callback::from(move |_: MouseEvent| {
+                    let users = users_inner.clone();
+                    let confirm = confirm_inner.clone();
+                    spawn_local(async move {
+                        let api_endpoint = utils::api_url(&format!("/api/admin/users/{}", user_id));
+                        let body = serde_json::json!({ "disabled": false, "ban_reason": null });
+                        match Request::patch(&api_endpoint)
+                            .header("Content-Type", "application/json")
+                            .body(body.to_string())
+                            .unwrap()
+                            .send()
+                            .await
+                        {
+                            Ok(response) => {
+                                if response.status() == 204 {
+                                    let mut updated = (*users).clone();
+                                    if let Some(user) = updated.iter_mut().find(|u| u.id == user_id)
+                                    {
+                                        user.disabled = false;
+                                    }
+                                    users.set(updated);
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("Failed to update user: {:?}", e);
+                            }
+                        }
+                        confirm.set(None);
+                    });
+                });
+                confirm_action.set(Some((action_text.to_string(), action)));
+            } else {
+                // Banning - show ban dialog with reason input
+                ban_reason_input.set(String::new());
+                ban_dialog.set(Some(user_id));
+            }
+        })
+    };
+
+    // Ban confirmation handler (called from ban dialog)
+    let on_confirm_ban = {
+        let users = users.clone();
+        let ban_dialog = ban_dialog.clone();
+        let ban_reason_input = ban_reason_input.clone();
+        Callback::from(move |_: MouseEvent| {
+            let users = users.clone();
+            let ban_dialog = ban_dialog.clone();
+            let reason = (*ban_reason_input).clone();
+
+            if let Some(user_id) = *ban_dialog {
                 spawn_local(async move {
                     let api_endpoint = utils::api_url(&format!("/api/admin/users/{}", user_id));
-                    let body = serde_json::json!({ "disabled": new_disabled_status });
+                    let body = serde_json::json!({
+                        "disabled": true,
+                        "ban_reason": if reason.is_empty() { None::<String> } else { Some(reason) }
+                    });
                     match Request::patch(&api_endpoint)
                         .header("Content-Type", "application/json")
                         .body(body.to_string())
@@ -665,20 +719,35 @@ pub fn admin_page() -> Html {
                             if response.status() == 204 {
                                 let mut updated = (*users).clone();
                                 if let Some(user) = updated.iter_mut().find(|u| u.id == user_id) {
-                                    user.disabled = new_disabled_status;
+                                    user.disabled = true;
                                 }
                                 users.set(updated);
                             }
                         }
                         Err(e) => {
-                            log::error!("Failed to update user: {:?}", e);
+                            log::error!("Failed to ban user: {:?}", e);
                         }
                     }
-                    confirm.set(None);
+                    ban_dialog.set(None);
                 });
-            });
+            }
+        })
+    };
 
-            confirm_action.set(Some((action_text.to_string(), action)));
+    // Ban dialog cancel
+    let on_cancel_ban = {
+        let ban_dialog = ban_dialog.clone();
+        Callback::from(move |_: MouseEvent| {
+            ban_dialog.set(None);
+        })
+    };
+
+    // Ban reason input change
+    let on_ban_reason_change = {
+        let ban_reason_input = ban_reason_input.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            ban_reason_input.set(input.value());
         })
     };
 
@@ -1088,6 +1157,36 @@ pub fn admin_page() -> Html {
                                 <div class="modal-actions">
                                     <button class="modal-cancel" onclick={on_cancel_confirm.clone()}>{ "Cancel" }</button>
                                     <button class="modal-confirm" onclick={action.clone()}>{ "Confirm" }</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+
+            // Ban dialog modal
+            {
+                if ban_dialog.is_some() {
+                    html! {
+                        <div class="modal-overlay" onclick={on_cancel_ban.clone()}>
+                            <div class="modal-content ban-modal" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                                <h3>{ "Ban User" }</h3>
+                                <p>{ "This will disable the user account and revoke all their access tokens. They will be unable to log in." }</p>
+                                <div class="ban-reason-input">
+                                    <label for="ban-reason">{ "Reason for ban (shown to user):" }</label>
+                                    <input
+                                        type="text"
+                                        id="ban-reason"
+                                        placeholder="e.g., Violation of terms of service"
+                                        value={(*ban_reason_input).clone()}
+                                        oninput={on_ban_reason_change.clone()}
+                                    />
+                                </div>
+                                <div class="modal-actions">
+                                    <button class="modal-cancel" onclick={on_cancel_ban.clone()}>{ "Cancel" }</button>
+                                    <button class="modal-confirm ban-confirm" onclick={on_confirm_ban.clone()}>{ "Ban User" }</button>
                                 </div>
                             </div>
                         </div>

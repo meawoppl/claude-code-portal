@@ -17,6 +17,7 @@ pub struct User {
     pub is_admin: bool,
     pub disabled: bool,
     pub voice_enabled: bool,
+    pub ban_reason: Option<String>,
 }
 
 #[derive(Debug, Insertable)]

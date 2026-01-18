@@ -138,6 +138,29 @@ pub async fn callback(
         }
     };
 
+    // Check if user is banned
+    if user.disabled {
+        let reason = user.ban_reason.as_deref().unwrap_or("No reason provided");
+        // URL encode the reason for the query parameter
+        let encoded_reason: String = reason
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' {
+                    c.to_string()
+                } else if c == ' ' {
+                    "+".to_string()
+                } else {
+                    format!("%{:02X}", c as u8)
+                }
+            })
+            .collect();
+        info!("Banned user {} attempted login", user.email);
+        return Ok(Redirect::temporary(&format!(
+            "/banned?reason={}",
+            encoded_reason
+        )));
+    }
+
     // Check if this is part of a device flow
     if let Some(device_user_code) = query.state {
         // Complete device flow
@@ -243,6 +266,28 @@ pub async fn dev_login(
         .filter(email.eq("testing@testing.local"))
         .first::<User>(&mut conn)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Check if user is banned
+    if user.disabled {
+        let reason = user.ban_reason.as_deref().unwrap_or("No reason provided");
+        let encoded_reason: String = reason
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' {
+                    c.to_string()
+                } else if c == ' ' {
+                    "+".to_string()
+                } else {
+                    format!("%{:02X}", c as u8)
+                }
+            })
+            .collect();
+        info!("Banned user {} attempted dev login", user.email);
+        return Ok(Redirect::temporary(&format!(
+            "/banned?reason={}",
+            encoded_reason
+        )));
+    }
 
     info!("Dev mode: auto-logged in as testing@testing.local");
 

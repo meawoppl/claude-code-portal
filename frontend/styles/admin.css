@@ -440,3 +440,53 @@
         width: 95%;
     }
 }
+
+/* Ban Modal */
+.ban-modal {
+    max-width: 450px;
+}
+
+.ban-modal h3 {
+    color: var(--error);
+    margin: 0 0 0.75rem 0;
+}
+
+.ban-modal p {
+    color: var(--text-secondary);
+    margin: 0 0 1rem 0;
+    font-size: 0.9rem;
+}
+
+.ban-reason-input {
+    margin-bottom: 1rem;
+}
+
+.ban-reason-input label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.ban-reason-input input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.ban-reason-input input:focus {
+    outline: none;
+    border-color: var(--error);
+}
+
+.ban-confirm {
+    background: var(--error) !important;
+}
+
+.ban-confirm:hover {
+    background: #ff6b8a !important;
+}

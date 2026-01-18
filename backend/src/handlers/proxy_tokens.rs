@@ -207,6 +207,18 @@ pub fn verify_and_get_user(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    // Check if user is banned
+    use crate::schema::users;
+    let user: crate::models::User = users::table.find(claims.sub).first(conn).map_err(|_| {
+        error!("User not found for token");
+        StatusCode::UNAUTHORIZED
+    })?;
+
+    if user.disabled {
+        error!("Token belongs to banned user: {}", user.email);
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     // Update last_used_at
     let _ = diesel::update(proxy_auth_tokens::table.find(db_token.id))
         .set(proxy_auth_tokens::last_used_at.eq(diesel::dsl::now))

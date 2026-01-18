@@ -454,6 +454,7 @@ pub struct UpdateUserRequest {
     pub is_admin: Option<bool>,
     pub disabled: Option<bool>,
     pub voice_enabled: Option<bool>,
+    pub ban_reason: Option<Option<String>>, // Option<Option<...>> to distinguish "not sent" from "sent as null"
 }
 
 pub async fn update_user(
@@ -519,6 +520,102 @@ pub async fn update_user(
         info!(
             "Admin {} set disabled={} for user {}",
             admin.email, disabled_val, target_user.email
+        );
+
+        // If banning, revoke all tokens and delete all sessions/data
+        if disabled_val {
+            use crate::schema::{
+                messages, proxy_auth_tokens, raw_message_log, session_members, sessions,
+            };
+
+            // Revoke all proxy tokens
+            let revoked_count = diesel::update(
+                proxy_auth_tokens::table.filter(proxy_auth_tokens::user_id.eq(user_id)),
+            )
+            .set(proxy_auth_tokens::revoked.eq(true))
+            .execute(&mut conn)
+            .map_err(|e| {
+                error!("Failed to revoke user tokens: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            if revoked_count > 0 {
+                info!(
+                    "Revoked {} proxy tokens for banned user {}",
+                    revoked_count, target_user.email
+                );
+            }
+
+            // Get all session IDs for this user
+            let session_ids: Vec<Uuid> = sessions::table
+                .filter(sessions::user_id.eq(user_id))
+                .select(sessions::id)
+                .load(&mut conn)
+                .map_err(|e| {
+                    error!("Failed to get user sessions: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
+            if !session_ids.is_empty() {
+                // Delete messages for all user's sessions
+                let deleted_messages = diesel::delete(
+                    messages::table.filter(messages::session_id.eq_any(&session_ids)),
+                )
+                .execute(&mut conn)
+                .map_err(|e| {
+                    error!("Failed to delete user messages: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
+                // Delete session_members for all user's sessions
+                let deleted_members = diesel::delete(
+                    session_members::table.filter(session_members::session_id.eq_any(&session_ids)),
+                )
+                .execute(&mut conn)
+                .map_err(|e| {
+                    error!("Failed to delete session members: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
+                // Delete raw_message_log for all user's sessions
+                let deleted_raw = diesel::delete(
+                    raw_message_log::table.filter(raw_message_log::session_id.eq_any(&session_ids)),
+                )
+                .execute(&mut conn)
+                .unwrap_or(0); // Ignore errors for raw log
+
+                // Delete all sessions
+                let deleted_sessions =
+                    diesel::delete(sessions::table.filter(sessions::user_id.eq(user_id)))
+                        .execute(&mut conn)
+                        .map_err(|e| {
+                            error!("Failed to delete user sessions: {}", e);
+                            StatusCode::INTERNAL_SERVER_ERROR
+                        })?;
+
+                info!(
+                    "Deleted {} sessions, {} messages, {} members, {} raw logs for banned user {}",
+                    deleted_sessions,
+                    deleted_messages,
+                    deleted_members,
+                    deleted_raw,
+                    target_user.email
+                );
+            }
+        }
+    }
+
+    // Handle ban_reason update
+    if let Some(reason) = update.ban_reason {
+        diesel::update(schema::users::table.find(user_id))
+            .set(schema::users::ban_reason.eq(reason.as_ref()))
+            .execute(&mut conn)
+            .map_err(|e| {
+                error!("Failed to update ban reason: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+        info!(
+            "Admin {} set ban_reason for user {}",
+            admin.email, target_user.email
         );
     }
 

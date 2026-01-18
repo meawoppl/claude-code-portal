@@ -1,0 +1,66 @@
+/* Banned Page */
+.banned-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 2rem;
+}
+
+.banned-content {
+    max-width: 500px;
+    text-align: center;
+    background: var(--bg-darker);
+    border: 1px solid var(--error);
+    border-radius: 8px;
+    padding: 2rem;
+}
+
+.banned-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.banned-content h1 {
+    color: var(--error);
+    margin-bottom: 1rem;
+}
+
+.banned-message {
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+.banned-reason {
+    background: rgba(255, 107, 138, 0.1);
+    border: 1px solid var(--error);
+    border-radius: 4px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.banned-reason h3 {
+    color: var(--error);
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+}
+
+.banned-reason p {
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.banned-contact {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.banned-contact a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.banned-contact a:hover {
+    text-decoration: underline;
+}

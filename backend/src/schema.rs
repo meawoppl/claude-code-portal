@@ -120,6 +120,7 @@ diesel::table! {
         is_admin -> Bool,
         disabled -> Bool,
         voice_enabled -> Bool,
+        ban_reason -> Nullable<Text>,
     }
 }
 
