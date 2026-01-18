@@ -215,7 +215,12 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // App title (customizable via environment variable)
-    let app_title = env::var("APP_TITLE").unwrap_or_else(|_| "Claude Code Sessions".to_string());
+    // In dev mode, override with a warning to make it obvious
+    let app_title = if args.dev_mode {
+        "⚠️ INSECURE DEV MODE ⚠️".to_string()
+    } else {
+        env::var("APP_TITLE").unwrap_or_else(|_| "Claude Code Sessions".to_string())
+    };
 
     // Create app state
     let app_state = Arc::new(AppState {
