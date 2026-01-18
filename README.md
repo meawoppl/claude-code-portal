@@ -115,6 +115,19 @@ Contributions are welcome! Please:
 
 Please open an issue first to discuss major changes.
 
+## Security & Privacy
+
+When using the hosted instance at **txcl.io**, please be aware:
+
+- **Data Access**: The txcl.io server can access your Claude Code session content
+- **Data Storage**: Session messages are stored temporarily on our servers for history display purposes only
+- **Retention**: Message data is retained for a limited time and then automatically deleted
+- **Purpose**: Messages are stored solely to enable the web interface history feature
+- **No Analysis**: We do not analyze, share, or use your session content for any other purpose
+- **User Control**: You can delete your sessions and associated data at any time from the dashboard
+
+**For complete data control**, you can self-host your own instance of Claude Code Portal. See [Deployment Guide](docs/DEPLOYING.md) for instructions.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details
