@@ -247,6 +247,17 @@ async fn main() -> anyhow::Result<()> {
             "/api/sessions/:id",
             axum::routing::delete(handlers::sessions::delete_session),
         )
+        // Session member management routes
+        .route(
+            "/api/sessions/:id/members",
+            get(handlers::sessions::list_session_members)
+                .post(handlers::sessions::add_session_member),
+        )
+        .route(
+            "/api/sessions/:id/members/:user_id",
+            axum::routing::delete(handlers::sessions::remove_session_member)
+                .patch(handlers::sessions::update_session_member_role),
+        )
         .route(
             "/api/sessions/:id/messages",
             get(handlers::messages::list_messages).post(handlers::messages::create_message),

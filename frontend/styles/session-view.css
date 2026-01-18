@@ -962,3 +962,299 @@
     background: rgba(122, 162, 247, 0.05);
 }
 
+/* ==========================================================================
+   Role Badge (for shared sessions)
+   ========================================================================== */
+
+.pill-role-badge {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.pill-role-badge.role-editor {
+    background: rgba(224, 175, 104, 0.3);
+    color: #e0af68;
+}
+
+.pill-role-badge.role-viewer {
+    background: rgba(127, 132, 156, 0.3);
+    color: var(--text-secondary);
+}
+
+/* ==========================================================================
+   Share Button (for session owners)
+   ========================================================================== */
+
+.pill-share {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.pill-share:hover {
+    background: rgba(122, 162, 247, 0.2);
+    color: var(--accent);
+}
+
+.pill-share:active {
+    background: rgba(122, 162, 247, 0.3);
+}
+
+/* ==========================================================================
+   Leave Button (for non-owners)
+   ========================================================================== */
+
+.pill-leave {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.pill-leave:hover {
+    background: rgba(224, 175, 104, 0.2);
+    color: #e0af68;
+}
+
+.pill-leave:active {
+    background: rgba(224, 175, 104, 0.3);
+}
+
+/* ==========================================================================
+   Share Dialog
+   ========================================================================== */
+
+.share-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.share-dialog {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 450px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.share-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-darker);
+}
+
+.share-dialog-header h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.share-dialog-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    line-height: 1;
+    transition: background 0.15s, color 0.15s;
+}
+
+.share-dialog-close:hover {
+    background: rgba(247, 118, 142, 0.2);
+    color: var(--error);
+}
+
+.share-dialog-error {
+    background: rgba(247, 118, 142, 0.2);
+    color: var(--error);
+    padding: 0.75rem 1.25rem;
+    font-size: 0.9rem;
+    border-bottom: 1px solid rgba(247, 118, 142, 0.3);
+}
+
+.share-dialog-add {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.share-dialog-add input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.75rem;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.share-dialog-add input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.share-dialog-add select {
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.6rem 0.75rem;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.share-dialog-add button {
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    padding: 0.6rem 1rem;
+    color: white;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.share-dialog-add button:hover {
+    background: var(--accent-hover);
+}
+
+.share-dialog-members {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem 0;
+}
+
+.share-dialog-members ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.share-dialog-loading,
+.share-dialog-empty {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.share-dialog-member {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.share-dialog-member:last-child {
+    border-bottom: none;
+}
+
+.share-dialog-member .member-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.share-dialog-member .member-role {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.share-dialog-member .member-role.owner {
+    background: rgba(158, 206, 106, 0.3);
+    color: var(--success);
+}
+
+.share-dialog-member .member-role-select {
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.3rem 0.5rem;
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.share-dialog-member .member-remove {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    line-height: 1;
+    transition: background 0.15s, color 0.15s;
+}
+
+.share-dialog-member .member-remove:hover {
+    background: rgba(247, 118, 142, 0.2);
+    color: var(--error);
+}
+
+/* Mobile responsiveness for share dialog */
+@media (max-width: 480px) {
+    .share-dialog {
+        max-width: 100%;
+        max-height: 90vh;
+        border-radius: 8px;
+    }
+
+    .share-dialog-add {
+        flex-direction: column;
+    }
+
+    .share-dialog-add input,
+    .share-dialog-add select,
+    .share-dialog-add button {
+        width: 100%;
+    }
+}
+

@@ -1,4 +1,6 @@
-use crate::components::{group_messages, MessageGroupRenderer, ProxyTokenSetup, VoiceInput};
+use crate::components::{
+    group_messages, MessageGroupRenderer, ProxyTokenSetup, ShareDialog, VoiceInput,
+};
 use crate::utils;
 use crate::Route;
 use futures_util::{SinkExt, StreamExt};
@@ -94,10 +96,12 @@ pub fn dashboard_page() -> Html {
     let session_costs = use_state(HashMap::<Uuid, f64>::new);
     let connected_sessions = use_state(HashSet::<Uuid>::new);
     let pending_delete = use_state(|| None::<Uuid>);
+    let pending_leave = use_state(|| None::<Uuid>);
     let nav_mode = use_state(|| false);
     let total_user_spend = use_state(|| 0.0f64);
     let is_admin = use_state(|| false);
     let voice_enabled = use_state(|| false);
+    let share_session_id = use_state(|| None::<Uuid>);
 
     // Fetch current user info (to check admin status and voice_enabled)
     {
@@ -313,6 +317,74 @@ pub fn dashboard_page() -> Html {
         })
     };
 
+    // Show leave confirmation modal (for non-owners)
+    let on_leave = {
+        let pending_leave = pending_leave.clone();
+        Callback::from(move |session_id: Uuid| {
+            pending_leave.set(Some(session_id));
+        })
+    };
+
+    // Cancel leave
+    let on_cancel_leave = {
+        let pending_leave = pending_leave.clone();
+        Callback::from(move |_| {
+            pending_leave.set(None);
+        })
+    };
+
+    // Confirm leave - calls remove member endpoint with own user_id
+    let on_confirm_leave = {
+        let pending_leave = pending_leave.clone();
+        let refresh_trigger = refresh_trigger.clone();
+        Callback::from(move |_| {
+            if let Some(session_id) = *pending_leave {
+                let refresh_trigger = refresh_trigger.clone();
+                let pending_leave = pending_leave.clone();
+                spawn_local(async move {
+                    // Get current user ID from /api/auth/me
+                    let me_endpoint = utils::api_url("/api/auth/me");
+                    let user_id = match Request::get(&me_endpoint).send().await {
+                        Ok(response) => {
+                            if let Ok(data) = response.json::<serde_json::Value>().await {
+                                data.get("id")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string())
+                            } else {
+                                None
+                            }
+                        }
+                        Err(_) => None,
+                    };
+
+                    if let Some(user_id) = user_id {
+                        let api_endpoint = utils::api_url(&format!(
+                            "/api/sessions/{}/members/{}",
+                            session_id, user_id
+                        ));
+                        match Request::delete(&api_endpoint).send().await {
+                            Ok(response) if response.status() == 204 => {
+                                refresh_trigger.set(*refresh_trigger + 1);
+                            }
+                            Ok(response) => {
+                                log::error!(
+                                    "Failed to leave session: status {}",
+                                    response.status()
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("Failed to leave session: {:?}", e);
+                            }
+                        }
+                    } else {
+                        log::error!("Failed to get current user ID for leave");
+                    }
+                    pending_leave.set(None);
+                });
+            }
+        })
+    };
+
     let toggle_new_session = {
         let show_new_session = show_new_session.clone();
         Callback::from(move |_| {
@@ -467,6 +539,22 @@ pub fn dashboard_page() -> Html {
                 set.insert(session_id);
             }
             paused_sessions.set(set);
+        })
+    };
+
+    // Open share dialog for a session
+    let on_share = {
+        let share_session_id = share_session_id.clone();
+        Callback::from(move |session_id: Uuid| {
+            share_session_id.set(Some(session_id));
+        })
+    };
+
+    // Close share dialog
+    let on_close_share = {
+        let share_session_id = share_session_id.clone();
+        Callback::from(move |_| {
+            share_session_id.set(None);
         })
     };
 
@@ -685,7 +773,9 @@ pub fn dashboard_page() -> Html {
                         nav_mode={*nav_mode}
                         on_select={on_select_session.clone()}
                         on_delete={on_delete.clone()}
+                        on_leave={on_leave.clone()}
                         on_toggle_pause={on_toggle_pause.clone()}
+                        on_share={on_share.clone()}
                     />
 
                     // Render ALL session views - keep them alive for instant switching
@@ -774,6 +864,49 @@ pub fn dashboard_page() -> Html {
                     html! {}
                 }
             }
+
+            // Leave confirmation modal (for non-owners)
+            {
+                if let Some(session_id) = *pending_leave {
+                    let session_name = sessions.iter()
+                        .find(|s| s.id == session_id)
+                        .map(|s| {
+                            let (project, hostname) = get_session_display_parts(s);
+                            project.unwrap_or(hostname)
+                        })
+                        .unwrap_or_else(|| "this session".to_string());
+
+                    html! {
+                        <div class="modal-overlay" onclick={on_cancel_leave.clone()}>
+                            <div class="modal-content delete-confirm" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                                <h2>{ "Leave Session?" }</h2>
+                                <p>{ format!("Are you sure you want to leave \"{}\"?", session_name) }</p>
+                                <p class="modal-warning">{ "You will need to be re-invited to access this session again." }</p>
+                                <div class="modal-actions">
+                                    <button class="modal-cancel" onclick={on_cancel_leave.clone()}>{ "Cancel" }</button>
+                                    <button class="modal-confirm" onclick={on_confirm_leave.clone()}>{ "Leave" }</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+
+            // Share dialog
+            {
+                if let Some(session_id) = *share_session_id {
+                    html! {
+                        <ShareDialog
+                            session_id={session_id}
+                            on_close={on_close_share.clone()}
+                        />
+                    }
+                } else {
+                    html! {}
+                }
+            }
         </div>
     }
 }
@@ -793,7 +926,9 @@ struct SessionRailProps {
     nav_mode: bool,
     on_select: Callback<usize>,
     on_delete: Callback<Uuid>,
+    on_leave: Callback<Uuid>,
     on_toggle_pause: Callback<Uuid>,
+    on_share: Callback<Uuid>,
 }
 
 #[function_component(SessionRail)]
@@ -845,6 +980,17 @@ fn session_rail(props: &SessionRailProps) -> Html {
                         Callback::from(move |e: MouseEvent| {
                             e.stop_propagation();
                             on_toggle_pause.emit(session_id);
+                        })
+                    };
+
+                    let on_share = props.on_share.clone();
+
+                    let on_leave = {
+                        let on_leave = props.on_leave.clone();
+                        let session_id = session.id;
+                        Callback::from(move |e: MouseEvent| {
+                            e.stop_propagation();
+                            on_leave.emit(session_id);
                         })
                     };
 
@@ -915,6 +1061,15 @@ fn session_rail(props: &SessionRailProps) -> Html {
                                     html! {}
                                 }
                             }
+                            // Show role badge for non-owners
+                            {
+                                if session.my_role != "owner" {
+                                    let role_class = format!("pill-role-badge role-{}", session.my_role);
+                                    html! { <span class={role_class}>{ &session.my_role }</span> }
+                                } else {
+                                    html! {}
+                                }
+                            }
                             <button
                                 class={classes!("pill-pause", if is_paused { Some("active") } else { None })}
                                 onclick={on_pause}
@@ -922,7 +1077,33 @@ fn session_rail(props: &SessionRailProps) -> Html {
                             >
                                 { if is_paused { "▶" } else { "⏸" } }
                             </button>
-                            <button class="pill-delete" onclick={on_delete}>{ "×" }</button>
+                            // Share button for owners
+                            {
+                                if session.my_role == "owner" {
+                                    let session_id = session.id;
+                                    let on_share_click = on_share.reform(move |e: MouseEvent| {
+                                        e.stop_propagation();
+                                        session_id
+                                    });
+                                    html! {
+                                        <button class="pill-share" onclick={on_share_click} title="Share session">{ "👤+" }</button>
+                                    }
+                                } else {
+                                    html! {}
+                                }
+                            }
+                            // Delete for owners, Leave for non-owners
+                            {
+                                if session.my_role == "owner" {
+                                    html! {
+                                        <button class="pill-delete" onclick={on_delete} title="Delete session">{ "×" }</button>
+                                    }
+                                } else {
+                                    html! {
+                                        <button class="pill-leave" onclick={on_leave} title="Leave session">{ "↩" }</button>
+                                    }
+                                }
+                            }
                         </div>
                     }
                 }).collect::<Html>()

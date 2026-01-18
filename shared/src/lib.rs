@@ -219,6 +219,8 @@ pub struct SessionInfo {
     pub updated_at: Option<String>,
     #[serde(default)]
     pub git_branch: Option<String>,
+    /// The current user's role in this session (owner, editor, viewer)
+    pub my_role: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
