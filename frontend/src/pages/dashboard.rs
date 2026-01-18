@@ -1576,13 +1576,20 @@ impl Component for SessionView {
                 true
             }
             SessionViewMsg::PermissionSelectUp => {
-                if self.pending_permission.is_some() {
-                    let max = if self
-                        .pending_permission
-                        .as_ref()
-                        .map(|p| !p.permission_suggestions.is_empty())
-                        .unwrap_or(false)
-                    {
+                if let Some(ref perm) = self.pending_permission {
+                    // Calculate max based on whether this is an AskUserQuestion or regular permission
+                    let max = if perm.tool_name == "AskUserQuestion" {
+                        // For questions, max is based on number of options
+                        if let Some(parsed) = parse_ask_user_question(&perm.input) {
+                            parsed
+                                .questions
+                                .first()
+                                .map(|q| q.options.len().saturating_sub(1))
+                                .unwrap_or(0)
+                        } else {
+                            0
+                        }
+                    } else if !perm.permission_suggestions.is_empty() {
                         2 // Allow, Allow & Remember, Deny
                     } else {
                         1 // Allow, Deny
@@ -1596,13 +1603,20 @@ impl Component for SessionView {
                 true
             }
             SessionViewMsg::PermissionSelectDown => {
-                if self.pending_permission.is_some() {
-                    let max = if self
-                        .pending_permission
-                        .as_ref()
-                        .map(|p| !p.permission_suggestions.is_empty())
-                        .unwrap_or(false)
-                    {
+                if let Some(ref perm) = self.pending_permission {
+                    // Calculate max based on whether this is an AskUserQuestion or regular permission
+                    let max = if perm.tool_name == "AskUserQuestion" {
+                        // For questions, max is based on number of options
+                        if let Some(parsed) = parse_ask_user_question(&perm.input) {
+                            parsed
+                                .questions
+                                .first()
+                                .map(|q| q.options.len().saturating_sub(1))
+                                .unwrap_or(0)
+                        } else {
+                            0
+                        }
+                    } else if !perm.permission_suggestions.is_empty() {
                         2 // Allow, Allow & Remember, Deny
                     } else {
                         1 // Allow, Deny
