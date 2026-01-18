@@ -251,8 +251,7 @@ async fn main() -> Result<()> {
 
     // Check for updates before anything else (unless --no-update or --init/--logout)
     if !args.no_update && args.init.is_none() && !args.logout {
-        let backend_url = update::get_update_backend_url();
-        match update::check_for_update_with_fallback(backend_url.as_deref(), false).await {
+        match update::check_for_update_github(false).await {
             Ok(update::UpdateResult::UpToDate) => {
                 // Continue normally
             }

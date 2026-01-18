@@ -1,15 +1,13 @@
 //! Auto-update functionality for the claude-portal binary
 //!
 //! On startup, checks if a newer version is available and self-updates if necessary.
-//! Supports two update sources:
-//! 1. Backend server (primary) - via /api/download/proxy endpoint
-//! 2. GitHub releases (fallback) - via GitHub API
+//! Updates are fetched from GitHub releases.
 
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs;
-use tracing::{info, warn};
+use tracing::info;
 
 /// GitHub repository for releases
 const GITHUB_REPO: &str = "meawoppl/claude-code-portal";
@@ -83,13 +81,6 @@ struct GitHubRelease {
     assets: Vec<GitHubAsset>,
 }
 
-/// Convert backend URL (ws:// or wss://) to HTTP URL for downloads
-fn ws_to_http_url(ws_url: &str) -> String {
-    ws_url
-        .replace("wss://", "https://")
-        .replace("ws://", "http://")
-}
-
 /// Compute SHA256 hash of bytes
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
@@ -98,99 +89,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(hash)
 }
 
-/// Check for updates from backend server and self-update if necessary
-///
-/// This function:
-/// 1. Computes SHA256 of the current binary
-/// 2. Makes a HEAD request to get the server's binary hash
-/// 3. If hashes differ, downloads the new binary
-/// 4. Verifies the download hash matches
-/// 5. Atomically replaces self
-///
-/// # Platform Notes
-/// - Works on Unix (Linux, macOS) where running binaries can be overwritten
-/// - Windows support is TODO (requires different approach due to exe locking)
-pub async fn check_for_update(backend_url: &str) -> Result<UpdateResult> {
-    let self_path = std::env::current_exe().context("Failed to get current executable path")?;
-    let self_bytes = fs::read(&self_path).context("Failed to read current binary")?;
-    let self_hash = sha256_hex(&self_bytes);
-
-    info!("Current binary hash: {}", &self_hash[..16]);
-
-    // Convert WebSocket URL to HTTP for the download endpoint
-    let http_base = ws_to_http_url(backend_url);
-    let platform = Platform::current();
-    let download_url = format!(
-        "{}/api/download/proxy?os={}&arch={}",
-        http_base, platform.os, platform.arch
-    );
-
-    // HEAD request to get remote hash
-    info!("Checking for updates at {}", download_url);
-    let client = reqwest::Client::builder()
-        .user_agent("claude-portal")
-        .build()
-        .context("Failed to create HTTP client")?;
-
-    let resp = client
-        .head(&download_url)
-        .send()
-        .await
-        .context("Failed to check for updates")?;
-
-    if !resp.status().is_success() {
-        bail!("Update check failed: server returned {}", resp.status());
-    }
-
-    let remote_hash = resp
-        .headers()
-        .get("X-Binary-SHA256")
-        .context("Server did not return X-Binary-SHA256 header")?
-        .to_str()
-        .context("Invalid X-Binary-SHA256 header")?;
-
-    info!("Remote binary hash: {}", &remote_hash[..16]);
-
-    if self_hash == remote_hash {
-        info!("Binary is up to date");
-        return Ok(UpdateResult::UpToDate);
-    }
-
-    info!("Update available, downloading...");
-
-    // Download the new binary
-    let resp = client
-        .get(&download_url)
-        .send()
-        .await
-        .context("Failed to download update")?;
-
-    if !resp.status().is_success() {
-        bail!("Download failed: server returned {}", resp.status());
-    }
-
-    let new_binary = resp
-        .bytes()
-        .await
-        .context("Failed to read download response")?;
-
-    // Verify downloaded binary hash matches what we expected
-    let download_hash = sha256_hex(&new_binary);
-    if download_hash != remote_hash {
-        bail!(
-            "Downloaded binary hash mismatch! Expected {} but got {}. Download may be corrupted.",
-            &remote_hash[..16],
-            &download_hash[..16]
-        );
-    }
-
-    install_binary(&self_path, &new_binary)?;
-    Ok(UpdateResult::Updated)
-}
-
 /// Check for updates from GitHub releases
-///
-/// This is a fallback when no backend is configured or backend is unreachable.
 pub async fn check_for_update_github(check_only: bool) -> Result<UpdateResult> {
     let self_path = std::env::current_exe().context("Failed to get current executable path")?;
     let self_bytes = fs::read(&self_path).context("Failed to read current binary")?;
@@ -391,49 +290,4 @@ pub fn apply_pending_update() -> Result<bool> {
 
     // No pending update or not Windows
     Ok(false)
-}
-
-/// Check for updates, trying backend first then falling back to GitHub
-pub async fn check_for_update_with_fallback(
-    backend_url: Option<&str>,
-    check_only: bool,
-) -> Result<UpdateResult> {
-    // Try backend first if available
-    if let Some(url) = backend_url {
-        match check_for_update(url).await {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                warn!(
-                    "Backend update check failed: {}. Trying GitHub releases...",
-                    e
-                );
-            }
-        }
-    }
-
-    // Fall back to GitHub releases
-    check_for_update_github(check_only).await
-}
-
-/// Get the backend URL for update checks from config
-///
-/// Returns None if no backend URL is configured
-pub fn get_update_backend_url() -> Option<String> {
-    use crate::config::ProxyConfig;
-
-    let config = ProxyConfig::load().ok()?;
-
-    // Try global default first
-    if let Some(url) = config.preferences.default_backend_url {
-        return Some(url);
-    }
-
-    // Fall back to any per-directory URL
-    for session in config.sessions.values() {
-        if let Some(url) = &session.backend_url {
-            return Some(url.clone());
-        }
-    }
-
-    None
 }
