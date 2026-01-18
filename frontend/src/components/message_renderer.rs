@@ -707,6 +707,7 @@ fn render_tool_use(name: &str, input: &Value) -> Html {
         "Write" => render_write_tool(input),
         "TodoWrite" => render_todowrite_tool(input),
         "AskUserQuestion" => render_askuserquestion_tool(input),
+        "ExitPlanMode" => render_exitplanmode_tool(input),
         "Bash" => render_bash_tool(input),
         "Read" => render_read_tool(input),
         "Glob" => render_glob_tool(input),
@@ -873,6 +874,51 @@ fn render_askuserquestion_tool(input: &Value) -> Html {
                     }).collect::<Html>()
                 }
             </div>
+        </div>
+    }
+}
+
+/// Render ExitPlanMode with formatted plan and permissions list
+fn render_exitplanmode_tool(input: &Value) -> Html {
+    let allowed_prompts = input
+        .get("allowedPrompts")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    html! {
+        <div class="tool-use exitplanmode-tool">
+            <div class="tool-use-header">
+                <span class="tool-icon">{ "📋" }</span>
+                <span class="tool-name">{ "Plan Complete" }</span>
+            </div>
+            {
+                if !allowed_prompts.is_empty() {
+                    html! {
+                        <div class="permissions-section">
+                            <div class="permissions-header">{ "Requested Permissions:" }</div>
+                            <div class="permissions-list">
+                                {
+                                    allowed_prompts.iter().map(|p| {
+                                        let tool = p.get("tool").and_then(|t| t.as_str()).unwrap_or("Unknown");
+                                        let prompt = p.get("prompt").and_then(|p| p.as_str()).unwrap_or("");
+                                        html! {
+                                            <div class="permission-item">
+                                                <span class="permission-bullet">{ "•" }</span>
+                                                <span class="permission-tool">{ tool }</span>
+                                                <span class="permission-separator">{ ": " }</span>
+                                                <span class="permission-prompt">{ prompt }</span>
+                                            </div>
+                                        }
+                                    }).collect::<Html>()
+                                }
+                            </div>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
         </div>
     }
 }
