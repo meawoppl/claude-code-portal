@@ -347,6 +347,7 @@ async fn register_session(
         resuming: config.resuming,
         git_branch: config.git_branch.clone(),
         replay_after: None, // Proxy doesn't need history replay
+        client_version: Some(env!("CARGO_PKG_VERSION").to_string()),
     };
 
     if let Err(e) = conn.send(&register_msg).await {

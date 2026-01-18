@@ -48,6 +48,7 @@ pub struct Session {
     pub output_tokens: i64,
     pub cache_creation_tokens: i64,
     pub cache_read_tokens: i64,
+    pub client_version: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -72,6 +73,7 @@ pub struct NewSessionWithId {
     pub working_directory: Option<String>,
     pub status: String,
     pub git_branch: Option<String>,
+    pub client_version: Option<String>,
 }
 
 #[derive(Debug, Queryable, Selectable, Serialize, Deserialize, Clone)]

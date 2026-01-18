@@ -1361,6 +1361,7 @@ impl Component for SessionView {
                         resuming: false,
                         git_branch: None,
                         replay_after: last_message_time,
+                        client_version: None, // Web client, not proxy
                     };
 
                     if let Ok(json) = serde_json::to_string(&register_msg) {
@@ -1885,6 +1886,7 @@ impl Component for SessionView {
                                 resuming: true, // Mark as resuming connection
                                 git_branch: None,
                                 replay_after, // Only get messages after last seen
+                                client_version: None, // Web client, not proxy
                             };
 
                             if let Ok(json) = serde_json::to_string(&register_msg) {

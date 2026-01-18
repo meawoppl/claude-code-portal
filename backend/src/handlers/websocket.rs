@@ -401,6 +401,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             resuming,
                             git_branch,
                             replay_after: _, // Not used for proxy connections
+                            client_version,
                         } => {
                             // Use session_id as the key for in-memory tracking
                             let key = claude_session_id.to_string();
@@ -438,6 +439,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                                 },
                                             ),
                                             sessions::git_branch.eq(&git_branch),
+                                            sessions::client_version.eq(&client_version),
                                         ))
                                         .execute(&mut conn)
                                     {
@@ -475,6 +477,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                             },
                                             status: "active".to_string(),
                                             git_branch: git_branch.clone(),
+                                            client_version: client_version.clone(),
                                         };
 
                                         match diesel::insert_into(sessions::table)
@@ -538,6 +541,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                             },
                                             status: "active".to_string(),
                                             git_branch: git_branch.clone(),
+                                            client_version: client_version.clone(),
                                         };
 
                                         match diesel::insert_into(sessions::table)
@@ -598,8 +602,11 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                             let _ = tx.send(ack);
 
                             info!(
-                                "Session registered: {} ({}) - success: {}",
-                                session_name, claude_session_id, registration_success
+                                "Session registered: {} ({}) - success: {}, client_version: {:?}",
+                                session_name,
+                                claude_session_id,
+                                registration_success,
+                                client_version
                             );
                         }
                         ProxyMessage::ClaudeOutput { content } => {
@@ -899,6 +906,7 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                             resuming: _,
                             git_branch: _,
                             replay_after,
+                            client_version: _, // Not used for web clients
                         } => {
                             // Verify the user has access to this session before allowing connection
                             match verify_session_access(&app_state, session_id, user_id) {
