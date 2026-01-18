@@ -2,6 +2,7 @@ pub mod admin;
 pub mod auth;
 pub mod device_flow;
 pub mod downloads;
+pub mod helpers;
 pub mod messages;
 pub mod proxy_tokens;
 pub mod sessions;

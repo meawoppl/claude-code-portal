@@ -524,9 +524,7 @@ pub async fn update_user(
 
         // If banning, revoke all tokens and delete all sessions/data
         if disabled_val {
-            use crate::schema::{
-                messages, proxy_auth_tokens, raw_message_log, session_members, sessions,
-            };
+            use crate::schema::proxy_auth_tokens;
 
             // Revoke all proxy tokens
             let revoked_count = diesel::update(
@@ -545,53 +543,14 @@ pub async fn update_user(
                 );
             }
 
-            // Get all session IDs for this user
-            let session_ids: Vec<Uuid> = sessions::table
-                .filter(sessions::user_id.eq(user_id))
-                .select(sessions::id)
-                .load(&mut conn)
-                .map_err(|e| {
-                    error!("Failed to get user sessions: {}", e);
+            // Delete all user's sessions and associated data
+            let (deleted_sessions, deleted_messages, deleted_members, deleted_raw) =
+                super::helpers::delete_user_sessions(&mut conn, user_id).map_err(|e| {
+                    error!("Failed to delete user sessions: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
 
-            if !session_ids.is_empty() {
-                // Delete messages for all user's sessions
-                let deleted_messages = diesel::delete(
-                    messages::table.filter(messages::session_id.eq_any(&session_ids)),
-                )
-                .execute(&mut conn)
-                .map_err(|e| {
-                    error!("Failed to delete user messages: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
-
-                // Delete session_members for all user's sessions
-                let deleted_members = diesel::delete(
-                    session_members::table.filter(session_members::session_id.eq_any(&session_ids)),
-                )
-                .execute(&mut conn)
-                .map_err(|e| {
-                    error!("Failed to delete session members: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
-
-                // Delete raw_message_log for all user's sessions
-                let deleted_raw = diesel::delete(
-                    raw_message_log::table.filter(raw_message_log::session_id.eq_any(&session_ids)),
-                )
-                .execute(&mut conn)
-                .unwrap_or(0); // Ignore errors for raw log
-
-                // Delete all sessions
-                let deleted_sessions =
-                    diesel::delete(sessions::table.filter(sessions::user_id.eq(user_id)))
-                        .execute(&mut conn)
-                        .map_err(|e| {
-                            error!("Failed to delete user sessions: {}", e);
-                            StatusCode::INTERNAL_SERVER_ERROR
-                        })?;
-
+            if deleted_sessions > 0 {
                 info!(
                     "Deleted {} sessions, {} messages, {} members, {} raw logs for banned user {}",
                     deleted_sessions,
@@ -734,61 +693,9 @@ pub async fn delete_session(
     let session_key = session_id.to_string();
     app_state.session_manager.unregister_session(&session_key);
 
-    // Record the cost and tokens from deleted session
-    let has_usage =
-        session.total_cost_usd > 0.0 || session.input_tokens > 0 || session.output_tokens > 0;
-    if has_usage {
-        diesel::insert_into(schema::deleted_session_costs::table)
-            .values(crate::models::NewDeletedSessionCosts {
-                user_id: session.user_id,
-                cost_usd: session.total_cost_usd,
-                session_count: 1,
-                input_tokens: session.input_tokens,
-                output_tokens: session.output_tokens,
-                cache_creation_tokens: session.cache_creation_tokens,
-                cache_read_tokens: session.cache_read_tokens,
-            })
-            .on_conflict(schema::deleted_session_costs::user_id)
-            .do_update()
-            .set((
-                schema::deleted_session_costs::cost_usd
-                    .eq(schema::deleted_session_costs::cost_usd + session.total_cost_usd),
-                schema::deleted_session_costs::session_count
-                    .eq(schema::deleted_session_costs::session_count + 1),
-                schema::deleted_session_costs::input_tokens
-                    .eq(schema::deleted_session_costs::input_tokens + session.input_tokens),
-                schema::deleted_session_costs::output_tokens
-                    .eq(schema::deleted_session_costs::output_tokens + session.output_tokens),
-                schema::deleted_session_costs::cache_creation_tokens
-                    .eq(schema::deleted_session_costs::cache_creation_tokens
-                        + session.cache_creation_tokens),
-                schema::deleted_session_costs::cache_read_tokens
-                    .eq(schema::deleted_session_costs::cache_read_tokens
-                        + session.cache_read_tokens),
-                schema::deleted_session_costs::updated_at.eq(diesel::dsl::now),
-            ))
-            .execute(&mut conn)
-            .map_err(|e| {
-                error!("Failed to record deleted session cost: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-    }
-
-    // Delete messages first (foreign key constraint)
-    diesel::delete(schema::messages::table.filter(schema::messages::session_id.eq(session_id)))
-        .execute(&mut conn)
-        .map_err(|e| {
-            error!("Failed to delete session messages: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    // Delete the session
-    diesel::delete(schema::sessions::table.find(session_id))
-        .execute(&mut conn)
-        .map_err(|e| {
-            error!("Failed to delete session: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    // Delete session and all associated data, recording costs
+    super::helpers::delete_session_with_data(&mut conn, &session, true)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     info!(
         "Admin {} deleted session {} ({}) - cost ${:.4} recorded",
