@@ -430,13 +430,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                         .set((
                                             sessions::status.eq("active"),
                                             sessions::last_activity.eq(diesel::dsl::now),
-                                            sessions::working_directory.eq(
-                                                if working_directory.is_empty() {
-                                                    None
-                                                } else {
-                                                    Some(&working_directory)
-                                                },
-                                            ),
+                                            sessions::working_directory.eq(&working_directory),
                                             sessions::git_branch.eq(&git_branch),
                                         ))
                                         .execute(&mut conn)
@@ -468,11 +462,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                             user_id,
                                             session_name: session_name.clone(),
                                             session_key: key.clone(),
-                                            working_directory: if working_directory.is_empty() {
-                                                None
-                                            } else {
-                                                Some(working_directory.clone())
-                                            },
+                                            working_directory: working_directory.clone(),
                                             status: "active".to_string(),
                                             git_branch: git_branch.clone(),
                                         };
@@ -531,11 +521,7 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                             user_id,
                                             session_name: session_name.clone(),
                                             session_key: key.clone(),
-                                            working_directory: if working_directory.is_empty() {
-                                                None
-                                            } else {
-                                                Some(working_directory.clone())
-                                            },
+                                            working_directory: working_directory.clone(),
                                             status: "active".to_string(),
                                             git_branch: git_branch.clone(),
                                         };

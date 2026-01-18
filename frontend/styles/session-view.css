@@ -192,28 +192,25 @@
     color: var(--error);
 }
 
-.pill-name {
-    display: flex;
-    flex-direction: column;
-    max-width: 200px;
+.pill-hostname {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+    padding-right: 0.5rem;
+    border-right: 1px solid var(--border);
 }
 
-.pill-project {
+.pill-folder {
     font-size: 0.85rem;
     color: var(--text-primary);
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.pill-hostname {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    max-width: 180px;
 }
 
 .pill-branch {
@@ -291,7 +288,7 @@
     box-shadow: 0 0 0 2px rgba(127, 132, 156, 0.3);
 }
 
-.session-pill.status-disconnected .pill-project,
+.session-pill.status-disconnected .pill-folder,
 .session-pill.status-disconnected .pill-hostname {
     color: var(--text-secondary);
 }

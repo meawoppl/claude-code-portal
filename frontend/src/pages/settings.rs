@@ -148,12 +148,7 @@ fn session_row(props: &SessionRowProps) -> Html {
         on_share.emit(session_id_for_share);
     });
 
-    // Extract project name from working directory
-    let project = session
-        .working_directory
-        .as_ref()
-        .and_then(|dir| dir.split('/').next_back())
-        .unwrap_or("Unknown");
+    let project = utils::extract_folder(&session.working_directory);
 
     // Only owners can share
     let is_owner = session.my_role == "owner";
@@ -161,8 +156,8 @@ fn session_row(props: &SessionRowProps) -> Html {
     html! {
         <tr class="session-row">
             <td class="session-name" title={session.session_name.clone()}>{ project }</td>
-            <td class="session-directory" title={session.working_directory.clone().unwrap_or_default()}>
-                { session.working_directory.as_deref().unwrap_or("—") }
+            <td class="session-directory" title={session.working_directory.clone()}>
+                { if session.working_directory.is_empty() { "—" } else { &session.working_directory } }
             </td>
             <td class="session-branch">
                 { session.git_branch.as_deref().unwrap_or("—") }

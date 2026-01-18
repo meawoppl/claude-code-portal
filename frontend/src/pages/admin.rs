@@ -71,7 +71,7 @@ struct AdminSessionInfo {
     user_id: Uuid,
     user_email: String,
     session_name: String,
-    working_directory: Option<String>,
+    working_directory: String,
     git_branch: Option<String>,
     status: String,
     total_cost_usd: f64,
@@ -292,12 +292,7 @@ fn session_row(props: &SessionRowProps) -> Html {
         &session.status
     };
 
-    // Extract project name from working directory
-    let project_name = session
-        .working_directory
-        .as_ref()
-        .and_then(|dir| dir.split('/').next_back())
-        .unwrap_or("-");
+    let project_name = utils::extract_folder(&session.working_directory);
 
     html! {
         <tr>

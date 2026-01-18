@@ -89,7 +89,7 @@ diesel::table! {
         session_name -> Varchar,
         #[max_length = 255]
         session_key -> Varchar,
-        working_directory -> Nullable<Text>,
+        working_directory -> Text,
         #[max_length = 50]
         status -> Varchar,
         last_activity -> Timestamp,

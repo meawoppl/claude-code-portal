@@ -211,7 +211,7 @@ pub struct SessionInfo {
     pub user_id: Uuid,
     pub session_name: String,
     pub session_key: String,
-    pub working_directory: Option<String>,
+    pub working_directory: String,
     pub status: SessionStatus,
     pub last_activity: String,
     pub created_at: String,

@@ -165,10 +165,11 @@ async fn main() -> Result<()> {
                                     id: s.id.to_string()[..8].to_string(),
                                     name: s.session_name.clone(),
                                     status: s.status.as_str().to_string(),
-                                    directory: s
-                                        .working_directory
-                                        .clone()
-                                        .unwrap_or_else(|| "-".to_string()),
+                                    directory: if s.working_directory.is_empty() {
+                                        "-".to_string()
+                                    } else {
+                                        s.working_directory.clone()
+                                    },
                                     last_activity: s.last_activity.clone(),
                                 })
                                 .collect();
@@ -193,8 +194,8 @@ async fn main() -> Result<()> {
                                     s.session_name.bold()
                                 );
                                 println!("    ID: {}", s.id);
-                                if let Some(dir) = &s.working_directory {
-                                    println!("    Directory: {}", dir.cyan());
+                                if !s.working_directory.is_empty() {
+                                    println!("    Directory: {}", s.working_directory.cyan());
                                 }
                                 println!("    Last active: {}", s.last_activity);
                             }
@@ -210,8 +211,8 @@ async fn main() -> Result<()> {
                         println!("{} {}", "Session:".bold(), session.session_name);
                         println!("  ID: {}", session.id);
                         println!("  Status: {}", session.status.as_str());
-                        if let Some(dir) = &session.working_directory {
-                            println!("  Directory: {}", dir);
+                        if !session.working_directory.is_empty() {
+                            println!("  Directory: {}", session.working_directory);
                         }
                         println!("  Last activity: {}", session.last_activity);
                     }

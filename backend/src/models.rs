@@ -37,7 +37,7 @@ pub struct Session {
     pub user_id: Uuid,
     pub session_name: String,
     pub session_key: String,
-    pub working_directory: Option<String>,
+    pub working_directory: String,
     pub status: String,
     pub last_activity: NaiveDateTime,
     pub created_at: NaiveDateTime,
@@ -56,7 +56,7 @@ pub struct NewSession {
     pub user_id: Uuid,
     pub session_name: String,
     pub session_key: String,
-    pub working_directory: Option<String>,
+    pub working_directory: String,
     pub status: String,
     pub git_branch: Option<String>,
 }
@@ -69,7 +69,7 @@ pub struct NewSessionWithId {
     pub user_id: Uuid,
     pub session_name: String,
     pub session_key: String,
-    pub working_directory: Option<String>,
+    pub working_directory: String,
     pub status: String,
     pub git_branch: Option<String>,
 }

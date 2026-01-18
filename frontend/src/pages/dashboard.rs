@@ -51,38 +51,6 @@ fn calculate_backoff(attempt: u32) -> u32 {
 /// Type alias for WebSocket sender to reduce type complexity
 type WsSender = Rc<RefCell<Option<futures_util::stream::SplitSink<WebSocket, Message>>>>;
 
-/// Extract session display parts from session_name and working_directory
-/// Input session_name format: "hostname-YYYYMMDD-HHMMSS"
-/// Returns: (project_name, hostname) - project may be None if no working_directory
-fn get_session_display_parts(session: &SessionInfo) -> (Option<String>, String) {
-    // Extract hostname from session_name (everything before the date suffix)
-    // Format: hostname-YYYYMMDD-HHMMSS
-    let hostname = session
-        .session_name
-        .rsplit('-')
-        .skip(2) // Skip HHMMSS and YYYYMMDD
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>()
-        .join("-");
-
-    let hostname = if hostname.is_empty() {
-        session.session_name.clone()
-    } else {
-        hostname
-    };
-
-    // Extract project folder from working_directory
-    let project = session
-        .working_directory
-        .as_ref()
-        .and_then(|dir| dir.split('/').next_back())
-        .map(|s| s.to_string());
-
-    (project, hostname)
-}
-
 /// Message data from the API
 #[derive(Clone, PartialEq, serde::Deserialize)]
 struct MessageData {
@@ -246,12 +214,12 @@ pub fn dashboard_page() -> Html {
                             (true, false) => std::cmp::Ordering::Less,
                             (false, true) => std::cmp::Ordering::Greater,
                             _ => {
-                                let (project_a, hostname_a) = get_session_display_parts(a);
-                                let (project_b, hostname_b) = get_session_display_parts(b);
-                                let repo_a = project_a.as_deref().unwrap_or("");
-                                let repo_b = project_b.as_deref().unwrap_or("");
-                                match repo_a.to_lowercase().cmp(&repo_b.to_lowercase()) {
+                                let folder_a = utils::extract_folder(&a.working_directory);
+                                let folder_b = utils::extract_folder(&b.working_directory);
+                                match folder_a.to_lowercase().cmp(&folder_b.to_lowercase()) {
                                     std::cmp::Ordering::Equal => {
+                                        let hostname_a = utils::extract_hostname(&a.session_name);
+                                        let hostname_b = utils::extract_hostname(&b.session_name);
                                         hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
                                     }
                                     other => other,
@@ -479,13 +447,13 @@ pub fn dashboard_page() -> Html {
                 (true, false) => std::cmp::Ordering::Less,
                 (false, true) => std::cmp::Ordering::Greater,
                 _ => {
-                    // Same status - sort by repo name then hostname
-                    let (project_a, hostname_a) = get_session_display_parts(a);
-                    let (project_b, hostname_b) = get_session_display_parts(b);
-                    let repo_a = project_a.as_deref().unwrap_or("");
-                    let repo_b = project_b.as_deref().unwrap_or("");
-                    match repo_a.to_lowercase().cmp(&repo_b.to_lowercase()) {
+                    // Same status - sort by folder name then hostname
+                    let folder_a = utils::extract_folder(&a.working_directory);
+                    let folder_b = utils::extract_folder(&b.working_directory);
+                    match folder_a.to_lowercase().cmp(&folder_b.to_lowercase()) {
                         std::cmp::Ordering::Equal => {
+                            let hostname_a = utils::extract_hostname(&a.session_name);
+                            let hostname_b = utils::extract_hostname(&b.session_name);
                             hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
                         }
                         other => other,
@@ -944,11 +912,8 @@ pub fn dashboard_page() -> Html {
                 if let Some(session_id) = *pending_leave {
                     let session_name = sessions.iter()
                         .find(|s| s.id == session_id)
-                        .map(|s| {
-                            let (project, hostname) = get_session_display_parts(s);
-                            project.unwrap_or(hostname)
-                        })
-                        .unwrap_or_else(|| "this session".to_string());
+                        .map(|s| utils::extract_folder(&s.working_directory))
+                        .unwrap_or("this session");
 
                     html! {
                         <div class="modal-overlay" onclick={on_cancel_leave.clone()}>
@@ -1052,9 +1017,8 @@ fn session_rail(props: &SessionRailProps) -> Html {
                         if is_status_disconnected { Some("status-disconnected") } else { None },
                     );
 
-                    let (project, hostname) = get_session_display_parts(session);
-                    let project_display = project.unwrap_or_else(|| hostname.clone());
-                    let show_hostname = session.working_directory.is_some();
+                    let hostname = utils::extract_hostname(&session.session_name);
+                    let folder = utils::extract_folder(&session.working_directory);
 
                     let connection_class = if is_connected { "pill-status connected" } else { "pill-status disconnected" };
 
@@ -1077,23 +1041,15 @@ fn session_rail(props: &SessionRailProps) -> Html {
                             <span class={connection_class}>
                                 { if is_connected { "●" } else { "○" } }
                             </span>
-                            <span class="pill-name" title={session.session_name.clone()}>
-                                <span class="pill-project">{ project_display }</span>
-                                {
-                                    if show_hostname {
-                                        html! { <span class="pill-hostname">{ hostname }</span> }
-                                    } else {
-                                        html! {}
-                                    }
+                            <span class="pill-hostname" title={session.session_name.clone()}>{ hostname }</span>
+                            <span class="pill-folder" title={session.working_directory.clone()}>{ folder }</span>
+                            {
+                                if let Some(ref branch) = session.git_branch {
+                                    html! { <span class="pill-branch">{ branch }</span> }
+                                } else {
+                                    html! {}
                                 }
-                                {
-                                    if let Some(ref branch) = session.git_branch {
-                                        html! { <span class="pill-branch">{ branch }</span> }
-                                    } else {
-                                        html! {}
-                                    }
-                                }
-                            </span>
+                            }
                             {
                                 if cost > 0.0 {
                                     html! { <span class="pill-cost">{ format!("${:.2}", cost) }</span> }

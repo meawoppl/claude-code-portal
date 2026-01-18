@@ -605,7 +605,7 @@ pub struct AdminSessionInfo {
     pub user_id: Uuid,
     pub user_email: String,
     pub session_name: String,
-    pub working_directory: Option<String>,
+    pub working_directory: String,
     pub git_branch: Option<String>,
     pub status: String,
     pub total_cost_usd: f64,
