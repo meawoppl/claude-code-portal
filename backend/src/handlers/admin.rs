@@ -774,6 +774,27 @@ pub async fn log_raw_message(
         .get()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Verify user has access to the session (if session_id is provided)
+    if let Some(session_id) = request.session_id {
+        use schema::{session_members, sessions};
+        let has_access = sessions::table
+            .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
+            .filter(sessions::id.eq(session_id))
+            .filter(session_members::user_id.eq(user_id))
+            .count()
+            .get_result::<i64>(&mut conn)
+            .unwrap_or(0)
+            > 0;
+
+        if !has_access {
+            warn!(
+                "User {} attempted to log raw message for session {} they don't have access to",
+                user_id, session_id
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+
     // Insert the raw message log
     diesel::insert_into(schema::raw_message_log::table)
         .values(NewRawMessageLog {
