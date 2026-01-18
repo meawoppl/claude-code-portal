@@ -80,6 +80,28 @@
     to { transform: rotate(360deg); }
 }
 
+/* Server shutdown banner */
+.server-shutdown-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 158, 100, 0.15);
+    border-bottom: 1px solid rgba(255, 158, 100, 0.4);
+    animation: pulse 2s infinite;
+}
+
+.server-shutdown-banner .shutdown-icon {
+    font-size: 1.1rem;
+}
+
+.server-shutdown-banner .shutdown-text {
+    color: var(--warning, #ff9e64);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
 .focus-flow-header .new-session-button {
     padding: 0.5rem 1rem;
     border-radius: 6px;
