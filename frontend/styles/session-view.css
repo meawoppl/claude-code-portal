@@ -192,15 +192,11 @@
     color: var(--error);
 }
 
-.pill-hostname {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
+.pill-name {
+    display: flex;
+    flex-direction: column;
+    max-width: 200px;
     overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 120px;
-    padding-right: 0.5rem;
-    border-right: 1px solid var(--border);
 }
 
 .pill-folder {
@@ -210,7 +206,14 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 180px;
+}
+
+.pill-hostname {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .pill-branch {
@@ -289,7 +292,8 @@
 }
 
 .session-pill.status-disconnected .pill-folder,
-.session-pill.status-disconnected .pill-hostname {
+.session-pill.status-disconnected .pill-hostname,
+.session-pill.status-disconnected .pill-name {
     color: var(--text-secondary);
 }
 

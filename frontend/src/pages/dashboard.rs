@@ -1062,15 +1062,17 @@ fn session_rail(props: &SessionRailProps) -> Html {
                             <span class={connection_class}>
                                 { if is_connected { "●" } else { "○" } }
                             </span>
-                            <span class="pill-hostname" title={session.session_name.clone()}>{ hostname }</span>
-                            <span class="pill-folder" title={session.working_directory.clone()}>{ folder }</span>
-                            {
-                                if let Some(ref branch) = session.git_branch {
-                                    html! { <span class="pill-branch">{ branch }</span> }
-                                } else {
-                                    html! {}
+                            <span class="pill-name" title={session.session_name.clone()}>
+                                <span class="pill-folder">{ folder }</span>
+                                <span class="pill-hostname">{ hostname }</span>
+                                {
+                                    if let Some(ref branch) = session.git_branch {
+                                        html! { <span class="pill-branch">{ branch }</span> }
+                                    } else {
+                                        html! {}
+                                    }
                                 }
-                            }
+                            </span>
                             {
                                 if cost > 0.0 {
                                     html! { <span class="pill-cost">{ format!("${:.2}", cost) }</span> }
