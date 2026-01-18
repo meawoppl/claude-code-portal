@@ -121,6 +121,11 @@ pub fn dashboard_page() -> Html {
     let total_user_spend = use_state(|| 0.0f64);
     let is_admin = use_state(|| false);
     let voice_enabled = use_state(|| false);
+    // Track which sessions have been activated (focused at least once)
+    // This prevents loading history for paused sessions until they're selected
+    let activated_sessions = use_state(HashSet::<Uuid>::new);
+    // Track if initial focus has been set (to pick first non-paused session)
+    let initial_focus_set = use_state(|| false);
 
     // Fetch current user info (to check admin status and voice_enabled)
     {
@@ -198,6 +203,65 @@ pub fn dashboard_page() -> Html {
             fetch_sessions.emit(true);
             || ()
         });
+    }
+
+    // Set initial focus to first non-paused session (once sessions are loaded)
+    {
+        let sessions = sessions.clone();
+        let paused_sessions = paused_sessions.clone();
+        let focused_index = focused_index.clone();
+        let initial_focus_set = initial_focus_set.clone();
+        let activated_sessions = activated_sessions.clone();
+        let loading = loading.clone();
+
+        use_effect_with(
+            (sessions.len(), *loading),
+            move |(session_count, is_loading)| {
+                // Only set initial focus once, after sessions are loaded
+                if !*initial_focus_set && !*is_loading && *session_count > 0 {
+                    // Sort sessions the same way active_sessions does (active first, then by name)
+                    let mut sorted: Vec<_> = sessions.iter().cloned().collect();
+                    sorted.sort_by(|a, b| {
+                        let a_is_active = a.status.as_str() == "active";
+                        let b_is_active = b.status.as_str() == "active";
+                        match (a_is_active, b_is_active) {
+                            (true, false) => std::cmp::Ordering::Less,
+                            (false, true) => std::cmp::Ordering::Greater,
+                            _ => {
+                                let (project_a, hostname_a) = get_session_display_parts(a);
+                                let (project_b, hostname_b) = get_session_display_parts(b);
+                                let repo_a = project_a.as_deref().unwrap_or("");
+                                let repo_b = project_b.as_deref().unwrap_or("");
+                                match repo_a.to_lowercase().cmp(&repo_b.to_lowercase()) {
+                                    std::cmp::Ordering::Equal => {
+                                        hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
+                                    }
+                                    other => other,
+                                }
+                            }
+                        }
+                    });
+
+                    // Find first non-paused session
+                    let first_non_paused_idx = sorted
+                        .iter()
+                        .position(|s| !paused_sessions.contains(&s.id))
+                        .unwrap_or(0);
+
+                    focused_index.set(first_non_paused_idx);
+
+                    // Mark the initially focused session as activated
+                    if let Some(session) = sorted.get(first_non_paused_idx) {
+                        let mut activated = (*activated_sessions).clone();
+                        activated.insert(session.id);
+                        activated_sessions.set(activated);
+                    }
+
+                    initial_focus_set.set(true);
+                }
+                || ()
+            },
+        );
     }
 
     // Polling every 5 seconds
@@ -417,8 +481,16 @@ pub fn dashboard_page() -> Html {
     // Navigation callbacks
     let on_select_session = {
         let focused_index = focused_index.clone();
+        let activated_sessions = activated_sessions.clone();
+        let active_sessions = active_sessions.clone();
         Callback::from(move |index: usize| {
             focused_index.set(index);
+            // Mark this session as activated so it loads its history
+            if let Some(session) = active_sessions.get(index) {
+                let mut activated = (*activated_sessions).clone();
+                activated.insert(session.id);
+                activated_sessions.set(activated);
+            }
         })
     };
 
@@ -426,6 +498,7 @@ pub fn dashboard_page() -> Html {
         let focused_index = focused_index.clone();
         let active_sessions = active_sessions.clone();
         let paused_sessions = paused_sessions.clone();
+        let activated_sessions = activated_sessions.clone();
         Callback::from(move |delta: i32| {
             let len = active_sessions.len();
             if len == 0 {
@@ -438,11 +511,21 @@ pub fn dashboard_page() -> Html {
                 .filter(|s| !paused_sessions.contains(&s.id))
                 .count();
 
+            // Helper to activate a session at index
+            let activate_session = |idx: usize| {
+                if let Some(session) = active_sessions.get(idx) {
+                    let mut activated = (*activated_sessions).clone();
+                    activated.insert(session.id);
+                    activated_sessions.set(activated);
+                }
+            };
+
             // If all sessions are paused, allow normal navigation
             if non_paused_count == 0 {
                 let current = *focused_index as i32;
                 let new_index = (current + delta).rem_euclid(len as i32) as usize;
                 focused_index.set(new_index);
+                activate_session(new_index);
                 return;
             }
 
@@ -456,6 +539,7 @@ pub fn dashboard_page() -> Html {
                 if let Some(session) = active_sessions.get(new_index) {
                     if !paused_sessions.contains(&session.id) {
                         focused_index.set(new_index);
+                        activate_session(new_index);
                         return;
                     }
                 }
@@ -467,6 +551,7 @@ pub fn dashboard_page() -> Html {
         let focused_index = focused_index.clone();
         let active_sessions = active_sessions.clone();
         let paused_sessions = paused_sessions.clone();
+        let activated_sessions = activated_sessions.clone();
         Callback::from(move |_| {
             let len = active_sessions.len();
             if len == 0 {
@@ -479,6 +564,10 @@ pub fn dashboard_page() -> Html {
                 if let Some(session) = active_sessions.get(idx) {
                     if !paused_sessions.contains(&session.id) {
                         focused_index.set(idx);
+                        // Mark as activated
+                        let mut activated = (*activated_sessions).clone();
+                        activated.insert(session.id);
+                        activated_sessions.set(activated);
                         return;
                     }
                 }
@@ -754,28 +843,41 @@ pub fn dashboard_page() -> Html {
                         on_toggle_pause={on_toggle_pause.clone()}
                     />
 
-                    // Render ALL session views - keep them alive for instant switching
-                    // Only the focused one is visible, others are hidden via CSS
+                    // Render session views only for activated sessions (focused at least once)
+                    // This prevents loading history for paused sessions until they're selected
                     <div class={classes!("session-views-container", if *nav_mode { Some("nav-mode") } else { None })}>
                         {
                             active_sessions.iter().enumerate().map(|(index, session)| {
                                 let is_focused = index == *focused_index;
-                                html! {
-                                    <div
-                                        key={session.id.to_string()}
-                                        class={classes!("session-view-wrapper", if is_focused { "focused" } else { "hidden" })}
-                                    >
-                                        <SessionView
-                                            session={session.clone()}
-                                            focused={is_focused}
-                                            on_awaiting_change={on_awaiting_change.clone()}
-                                            on_cost_change={on_cost_change.clone()}
-                                            on_connected_change={on_connected_change.clone()}
-                                            on_message_sent={on_message_sent.clone()}
-                                            on_branch_change={on_branch_change.clone()}
-                                            voice_enabled={*voice_enabled}
+                                let is_activated = activated_sessions.contains(&session.id);
+                                // Only render SessionView if session has been activated
+                                // This prevents fetching history for paused sessions until selected
+                                if is_activated {
+                                    html! {
+                                        <div
+                                            key={session.id.to_string()}
+                                            class={classes!("session-view-wrapper", if is_focused { "focused" } else { "hidden" })}
+                                        >
+                                            <SessionView
+                                                session={session.clone()}
+                                                focused={is_focused}
+                                                on_awaiting_change={on_awaiting_change.clone()}
+                                                on_cost_change={on_cost_change.clone()}
+                                                on_connected_change={on_connected_change.clone()}
+                                                on_message_sent={on_message_sent.clone()}
+                                                on_branch_change={on_branch_change.clone()}
+                                                voice_enabled={*voice_enabled}
+                                            />
+                                        </div>
+                                    }
+                                } else {
+                                    // Placeholder for non-activated sessions
+                                    html! {
+                                        <div
+                                            key={session.id.to_string()}
+                                            class="session-view-wrapper hidden"
                                         />
-                                    </div>
+                                    }
                                 }
                             }).collect::<Html>()
                         }
