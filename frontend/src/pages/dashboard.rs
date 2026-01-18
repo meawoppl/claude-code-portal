@@ -711,6 +711,9 @@ pub fn dashboard_page() -> Html {
         let on_select_session = on_select_session.clone();
         let nav_mode = nav_mode.clone();
         let active_sessions = active_sessions.clone();
+        let inactive_hidden = inactive_hidden.clone();
+        let connected_sessions = connected_sessions.clone();
+        let paused_sessions = paused_sessions.clone();
         Callback::from(move |e: KeyboardEvent| {
             let in_nav_mode = *nav_mode;
 
@@ -749,12 +752,40 @@ pub fn dashboard_page() -> Html {
                         // For now, just a placeholder
                     }
                     key => {
-                        // Number keys 1-9 for direct selection
+                        // Number keys 1-9 for direct selection based on visible order
                         if let Ok(num) = key.parse::<usize>() {
-                            if (1..=9).contains(&num) && num <= active_sessions.len() {
-                                e.prevent_default();
-                                on_select_session.emit(num - 1);
-                                nav_mode.set(false);
+                            if (1..=9).contains(&num) {
+                                // Build visible session indices in display order
+                                // Active (connected and not paused) come first, then inactive
+                                let mut visible_indices: Vec<usize> = Vec::new();
+
+                                // Add active sessions first
+                                for (idx, session) in active_sessions.iter().enumerate() {
+                                    let is_connected = connected_sessions.contains(&session.id);
+                                    let is_paused = paused_sessions.contains(&session.id);
+                                    if is_connected && !is_paused {
+                                        visible_indices.push(idx);
+                                    }
+                                }
+
+                                // Add inactive sessions if not hidden
+                                if !*inactive_hidden {
+                                    for (idx, session) in active_sessions.iter().enumerate() {
+                                        let is_connected = connected_sessions.contains(&session.id);
+                                        let is_paused = paused_sessions.contains(&session.id);
+                                        if !is_connected || is_paused {
+                                            visible_indices.push(idx);
+                                        }
+                                    }
+                                }
+
+                                // Map display number (1-based) to actual index
+                                let display_idx = num - 1;
+                                if display_idx < visible_indices.len() {
+                                    e.prevent_default();
+                                    on_select_session.emit(visible_indices[display_idx]);
+                                    nav_mode.set(false);
+                                }
                             }
                         }
                     }
@@ -1046,7 +1077,12 @@ fn session_rail(props: &SessionRailProps) -> Html {
     }
 
     // Helper to render a single session pill
-    let render_pill = |index: usize, session: &SessionInfo| -> Html {
+    // index: position in full sessions array (for selection)
+    // display_number: visible position for nav mode numbering (None = no number shown)
+    let render_pill = |index: usize,
+                       session: &SessionInfo,
+                       display_number: Option<usize>|
+     -> Html {
         let is_focused = index == props.focused_index;
         let is_awaiting = props.awaiting_sessions.contains(&session.id);
         let is_paused = props.paused_sessions.contains(&session.id);
@@ -1100,9 +1136,11 @@ fn session_rail(props: &SessionRailProps) -> Html {
             "pill-status disconnected"
         };
 
-        // Show number annotation only in nav mode (1-9)
-        let number_annotation = if in_nav_mode && index < 9 {
-            Some(format!("{}", index + 1))
+        // Show number annotation only in nav mode (1-9) for visible sessions
+        let number_annotation = if in_nav_mode {
+            display_number
+                .filter(|&n| n < 9)
+                .map(|n| format!("{}", n + 1))
         } else {
             None
         };
@@ -1184,10 +1222,17 @@ fn session_rail(props: &SessionRailProps) -> Html {
 
     let inactive_count = inactive_indices.len();
 
+    // Calculate display numbers for visible sessions
+    // When inactive is hidden, only active sessions get numbers
+    // When inactive is shown, all sessions get numbers in display order
+    let active_count = active_indices.len();
+
     html! {
         <div class="session-rail" ref={rail_ref}>
-            // Active sessions
-            { active_indices.iter().map(|(index, session)| render_pill(*index, session)).collect::<Html>() }
+            // Active sessions - always get numbers starting from 0
+            { active_indices.iter().enumerate().map(|(display_idx, (index, session))| {
+                render_pill(*index, session, Some(display_idx))
+            }).collect::<Html>() }
 
             // Divider (only show if there are inactive sessions)
             {
@@ -1214,9 +1259,12 @@ fn session_rail(props: &SessionRailProps) -> Html {
             }
 
             // Inactive sessions (hidden when collapsed)
+            // When shown, continue numbering from where active sessions left off
             {
                 if !props.inactive_hidden {
-                    inactive_indices.iter().map(|(index, session)| render_pill(*index, session)).collect::<Html>()
+                    inactive_indices.iter().enumerate().map(|(display_idx, (index, session))| {
+                        render_pill(*index, session, Some(active_count + display_idx))
+                    }).collect::<Html>()
                 } else {
                     html! {}
                 }
