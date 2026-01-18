@@ -170,10 +170,11 @@
 /* User Status Badges */
 .user-status {
     display: inline-block;
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
     font-weight: 500;
+    white-space: nowrap;
 }
 
 .user-status.admin {
@@ -200,10 +201,11 @@
 /* Session Status Badges */
 .session-status {
     display: inline-block;
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
     font-weight: 500;
+    white-space: nowrap;
 }
 
 .session-status.connected {
