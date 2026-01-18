@@ -47,6 +47,8 @@ Then open: **http://localhost:3000/**
 
 You'll be automatically logged in as `testing@testing.local` in dev mode.
 
+See [Local Development](docs/LOCAL_DEVELOPMENT.md) for more details on the dev script and available commands.
+
 ## Architecture
 
 ```mermaid
@@ -175,9 +177,10 @@ GOOGLE_REDIRECT_URI=https://your-domain.com/auth/google/callback
 
 | Document | Description |
 |----------|-------------|
-| [Development Guide](docs/DEVELOPING.md) | Setting up dev environment, building, testing |
-| [Deployment Guide](docs/DEPLOYING.md) | Production deployment, configuration |
-| [Docker Guide](DOCKER.md) | Docker-based deployment |
+| [Local Development](docs/LOCAL_DEVELOPMENT.md) | Quick setup with `dev.sh`, available commands |
+| [Development Guide](docs/DEVELOPING.md) | Full dev workflow, building, testing, contributing |
+| [Docker Guide](docs/DOCKER.md) | Docker and Kubernetes deployment with 1Password |
+| [Deployment Guide](docs/DEPLOYING.md) | Production deployment and configuration |
 | [Troubleshooting](TROUBLESHOOTING.md) | Common issues and solutions |
 
 ## Platform Support
