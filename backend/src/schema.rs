@@ -102,6 +102,8 @@ diesel::table! {
         output_tokens -> Int8,
         cache_creation_tokens -> Int8,
         cache_read_tokens -> Int8,
+        #[max_length = 32]
+        client_version -> Nullable<Varchar>,
     }
 }
 

@@ -36,6 +36,9 @@ pub enum ProxyMessage {
         /// If None, replay all history. Used by web clients to avoid duplicate messages.
         #[serde(default)]
         replay_after: Option<String>,
+        /// Client version (e.g., "1.0.0") - helps track client versions in use
+        #[serde(default)]
+        client_version: Option<String>,
     },
 
     /// Output from Claude Code to be displayed
