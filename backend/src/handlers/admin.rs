@@ -753,6 +753,7 @@ pub struct RawMessageLogsResponse {
 
 /// Log a raw-rendered message (called by frontend when rendering raw)
 /// This endpoint is available to authenticated users, not just admins
+/// Uses content hashing to deduplicate - same content for same session is ignored
 pub async fn log_raw_message(
     State(app_state): State<Arc<AppState>>,
     cookies: Cookies,
@@ -795,7 +796,11 @@ pub async fn log_raw_message(
         }
     }
 
-    // Insert the raw message log
+    // Compute MD5 hash of content for deduplication
+    let content_str = request.message_content.to_string();
+    let content_hash = format!("{:x}", md5::compute(&content_str));
+
+    // Insert with ON CONFLICT DO NOTHING to deduplicate
     diesel::insert_into(schema::raw_message_log::table)
         .values(NewRawMessageLog {
             session_id: request.session_id,
@@ -803,7 +808,9 @@ pub async fn log_raw_message(
             message_content: request.message_content,
             message_source: request.message_source,
             render_reason: request.render_reason,
+            content_hash,
         })
+        .on_conflict_do_nothing()
         .execute(&mut conn)
         .map_err(|e| {
             error!("Failed to log raw message: {}", e);

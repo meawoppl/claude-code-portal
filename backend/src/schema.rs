@@ -67,6 +67,8 @@ diesel::table! {
         #[max_length = 255]
         render_reason -> Nullable<Varchar>,
         created_at -> Timestamp,
+        #[max_length = 64]
+        content_hash -> Varchar,
     }
 }
 

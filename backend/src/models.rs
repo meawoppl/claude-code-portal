@@ -205,6 +205,7 @@ pub struct RawMessageLog {
     pub message_source: String,
     pub render_reason: Option<String>,
     pub created_at: NaiveDateTime,
+    pub content_hash: String,
 }
 
 #[derive(Debug, Insertable)]
@@ -215,4 +216,5 @@ pub struct NewRawMessageLog {
     pub message_content: serde_json::Value,
     pub message_source: String,
     pub render_reason: Option<String>,
+    pub content_hash: String,
 }
