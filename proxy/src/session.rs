@@ -511,21 +511,34 @@ async fn run_message_loop(
 
 /// Get the current git branch name, if in a git repository
 fn get_git_branch(cwd: &str) -> Option<String> {
-    std::process::Command::new("git")
+    let output = std::process::Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(cwd)
         .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let branch = String::from_utf8(output.stdout)
         .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty() && s != "HEAD")
-            } else {
-                None
-            }
-        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())?;
+
+    // If we're in detached HEAD state, get the short commit hash instead
+    if branch == "HEAD" {
+        std::process::Command::new("git")
+            .args(["rev-parse", "--short", "HEAD"])
+            .current_dir(cwd)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| format!("detached:{}", s.trim()))
+    } else {
+        Some(branch)
+    }
 }
 
 /// Check if a tool use is a Bash command containing "git"
