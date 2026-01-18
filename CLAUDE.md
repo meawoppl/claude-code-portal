@@ -678,10 +678,13 @@ use uuid::Uuid;
 When the user says **"SHIP"**, execute this workflow:
 
 1. **Create PR**: `gh pr create` with appropriate title and body
-2. **Watch CI**: `gh pr checks <PR_NUMBER> --watch` to monitor all checks
+2. **Watch CI**: Use `gh pr checks <PR_NUMBER> --watch` to actively monitor all checks
 3. **Fix minor CI failures**: If `cargo fmt` or `clippy` fails, fix automatically and push
-4. **Merge if passing**: `gh pr merge <PR_NUMBER> --squash --delete-branch`
-5. **Update local**: `git checkout main && git pull`
+4. **Re-watch CI**: After any fix, run `gh pr checks <PR_NUMBER> --watch` again
+5. **Merge when passing**: `gh pr merge <PR_NUMBER> --squash --delete-branch`
+6. **Update local**: `git checkout main && git pull`
+
+**Important**: Do NOT use `--auto` flag for merging. Actively watch CI with `gh pr checks --watch` so failures are caught immediately and can be fixed in the same session.
 
 **CI Failure Handling**:
 - **Minor issues** (formatting, clippy warnings): Fix automatically, commit, push, and re-watch CI
