@@ -9,6 +9,12 @@ pub use proxy_tokens::*;
 pub mod api;
 pub use api::{ApiClientConfig, ApiError, CcProxyApi};
 
+// Re-export claude-codes types for frontend message parsing
+pub use claude_codes::io::{
+    ContentBlock, ImageBlock, ImageSource, TextBlock, ThinkingBlock, ToolResultBlock,
+    ToolResultContent, ToolUseBlock,
+};
+
 /// Message types for the WebSocket proxy protocol
 /// These are used to communicate between:
 /// - proxy <-> backend (session connection)
