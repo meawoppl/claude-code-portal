@@ -238,7 +238,7 @@ pub async fn run_connection_loop(
 
                 let pending = session.pending_count().await;
                 ui::print_disconnected_with_pending(session.backoff.current_secs(), pending);
-                info!(
+                warn!(
                     "WebSocket disconnected, {} pending messages, reconnecting in {}s",
                     pending,
                     session.backoff.current_secs()
@@ -277,7 +277,7 @@ async fn run_single_connection(session: &mut SessionState<'_>) -> ConnectionResu
         let buf = session.output_buffer.lock().await;
         let pending_count = buf.pending_count();
         if pending_count > 0 {
-            info!(
+            debug!(
                 "Replaying {} pending messages after reconnect",
                 pending_count
             );
@@ -294,7 +294,7 @@ async fn run_single_connection(session: &mut SessionState<'_>) -> ConnectionResu
                     return ConnectionResult::Disconnected(Duration::ZERO);
                 }
             }
-            info!("Finished replaying pending messages");
+            debug!("Finished replaying pending messages");
         }
     }
 
@@ -594,7 +594,7 @@ async fn check_and_send_branch_update(
     let mut branch_guard = current_branch.lock().await;
 
     if *branch_guard != new_branch {
-        info!(
+        debug!(
             "Git branch changed: {:?} -> {:?}",
             *branch_guard, new_branch
         );
@@ -698,7 +698,7 @@ fn spawn_output_forwarder(
                 .await;
             }
         }
-        info!("Output forwarder ended");
+        debug!("Output forwarder ended");
     })
 }
 
@@ -706,16 +706,16 @@ fn spawn_output_forwarder(
 fn log_claude_output(output: &ClaudeOutput) {
     match output {
         ClaudeOutput::System(sys) => {
-            info!("← [system] subtype={}", sys.subtype);
+            debug!("← [system] subtype={}", sys.subtype);
             if sys.subtype == "init" {
                 if let Some(model) = sys.data.get("model").and_then(|v| v.as_str()) {
-                    info!("  model: {}", model);
+                    debug!("  model: {}", model);
                 }
                 if let Some(cwd) = sys.data.get("cwd").and_then(|v| v.as_str()) {
-                    info!("  cwd: {}", truncate(cwd, 60));
+                    debug!("  cwd: {}", truncate(cwd, 60));
                 }
                 if let Some(tools) = sys.data.get("tools").and_then(|v| v.as_array()) {
-                    info!("  tools: {} available", tools.len());
+                    debug!("  tools: {} available", tools.len());
                 }
             }
         }
@@ -733,12 +733,12 @@ fn log_claude_output(output: &ClaudeOutput) {
                     ContentBlock::Text(t) => {
                         text_count += 1;
                         let preview = truncate(&t.text, 80);
-                        info!("← [assistant] text: {}", preview);
+                        debug!("← [assistant] text: {}", preview);
                     }
                     ContentBlock::ToolUse(tu) => {
                         tool_count += 1;
                         let input_preview = format_tool_input(&tu.name, &tu.input);
-                        info!("← [assistant] tool_use: {} {}", tu.name, input_preview);
+                        debug!("← [assistant] tool_use: {} {}", tu.name, input_preview);
                     }
                     ContentBlock::Thinking(th) => {
                         thinking_count += 1;
@@ -751,28 +751,28 @@ fn log_claude_output(output: &ClaudeOutput) {
                         } else {
                             "ok"
                         };
-                        info!("← [assistant] tool_result: {} ({})", tr.tool_use_id, status);
+                        debug!("← [assistant] tool_result: {} ({})", tr.tool_use_id, status);
                     }
                     ContentBlock::Image(_) => {
-                        info!("← [assistant] image block");
+                        debug!("← [assistant] image block");
                     }
                 }
             }
 
             if text_count + tool_count + thinking_count > 1 {
-                info!(
+                debug!(
                     "  stop_reason={}, blocks: {} text, {} tools, {} thinking",
                     stop, text_count, tool_count, thinking_count
                 );
             } else if tool_count > 0 || stop != "none" {
-                info!("  stop_reason={}", stop);
+                debug!("  stop_reason={}", stop);
             }
         }
         ClaudeOutput::User(user) => {
             for block in &user.message.content {
                 match block {
                     ContentBlock::Text(t) => {
-                        info!("← [user] text: {}", truncate(&t.text, 80));
+                        debug!("← [user] text: {}", truncate(&t.text, 80));
                     }
                     ContentBlock::ToolResult(tr) => {
                         let status = if tr.is_error.unwrap_or(false) {
@@ -792,10 +792,10 @@ fn log_claude_output(output: &ClaudeOutput) {
                                 }
                             })
                             .unwrap_or_default();
-                        info!("← [user] tool_result [{}]: {}", status, content_preview);
+                        debug!("← [user] tool_result [{}]: {}", status, content_preview);
                     }
                     _ => {
-                        info!("← [user] other block");
+                        debug!("← [user] other block");
                     }
                 }
             }
@@ -804,29 +804,29 @@ fn log_claude_output(output: &ClaudeOutput) {
             let status = if res.is_error { "ERROR" } else { "success" };
             let duration = format_duration(res.duration_ms);
             let api_duration = format_duration(res.duration_api_ms);
-            info!(
+            debug!(
                 "← [result] {} | {} total | {} API | {} turns",
                 status, duration, api_duration, res.num_turns
             );
             if res.total_cost_usd > 0.0 {
-                info!("  cost: ${:.4}", res.total_cost_usd);
+                debug!("  cost: ${:.4}", res.total_cost_usd);
             }
         }
         ClaudeOutput::ControlRequest(req) => {
-            info!("← [control_request] id={}", req.request_id);
+            debug!("← [control_request] id={}", req.request_id);
             match &req.request {
                 ControlRequestPayload::CanUseTool(tool_req) => {
                     let input_preview = format_tool_input(&tool_req.tool_name, &tool_req.input);
-                    info!("  tool: {} {}", tool_req.tool_name, input_preview);
+                    debug!("  tool: {} {}", tool_req.tool_name, input_preview);
                 }
                 ControlRequestPayload::HookCallback(_) => {
-                    info!("  hook callback");
+                    debug!("  hook callback");
                 }
                 ControlRequestPayload::McpMessage(_) => {
-                    info!("  MCP message");
+                    debug!("  MCP message");
                 }
                 ControlRequestPayload::Initialize(_) => {
-                    info!("  initialize");
+                    debug!("  initialize");
                 }
             }
         }
@@ -934,7 +934,7 @@ fn spawn_ws_reader(
                 _ => {}
             }
         }
-        info!("WebSocket reader ended");
+        debug!("WebSocket reader ended");
         let _ = disconnect_tx.send(());
     })
 }
@@ -960,7 +960,7 @@ async fn handle_ws_text_message(
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
-            info!("→ [input] {}", truncate(&text, 80));
+            debug!("→ [input] {}", truncate(&text, 80));
             if input_tx.send(text).is_err() {
                 error!("Failed to send input to channel");
                 return false;
@@ -973,7 +973,7 @@ async fn handle_ws_text_message(
             permissions,
             reason,
         } => {
-            info!(
+            debug!(
                 "→ [perm_response] {} allow={} permissions={} reason={:?}",
                 request_id,
                 allow,
@@ -1045,7 +1045,7 @@ async fn run_main_loop(
             }
 
             Some(perm_response) = state.perm_rx.recv() => {
-                info!("sending permission response to claude: {:?}", perm_response);
+                debug!("sending permission response to claude: {:?}", perm_response);
 
                 // Create the control response
                 let ctrl_response = if perm_response.allow {
@@ -1112,7 +1112,7 @@ fn handle_claude_output(
                 return Some(ConnectionResult::Disconnected(connection_start.elapsed()));
             }
             if is_result {
-                info!("--- ready for input ---");
+                debug!("--- ready for input ---");
             }
             None
         }

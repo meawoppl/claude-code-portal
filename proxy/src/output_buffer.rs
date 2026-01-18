@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fs;
 use std::path::PathBuf;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 /// Maximum number of pending messages to keep in memory before spilling to disk
@@ -71,7 +71,7 @@ impl PendingOutputBuffer {
                                 ..Default::default()
                             }
                         } else {
-                            info!(
+                            debug!(
                                 "Loaded pending buffer: {} messages, next_seq={}, last_ack={}",
                                 state.pending.len(),
                                 state.next_seq,
@@ -174,7 +174,7 @@ impl PendingOutputBuffer {
         self.state.last_ack_seq = ack_seq;
         self.dirty = true;
 
-        info!(
+        debug!(
             "Acknowledged up to seq={}, removed {} messages, {} remaining",
             ack_seq,
             before - after,
@@ -240,7 +240,7 @@ impl PendingOutputBuffer {
             fs::remove_file(&self.persist_path).context("Failed to remove buffer file")?;
         }
 
-        info!("Cleared buffer for session {}", self.session_id);
+        debug!("Cleared buffer for session {}", self.session_id);
         Ok(())
     }
 }
