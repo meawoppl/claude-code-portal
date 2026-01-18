@@ -139,6 +139,7 @@
 }
 
 .session-pill {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -366,17 +367,26 @@
 /* Number annotation for nav mode (1-9 keys) */
 .pill-number {
     display: none;
-    font-size: 0.7rem;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1rem;
     font-weight: 700;
-    color: var(--accent);
-    background: rgba(122, 162, 247, 0.3);
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
+    color: var(--bg-primary);
+    background: var(--accent);
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
     font-family: monospace;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .session-pill.nav-mode .pill-number {
-    display: inline-block;
+    display: flex;
 }
 
 /* Nav mode selection highlight */
