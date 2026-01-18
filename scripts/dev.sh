@@ -284,9 +284,28 @@ do_start() {
     echo ""
 }
 
+# Nuke the database (delete all data and start fresh)
+nuke_db() {
+    warn "This will DELETE ALL DATA in the development database!"
+    echo ""
+    read -p "Are you sure? Type 'yes' to confirm: " confirm
+    if [ "$confirm" != "yes" ]; then
+        echo "Aborted."
+        exit 1
+    fi
+
+    log "Stopping services..."
+    stop_all
+
+    log "Removing database volume..."
+    docker volume rm cc-proxy_test_postgres_data 2>/dev/null || true
+
+    success "Database nuked. Run './scripts/dev.sh start' to recreate."
+}
+
 # Print usage
 usage() {
-    echo "Usage: $0 {start|stop|status|logs|restart|build}"
+    echo "Usage: $0 {start|stop|status|logs|restart|build|nuke-db}"
     echo ""
     echo "Commands:"
     echo "  start   - Start all services (db, backend)"
@@ -295,6 +314,7 @@ usage() {
     echo "  logs    - Tail backend logs (or: logs db)"
     echo "  restart - Stop and start all services"
     echo "  build   - Rebuild frontend only"
+    echo "  nuke-db - Delete all database data and start fresh"
     echo ""
 }
 
@@ -319,6 +339,9 @@ case "${1:-}" in
         ;;
     build)
         build_frontend
+        ;;
+    nuke-db)
+        nuke_db
         ;;
     "")
         # Default to start if no argument
