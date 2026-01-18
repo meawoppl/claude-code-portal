@@ -828,9 +828,26 @@ pub fn dashboard_page() -> Html {
                     <p>{ "Loading sessions..." }</p>
                 </div>
             } else if active_sessions.is_empty() {
-                <div class="empty-state">
-                    <h2>{ "No Active Sessions" }</h2>
-                    <p>{ "Click \"+ New Session\" to connect a Claude proxy from your machine." }</p>
+                <div class="onboarding-container">
+                    <div class="onboarding-content">
+                        <h2>{ "No Sessions Connected" }</h2>
+
+                        <div class="onboarding-steps">
+                            <div class="onboarding-step">
+                                <span class="step-number">{ "1" }</span>
+                                <div class="step-content">
+                                    <p>{ "Click " }<strong>{ "+ New Session" }</strong>{ " above to get a setup command" }</p>
+                                </div>
+                            </div>
+
+                            <div class="onboarding-step">
+                                <span class="step-number">{ "2" }</span>
+                                <div class="step-content">
+                                    <p>{ "Run that command on your dev machine to connect Claude Code" }</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             } else {
                 <>
