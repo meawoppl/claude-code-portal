@@ -100,7 +100,7 @@ struct RawMessageLogInfo {
 
 #[derive(Debug, Clone, Deserialize)]
 struct RawMessagesResponse {
-    raw_messages: Vec<RawMessageLogInfo>,
+    logs: Vec<RawMessageLogInfo>,
 }
 
 // ============================================================================
@@ -559,7 +559,7 @@ pub fn admin_page() -> Html {
                         }
                         match response.json::<RawMessagesResponse>().await {
                             Ok(data) => {
-                                raw_messages.set(data.raw_messages);
+                                raw_messages.set(data.logs);
                             }
                             Err(e) => {
                                 error.set(Some(format!("Failed to parse raw messages: {:?}", e)));
