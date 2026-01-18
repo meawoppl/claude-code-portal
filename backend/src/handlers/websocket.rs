@@ -285,13 +285,19 @@ fn handle_claude_output(
             // Extract and store cost and token usage from result messages
             if role == "result" {
                 let cost = content.get("total_cost_usd").and_then(|c| c.as_f64());
-                let input_tokens = content.get("total_input_tokens").and_then(|t| t.as_i64());
-                let output_tokens = content.get("total_output_tokens").and_then(|t| t.as_i64());
-                let cache_creation = content
-                    .get("total_cache_creation_tokens")
+                // Token counts are nested under "usage" in the result message
+                let usage = content.get("usage");
+                let input_tokens = usage
+                    .and_then(|u| u.get("input_tokens"))
                     .and_then(|t| t.as_i64());
-                let cache_read = content
-                    .get("total_cache_read_tokens")
+                let output_tokens = usage
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(|t| t.as_i64());
+                let cache_creation = usage
+                    .and_then(|u| u.get("cache_creation_input_tokens"))
+                    .and_then(|t| t.as_i64());
+                let cache_read = usage
+                    .and_then(|u| u.get("cache_read_input_tokens"))
                     .and_then(|t| t.as_i64());
 
                 // Update cost if present
