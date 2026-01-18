@@ -377,6 +377,19 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Started user spend broadcast task (every 5 seconds)");
     }
 
+    // Spawn background task to batch message truncation (runs every 60 seconds)
+    {
+        let app_state = app_state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                run_batched_truncation(&app_state).await;
+            }
+        });
+        tracing::info!("Started message truncation task (every 60 seconds)");
+    }
+
     // Run the server with graceful shutdown
     let addr = format!("{}:{}", host, port);
 
@@ -476,5 +489,42 @@ async fn broadcast_user_spend_updates(app_state: &Arc<AppState>) {
                 );
             }
         }
+    }
+}
+
+/// Run batched message truncation for all queued sessions
+/// This is more efficient than truncating after every message insert
+async fn run_batched_truncation(app_state: &Arc<AppState>) {
+    let session_ids = app_state.session_manager.drain_pending_truncations();
+
+    if session_ids.is_empty() {
+        return;
+    }
+
+    tracing::debug!(
+        "Running batched truncation for {} sessions",
+        session_ids.len()
+    );
+
+    let Ok(mut conn) = app_state.db_pool.get() else {
+        tracing::error!("Failed to get DB connection for truncation");
+        return;
+    };
+
+    let mut total_deleted = 0;
+    for session_id in session_ids {
+        match handlers::messages::truncate_session_messages_internal(&mut conn, session_id) {
+            Ok(deleted) => total_deleted += deleted,
+            Err(e) => {
+                tracing::error!("Failed to truncate session {}: {:?}", session_id, e);
+            }
+        }
+    }
+
+    if total_deleted > 0 {
+        tracing::info!(
+            "Batched truncation complete: deleted {} messages total",
+            total_deleted
+        );
     }
 }

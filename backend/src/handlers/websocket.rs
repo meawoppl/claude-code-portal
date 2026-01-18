@@ -10,7 +10,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use diesel::prelude::*;
 use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
@@ -52,6 +52,8 @@ pub struct SessionManager {
     pub last_ack_seq: Arc<DashMap<Uuid, u64>>,
     // Map of session_key -> pending messages for disconnected proxies
     pending_messages: Arc<DashMap<SessionId, VecDeque<PendingMessage>>>,
+    // Set of session IDs that need message truncation (batched for efficiency)
+    pub pending_truncations: Arc<DashSet<Uuid>>,
 }
 
 impl Default for SessionManager {
@@ -62,6 +64,7 @@ impl Default for SessionManager {
             user_clients: Arc::new(DashMap::new()),
             last_ack_seq: Arc::new(DashMap::new()),
             pending_messages: Arc::new(DashMap::new()),
+            pending_truncations: Arc::new(DashSet::new()),
         }
     }
 }
@@ -231,6 +234,21 @@ impl SessionManager {
                 .retain(|sender| sender.send(msg.clone()).is_ok());
         }
     }
+
+    /// Queue a session for message truncation (batched for efficiency)
+    /// The actual truncation runs periodically in a background task
+    pub fn queue_truncation(&self, session_id: Uuid) {
+        self.pending_truncations.insert(session_id);
+    }
+
+    /// Drain and return all pending session IDs that need truncation
+    pub fn drain_pending_truncations(&self) -> Vec<Uuid> {
+        let ids: Vec<Uuid> = self.pending_truncations.iter().map(|r| *r).collect();
+        for id in &ids {
+            self.pending_truncations.remove(id);
+        }
+        ids
+    }
 }
 
 /// Handle Claude output (both legacy ClaudeOutput and new SequencedOutput)
@@ -353,8 +371,8 @@ fn handle_claude_output(
                 }
             }
 
-            // Truncate to keep only last 100 messages
-            let _ = super::messages::truncate_session_messages_internal(&mut conn, session_id);
+            // Queue session for truncation (batched for efficiency)
+            session_manager.queue_truncation(session_id);
         }
 
         // Update last_activity

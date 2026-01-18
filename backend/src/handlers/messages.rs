@@ -113,8 +113,8 @@ pub async fn create_message(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // Auto-truncate after insert to maintain the limit
-    let _ = truncate_session_messages_internal(&mut conn, session_id);
+    // Queue session for truncation (batched for efficiency)
+    app_state.session_manager.queue_truncation(session_id);
 
     Ok(Json(MessageResponse { message }))
 }
