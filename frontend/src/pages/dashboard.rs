@@ -18,6 +18,26 @@ use yew::prelude::*;
 use yew_router::prelude::*;
 
 const PAUSED_SESSIONS_STORAGE_KEY: &str = "claude-portal-paused-sessions";
+const INACTIVE_HIDDEN_STORAGE_KEY: &str = "claude-portal-inactive-hidden";
+
+/// Load whether inactive sessions section is hidden from localStorage
+fn load_inactive_hidden() -> bool {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|storage| storage.get_item(INACTIVE_HIDDEN_STORAGE_KEY).ok().flatten())
+        .map(|v| v == "true")
+        .unwrap_or(false)
+}
+
+/// Save inactive hidden state to localStorage
+fn save_inactive_hidden(hidden: bool) {
+    if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = storage.set_item(
+            INACTIVE_HIDDEN_STORAGE_KEY,
+            if hidden { "true" } else { "false" },
+        );
+    }
+}
 
 /// Load paused session IDs from localStorage
 fn load_paused_sessions() -> HashSet<Uuid> {
@@ -82,6 +102,7 @@ pub fn dashboard_page() -> Html {
     let focused_index = use_state(|| 0usize);
     let awaiting_sessions = use_state(HashSet::<Uuid>::new);
     let paused_sessions = use_state(load_paused_sessions);
+    let inactive_hidden = use_state(load_inactive_hidden);
     let session_costs = use_state(HashMap::<Uuid, f64>::new);
     let connected_sessions = use_state(HashSet::<Uuid>::new);
     let pending_leave = use_state(|| None::<Uuid>);
@@ -611,6 +632,15 @@ pub fn dashboard_page() -> Html {
         })
     };
 
+    let on_toggle_inactive_hidden = {
+        let inactive_hidden = inactive_hidden.clone();
+        Callback::from(move |_: MouseEvent| {
+            let new_val = !*inactive_hidden;
+            save_inactive_hidden(new_val);
+            inactive_hidden.set(new_val);
+        })
+    };
+
     // Update awaiting state after sending message (no auto-advance)
     let on_message_sent = {
         let awaiting_sessions = awaiting_sessions.clone();
@@ -857,12 +887,14 @@ pub fn dashboard_page() -> Html {
                         focused_index={*focused_index}
                         awaiting_sessions={(*awaiting_sessions).clone()}
                         paused_sessions={(*paused_sessions).clone()}
+                        inactive_hidden={*inactive_hidden}
                         session_costs={(*session_costs).clone()}
                         connected_sessions={(*connected_sessions).clone()}
                         nav_mode={*nav_mode}
                         on_select={on_select_session.clone()}
                         on_leave={on_leave.clone()}
                         on_toggle_pause={on_toggle_pause.clone()}
+                        on_toggle_inactive_hidden={on_toggle_inactive_hidden.clone()}
                     />
 
                     // Render session views only for activated sessions (focused at least once)
@@ -984,12 +1016,14 @@ struct SessionRailProps {
     focused_index: usize,
     awaiting_sessions: HashSet<Uuid>,
     paused_sessions: HashSet<Uuid>,
+    inactive_hidden: bool,
     session_costs: HashMap<Uuid, f64>,
     connected_sessions: HashSet<Uuid>,
     nav_mode: bool,
     on_select: Callback<usize>,
     on_leave: Callback<Uuid>,
     on_toggle_pause: Callback<Uuid>,
+    on_toggle_inactive_hidden: Callback<MouseEvent>,
 }
 
 #[function_component(SessionRail)]
@@ -1011,128 +1045,181 @@ fn session_rail(props: &SessionRailProps) -> Html {
         });
     }
 
+    // Helper to render a single session pill
+    let render_pill = |index: usize, session: &SessionInfo| -> Html {
+        let is_focused = index == props.focused_index;
+        let is_awaiting = props.awaiting_sessions.contains(&session.id);
+        let is_paused = props.paused_sessions.contains(&session.id);
+        let is_connected = props.connected_sessions.contains(&session.id);
+        let cost = props.session_costs.get(&session.id).copied().unwrap_or(0.0);
+
+        let on_click = {
+            let on_select = props.on_select.clone();
+            Callback::from(move |_| on_select.emit(index))
+        };
+
+        let on_pause = {
+            let on_toggle_pause = props.on_toggle_pause.clone();
+            let session_id = session.id;
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                on_toggle_pause.emit(session_id);
+            })
+        };
+
+        let on_leave = {
+            let on_leave = props.on_leave.clone();
+            let session_id = session.id;
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                on_leave.emit(session_id);
+            })
+        };
+
+        let in_nav_mode = props.nav_mode;
+        let is_status_disconnected = session.status.as_str() != "active";
+        let pill_class = classes!(
+            "session-pill",
+            if is_focused { Some("focused") } else { None },
+            if is_awaiting { Some("awaiting") } else { None },
+            if is_paused { Some("paused") } else { None },
+            if in_nav_mode { Some("nav-mode") } else { None },
+            if is_status_disconnected {
+                Some("status-disconnected")
+            } else {
+                None
+            },
+        );
+
+        let hostname = utils::extract_hostname(&session.session_name);
+        let folder = utils::extract_folder(&session.working_directory);
+
+        let connection_class = if is_connected {
+            "pill-status connected"
+        } else {
+            "pill-status disconnected"
+        };
+
+        // Show number annotation only in nav mode (1-9)
+        let number_annotation = if in_nav_mode && index < 9 {
+            Some(format!("{}", index + 1))
+        } else {
+            None
+        };
+
+        html! {
+            <div class={pill_class} onclick={on_click} key={session.id.to_string()}>
+                {
+                    if let Some(num) = &number_annotation {
+                        html! { <span class="pill-number">{ num }</span> }
+                    } else {
+                        html! {}
+                    }
+                }
+                <span class={connection_class}>
+                    { if is_connected { "●" } else { "○" } }
+                </span>
+                <span class="pill-name" title={session.session_name.clone()}>
+                    <span class="pill-folder">{ folder }</span>
+                    <span class="pill-hostname">{ hostname }</span>
+                    {
+                        if let Some(ref branch) = session.git_branch {
+                            html! { <span class="pill-branch">{ branch }</span> }
+                        } else {
+                            html! {}
+                        }
+                    }
+                </span>
+                {
+                    if cost > 0.0 {
+                        html! { <span class="pill-cost">{ format!("${:.2}", cost) }</span> }
+                    } else {
+                        html! {}
+                    }
+                }
+                {
+                    if is_paused {
+                        html! { <span class="pill-paused-badge">{ "ᴾ" }</span> }
+                    } else {
+                        html! {}
+                    }
+                }
+                // Show role badge for non-owners
+                {
+                    if session.my_role != "owner" {
+                        let role_class = format!("pill-role-badge role-{}", session.my_role);
+                        html! { <span class={role_class}>{ &session.my_role }</span> }
+                    } else {
+                        html! {}
+                    }
+                }
+                <button
+                    class={classes!("pill-pause", if is_paused { Some("active") } else { None })}
+                    onclick={on_pause}
+                    title={if is_paused { "Unpause session" } else { "Pause session (skip in rotation)" }}
+                >
+                    { if is_paused { "▶" } else { "⏸" } }
+                </button>
+                // Leave button for non-owners (delete is in Settings)
+                {
+                    if session.my_role != "owner" {
+                        html! {
+                            <button class="pill-leave" onclick={on_leave} title="Leave session">{ "↩" }</button>
+                        }
+                    } else {
+                        html! {}
+                    }
+                }
+            </div>
+        }
+    };
+
+    // Split sessions into active (connected and not paused) vs inactive (disconnected or paused)
+    let (active_indices, inactive_indices): (Vec<_>, Vec<_>) =
+        props.sessions.iter().enumerate().partition(|(_, session)| {
+            let is_connected = props.connected_sessions.contains(&session.id);
+            let is_paused = props.paused_sessions.contains(&session.id);
+            is_connected && !is_paused
+        });
+
+    let inactive_count = inactive_indices.len();
+
     html! {
         <div class="session-rail" ref={rail_ref}>
+            // Active sessions
+            { active_indices.iter().map(|(index, session)| render_pill(*index, session)).collect::<Html>() }
+
+            // Divider (only show if there are inactive sessions)
             {
-                props.sessions.iter().enumerate().map(|(index, session)| {
-                    let is_focused = index == props.focused_index;
-                    let is_awaiting = props.awaiting_sessions.contains(&session.id);
-                    let is_paused = props.paused_sessions.contains(&session.id);
-                    let is_connected = props.connected_sessions.contains(&session.id);
-                    let cost = props.session_costs.get(&session.id).copied().unwrap_or(0.0);
-
-                    let on_click = {
-                        let on_select = props.on_select.clone();
-                        Callback::from(move |_| on_select.emit(index))
-                    };
-
-                    let on_pause = {
-                        let on_toggle_pause = props.on_toggle_pause.clone();
-                        let session_id = session.id;
-                        Callback::from(move |e: MouseEvent| {
-                            e.stop_propagation();
-                            on_toggle_pause.emit(session_id);
-                        })
-                    };
-
-                    let on_leave = {
-                        let on_leave = props.on_leave.clone();
-                        let session_id = session.id;
-                        Callback::from(move |e: MouseEvent| {
-                            e.stop_propagation();
-                            on_leave.emit(session_id);
-                        })
-                    };
-
-                    let in_nav_mode = props.nav_mode;
-                    let is_status_disconnected = session.status.as_str() != "active";
-                    let pill_class = classes!(
-                        "session-pill",
-                        if is_focused { Some("focused") } else { None },
-                        if is_awaiting { Some("awaiting") } else { None },
-                        if is_paused { Some("paused") } else { None },
-                        if in_nav_mode { Some("nav-mode") } else { None },
-                        if is_status_disconnected { Some("status-disconnected") } else { None },
+                if inactive_count > 0 {
+                    let toggle_class = classes!(
+                        "session-rail-divider",
+                        if props.inactive_hidden { Some("collapsed") } else { None }
                     );
-
-                    let hostname = utils::extract_hostname(&session.session_name);
-                    let folder = utils::extract_folder(&session.working_directory);
-
-                    let connection_class = if is_connected { "pill-status connected" } else { "pill-status disconnected" };
-
-                    // Show number annotation only in nav mode (1-9)
-                    let number_annotation = if in_nav_mode && index < 9 {
-                        Some(format!("{}", index + 1))
-                    } else {
-                        None
-                    };
-
                     html! {
-                        <div class={pill_class} onclick={on_click}>
-                            {
-                                if let Some(num) = &number_annotation {
-                                    html! { <span class="pill-number">{ num }</span> }
+                        <div class={toggle_class} onclick={props.on_toggle_inactive_hidden.clone()}>
+                            <span class="divider-line"></span>
+                            <button class="divider-toggle" title={if props.inactive_hidden { "Show inactive sessions" } else { "Hide inactive sessions" }}>
+                                { if props.inactive_hidden {
+                                    format!("▶ {}", inactive_count)
                                 } else {
-                                    html! {}
-                                }
-                            }
-                            <span class={connection_class}>
-                                { if is_connected { "●" } else { "○" } }
-                            </span>
-                            <span class="pill-name" title={session.session_name.clone()}>
-                                <span class="pill-folder">{ folder }</span>
-                                <span class="pill-hostname">{ hostname }</span>
-                                {
-                                    if let Some(ref branch) = session.git_branch {
-                                        html! { <span class="pill-branch">{ branch }</span> }
-                                    } else {
-                                        html! {}
-                                    }
-                                }
-                            </span>
-                            {
-                                if cost > 0.0 {
-                                    html! { <span class="pill-cost">{ format!("${:.2}", cost) }</span> }
-                                } else {
-                                    html! {}
-                                }
-                            }
-                            {
-                                if is_paused {
-                                    html! { <span class="pill-paused-badge">{ "ᴾ" }</span> }
-                                } else {
-                                    html! {}
-                                }
-                            }
-                            // Show role badge for non-owners
-                            {
-                                if session.my_role != "owner" {
-                                    let role_class = format!("pill-role-badge role-{}", session.my_role);
-                                    html! { <span class={role_class}>{ &session.my_role }</span> }
-                                } else {
-                                    html! {}
-                                }
-                            }
-                            <button
-                                class={classes!("pill-pause", if is_paused { Some("active") } else { None })}
-                                onclick={on_pause}
-                                title={if is_paused { "Unpause session" } else { "Pause session (skip in rotation)" }}
-                            >
-                                { if is_paused { "▶" } else { "⏸" } }
+                                    "◀".to_string()
+                                }}
                             </button>
-                            // Leave button for non-owners (delete is in Settings)
-                            {
-                                if session.my_role != "owner" {
-                                    html! {
-                                        <button class="pill-leave" onclick={on_leave} title="Leave session">{ "↩" }</button>
-                                    }
-                                } else {
-                                    html! {}
-                                }
-                            }
                         </div>
                     }
-                }).collect::<Html>()
+                } else {
+                    html! {}
+                }
+            }
+
+            // Inactive sessions (hidden when collapsed)
+            {
+                if !props.inactive_hidden {
+                    inactive_indices.iter().map(|(index, session)| render_pill(*index, session)).collect::<Html>()
+                } else {
+                    html! {}
+                }
             }
         </div>
     }
