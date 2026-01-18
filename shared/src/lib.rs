@@ -176,6 +176,15 @@ pub enum ProxyMessage {
         /// The session that ended
         session_id: Uuid,
     },
+
+    /// Server is shutting down (backend -> all clients)
+    /// Sent to all connected WebSocket clients before graceful shutdown
+    ServerShutdown {
+        /// Human-readable reason for shutdown (e.g., "Server restarting for update")
+        reason: String,
+        /// Suggested delay before reconnecting (milliseconds)
+        reconnect_delay_ms: u64,
+    },
 }
 
 fn default_language_code() -> String {

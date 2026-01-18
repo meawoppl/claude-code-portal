@@ -208,6 +208,29 @@ impl SessionManager {
     pub fn get_all_user_ids(&self) -> Vec<Uuid> {
         self.user_clients.iter().map(|r| *r.key()).collect()
     }
+
+    /// Broadcast a message to ALL connected clients (proxies, web clients, and user clients)
+    /// Used for server-wide announcements like shutdown notifications
+    pub fn broadcast_to_all(&self, msg: ProxyMessage) {
+        // Send to all session proxies
+        for entry in self.sessions.iter() {
+            let _ = entry.value().send(msg.clone());
+        }
+
+        // Send to all web clients (per-session)
+        for mut entry in self.web_clients.iter_mut() {
+            entry
+                .value_mut()
+                .retain(|sender| sender.send(msg.clone()).is_ok());
+        }
+
+        // Send to all user clients
+        for mut entry in self.user_clients.iter_mut() {
+            entry
+                .value_mut()
+                .retain(|sender| sender.send(msg.clone()).is_ok());
+        }
+    }
 }
 
 /// Handle Claude output (both legacy ClaudeOutput and new SequencedOutput)

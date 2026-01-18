@@ -117,6 +117,8 @@ pub fn dashboard_page() -> Html {
     let activated_sessions = use_state(HashSet::<Uuid>::new);
     // Track if initial focus has been set (to pick first non-paused session)
     let initial_focus_set = use_state(|| false);
+    // Server shutdown notification (shown as toast)
+    let server_shutdown_reason = use_state(|| None::<String>);
 
     // Fetch current user info (to check admin status and voice_enabled)
     {
@@ -298,9 +300,11 @@ pub fn dashboard_page() -> Html {
     {
         let total_user_spend = total_user_spend.clone();
         let session_costs = session_costs.clone();
+        let server_shutdown_reason = server_shutdown_reason.clone();
         use_effect_with((), move |_| {
             let total_user_spend = total_user_spend.clone();
             let session_costs = session_costs.clone();
+            let server_shutdown_reason = server_shutdown_reason.clone();
             spawn_local(async move {
                 let mut attempt: u32 = 0;
                 const MAX_ATTEMPTS: u32 = 10;
@@ -315,21 +319,38 @@ pub fn dashboard_page() -> Html {
                             while let Some(msg) = receiver.next().await {
                                 match msg {
                                     Ok(Message::Text(text)) => {
-                                        if let Ok(ProxyMessage::UserSpendUpdate {
-                                            total_spend_usd,
-                                            session_costs: costs,
-                                        }) = serde_json::from_str::<ProxyMessage>(&text)
+                                        if let Ok(proxy_msg) =
+                                            serde_json::from_str::<ProxyMessage>(&text)
                                         {
-                                            total_user_spend.set(total_spend_usd);
-                                            let mut map = (*session_costs).clone();
-                                            for SessionCost {
-                                                session_id,
-                                                total_cost_usd,
-                                            } in costs
-                                            {
-                                                map.insert(session_id, total_cost_usd);
+                                            match proxy_msg {
+                                                ProxyMessage::UserSpendUpdate {
+                                                    total_spend_usd,
+                                                    session_costs: costs,
+                                                } => {
+                                                    total_user_spend.set(total_spend_usd);
+                                                    let mut map = (*session_costs).clone();
+                                                    for SessionCost {
+                                                        session_id,
+                                                        total_cost_usd,
+                                                    } in costs
+                                                    {
+                                                        map.insert(session_id, total_cost_usd);
+                                                    }
+                                                    session_costs.set(map);
+                                                }
+                                                ProxyMessage::ServerShutdown {
+                                                    reason,
+                                                    reconnect_delay_ms,
+                                                } => {
+                                                    log::info!(
+                                                        "Server shutdown: {} (reconnect in {}ms)",
+                                                        reason,
+                                                        reconnect_delay_ms
+                                                    );
+                                                    server_shutdown_reason.set(Some(reason));
+                                                }
+                                                _ => {}
                                             }
-                                            session_costs.set(map);
                                         }
                                     }
                                     Err(e) => {
@@ -807,6 +828,19 @@ pub fn dashboard_page() -> Html {
 
     html! {
         <div class="focus-flow-container" onkeydown={on_keydown} tabindex="0">
+            // Server shutdown warning banner
+            {
+                if let Some(reason) = (*server_shutdown_reason).as_ref() {
+                    html! {
+                        <div class="server-shutdown-banner">
+                            <span class="shutdown-icon">{ "⚠" }</span>
+                            <span class="shutdown-text">{ format!("Server shutting down: {} — reconnecting...", reason) }</span>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
             // Header with new session button
             <header class="focus-flow-header">
                 <h1>{ (*app_title).clone() }</h1>

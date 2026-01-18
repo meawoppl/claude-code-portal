@@ -1012,6 +1012,17 @@ async fn handle_ws_text_message(
                 let _ = ws.send(Message::Text(json)).await;
             }
         }
+        ProxyMessage::ServerShutdown {
+            reason,
+            reconnect_delay_ms,
+        } => {
+            warn!(
+                "Server shutting down: {} (reconnecting in {}ms)",
+                reason, reconnect_delay_ms
+            );
+            // Returning false will trigger the reconnect cycle
+            return false;
+        }
         _ => {
             debug!("ws msg: {:?}", proxy_msg);
         }

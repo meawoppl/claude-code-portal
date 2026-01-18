@@ -377,15 +377,62 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Started user spend broadcast task (every 5 seconds)");
     }
 
-    // Run the server
+    // Run the server with graceful shutdown
     let addr = format!("{}:{}", host, port);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("Listening on {}", listener.local_addr()?);
 
-    axum::serve(listener, app).await?;
+    // Create graceful shutdown handler
+    let shutdown_state = app_state.clone();
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(shutdown_state))
+        .await?;
 
     Ok(())
+}
+
+/// Handle shutdown signals (SIGTERM, SIGINT) gracefully
+/// Broadcasts ServerShutdown message to all clients before returning
+async fn shutdown_signal(app_state: Arc<AppState>) {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {
+            tracing::info!("Received Ctrl+C, initiating graceful shutdown...");
+        },
+        _ = terminate => {
+            tracing::info!("Received SIGTERM, initiating graceful shutdown...");
+        },
+    }
+
+    // Broadcast shutdown message to all connected clients
+    tracing::info!("Broadcasting shutdown notification to all clients...");
+    app_state
+        .session_manager
+        .broadcast_to_all(shared::ProxyMessage::ServerShutdown {
+            reason: "Server is restarting".to_string(),
+            reconnect_delay_ms: 5000,
+        });
+
+    // Give clients a moment to receive the message
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    tracing::info!("Shutdown complete");
 }
 
 /// Query user spend from DB and broadcast to all connected web clients
