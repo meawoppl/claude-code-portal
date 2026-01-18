@@ -1026,6 +1026,13 @@ fn session_rail(props: &SessionRailProps) -> Html {
                                         html! {}
                                     }
                                 }
+                                {
+                                    if let Some(ref branch) = session.git_branch {
+                                        html! { <span class="pill-branch">{ branch }</span> }
+                                    } else {
+                                        html! {}
+                                    }
+                                }
                             </span>
                             {
                                 if cost > 0.0 {

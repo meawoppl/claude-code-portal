@@ -216,6 +216,16 @@
     font-size: 0.85rem;
 }
 
+.session-branch {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+}
+
 /* Status indicators */
 .token-status,
 .session-status {

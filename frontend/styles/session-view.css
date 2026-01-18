@@ -215,6 +215,19 @@
     text-overflow: ellipsis;
 }
 
+.pill-branch {
+    font-size: 0.7rem;
+    color: var(--accent);
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.session-pill.status-disconnected .pill-branch {
+    color: var(--text-secondary);
+}
+
 .pill-status {
     font-size: 0.6rem;
     line-height: 1;
