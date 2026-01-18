@@ -684,6 +684,135 @@
     border-color: var(--accent);
 }
 
+/* AskUserQuestion specialized prompt */
+.permission-prompt.ask-user-question {
+    background: linear-gradient(135deg, rgba(122, 162, 247, 0.15) 0%, rgba(187, 154, 247, 0.15) 100%);
+    border-color: rgba(122, 162, 247, 0.4);
+}
+
+.ask-user-question .question-container {
+    margin-bottom: 0.75rem;
+}
+
+.ask-user-question .question-container:last-child {
+    margin-bottom: 0;
+}
+
+.ask-user-question .question-header-badge {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.ask-user-question .badge {
+    background: var(--accent);
+    color: var(--bg-darker);
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+}
+
+.ask-user-question .multi-badge {
+    background: rgba(187, 154, 247, 0.3);
+    color: var(--link-color);
+    font-size: 0.65rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+}
+
+.ask-user-question .question-text {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    line-height: 1.4;
+    margin-bottom: 0.75rem;
+}
+
+.ask-user-question .question-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.ask-user-question .question-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.ask-user-question .question-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(122, 162, 247, 0.3);
+}
+
+.ask-user-question .question-option.selected {
+    background: rgba(122, 162, 247, 0.15);
+    border-color: var(--accent);
+}
+
+.ask-user-question .option-icon {
+    font-size: 0.9rem;
+    min-width: 1rem;
+    color: var(--text-secondary);
+}
+
+.ask-user-question .question-option.selected .option-icon {
+    color: var(--accent);
+}
+
+.ask-user-question .option-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.ask-user-question .option-label {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.ask-user-question .option-description {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.3;
+}
+
+.ask-user-question .submit-answer {
+    margin-top: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: var(--accent);
+    color: var(--bg-darker);
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.ask-user-question .submit-answer:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+.ask-user-question .submit-answer:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.ask-user-question .question-hint {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
 .session-view-input {
     display: flex;
     align-items: center;
