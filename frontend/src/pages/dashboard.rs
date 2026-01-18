@@ -648,7 +648,11 @@ pub fn dashboard_page() -> Html {
         })
     };
 
-    let waiting_count = awaiting_sessions.len();
+    // Count only non-paused sessions that are awaiting input
+    let waiting_count = awaiting_sessions
+        .iter()
+        .filter(|id| !paused_sessions.contains(id))
+        .count();
 
     // Count disconnected sessions for the reconnection banner
     // Only count sessions that are both activated (have started loading) and not paused
