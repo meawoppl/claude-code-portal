@@ -15,23 +15,29 @@ This guide covers deploying claude-code-portal to production.
 Create a `.env` file or set these environment variables:
 
 ```bash
-# Database Connection (required)
+# Required
 DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
-
-# Google OAuth (required for production)
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=https://your-domain.com/auth/google/callback
-
-# Server Configuration
-HOST=0.0.0.0
-PORT=3000
-
-# Security (required for production)
 SESSION_SECRET=generate-a-random-32-char-secret-here
 
-# Frontend Path (usually auto-detected)
-FRONTEND_DIST=frontend/dist
+# Optional - Server configuration
+# HOST=0.0.0.0
+# PORT=3000
+# BASE_URL=https://your-domain.com
+
+# Optional - Customize app title
+# APP_TITLE=Claude Code Portal
+
+# Optional - Google Cloud Speech-to-Text (for server-side voice transcription)
+# GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+
+# Optional - Frontend path (auto-detected)
+# FRONTEND_DIST=frontend/dist
+
+# Optional - Proxy binary path for downloads (auto-detected)
+# PROXY_BINARY_PATH=/app/claude-portal
 ```
 
 ## Docker Deployment (Recommended)
@@ -210,25 +216,9 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=https://your-domain.com/auth/google/callback
 ```
 
-### Access Control Options
+### Access Control
 
-Control who can access your portal:
+By default, any Google account can sign in. To restrict access:
 
-| Variable | Effect |
-|----------|--------|
-| *(none)* | Any Google account can sign in |
-| `ALLOWED_EMAIL_DOMAIN=company.com` | Only `@company.com` emails allowed |
-| `ALLOWED_EMAILS=a@x.com,b@y.com` | Only listed emails allowed |
-
-Example configurations:
-
-```bash
-# Single user (personal server)
-ALLOWED_EMAILS=your.email@gmail.com
-
-# Organization (team/company)
-ALLOWED_EMAIL_DOMAIN=yourcompany.com
-
-# Public access (like txcl.io)
-# Don't set either variable
-```
+1. Use the admin panel (`/admin`) to disable unwanted users after they sign in
+2. For Google Workspace organizations, configure the OAuth consent screen as "Internal" to restrict to your domain
