@@ -19,6 +19,8 @@ use yew_router::prelude::*;
 
 const PAUSED_SESSIONS_STORAGE_KEY: &str = "claude-portal-paused-sessions";
 const INACTIVE_HIDDEN_STORAGE_KEY: &str = "claude-portal-inactive-hidden";
+/// Maximum number of messages to keep in frontend memory (matches backend limit)
+const MAX_MESSAGES_PER_SESSION: usize = 100;
 
 /// Load whether inactive sessions section is hidden from localStorage
 fn load_inactive_hidden() -> bool {
@@ -1729,7 +1731,12 @@ impl Component for SessionView {
                 }
                 true
             }
-            SessionViewMsg::LoadHistory(messages, last_timestamp) => {
+            SessionViewMsg::LoadHistory(mut messages, last_timestamp) => {
+                // Truncate to keep only the last MAX_MESSAGES_PER_SESSION messages
+                if messages.len() > MAX_MESSAGES_PER_SESSION {
+                    let excess = messages.len() - MAX_MESSAGES_PER_SESSION;
+                    messages.drain(0..excess);
+                }
                 // Bulk load - set all at once, no per-message renders
                 self.messages = messages;
                 // Store timestamp for reconnection replay_after
@@ -1762,6 +1769,11 @@ impl Component for SessionView {
                     }
                 }
                 self.messages.push(output);
+                // Truncate to keep only the last MAX_MESSAGES_PER_SESSION messages
+                if self.messages.len() > MAX_MESSAGES_PER_SESSION {
+                    let excess = self.messages.len() - MAX_MESSAGES_PER_SESSION;
+                    self.messages.drain(0..excess);
+                }
                 // Update timestamp for reconnection - use current time for real-time messages
                 self.last_message_timestamp = Some(
                     js_sys::Date::new_0()
