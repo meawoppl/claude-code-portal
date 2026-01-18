@@ -1,12 +1,12 @@
 # Proxy Internals
 
-This document describes the internal architecture and message flow of the `claude-proxy` binary.
+This document describes the internal architecture and message flow of the `claude-portal` binary.
 
 ## Overview
 
 The proxy acts as a bridge between:
 1. **Claude CLI** - The local Claude Code command-line tool
-2. **Backend WebSocket** - The cc-proxy backend server
+2. **Backend WebSocket** - The claude-code-portal backend server
 3. **Web Interface** - Users interacting via browser
 
 ```
@@ -68,7 +68,7 @@ enum ProxyMessage {
 ### Startup Sequence
 
 1. **Parse Configuration**
-   - Load saved auth from `~/.config/cc-proxy/config.json`
+   - Load saved auth from `~/.config/claude-code-portal/config.json`
    - Parse CLI arguments (`--init`, `--backend-url`, etc.)
 
 2. **Authentication**
@@ -163,7 +163,7 @@ loop {
 
 ## Configuration Storage
 
-Config is stored in `~/.config/cc-proxy/config.json`:
+Config is stored in `~/.config/claude-code-portal/config.json`:
 
 ```json
 {

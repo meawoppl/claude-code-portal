@@ -1,16 +1,16 @@
-# cc-proxy
+# claude-code-portal
 
-A web-based proxy for Claude Code sessions, enabling remote access to Claude Code running on dedicated computers through a beautiful web interface.
+A web-based portal for Claude Code sessions, enabling remote access to Claude Code running on dedicated computers through a beautiful web interface.
 
 ## Try It Out
 
 **Live Demo**: [txcl.io](https://txcl.io)
 
-You can try cc-proxy right now at [txcl.io](https://txcl.io). Sign in with Google to get started - your sessions are isolated and secure.
+You can try claude-code-portal right now at [txcl.io](https://txcl.io). Sign in with Google to get started - your sessions are isolated and secure.
 
 ## Overview
 
-cc-proxy allows you to:
+claude-code-portal allows you to:
 - Run Claude Code on a powerful remote machine
 - Access it from anywhere via a web browser
 - Share sessions across multiple clients
@@ -24,7 +24,7 @@ Perfect for teams with dedicated AI workstations or for accessing your home setu
 ```mermaid
 flowchart TB
     subgraph dev["Dev Machine"]
-        subgraph proxy["claude-proxy binary"]
+        subgraph portal["claude-portal binary"]
             subgraph codes["claude-codes crate"]
                 claude["claude CLI binary"]
             end
@@ -41,7 +41,7 @@ flowchart TB
         yew["Yew WASM Frontend"]
     end
 
-    proxy <-->|"WebSocket"| axum
+    portal <-->|"WebSocket"| axum
     yew <-->|"WebSocket"| axum
     axum -->|"Serves"| yew
 ```
@@ -61,8 +61,8 @@ This project consists of four Rust crates:
 
 ```bash
 # Clone the repository
-git clone https://github.com/meawoppl/cc-proxy.git
-cd cc-proxy
+git clone https://github.com/meawoppl/claude-code-portal.git
+cd claude-code-portal
 
 # Start everything (auto-installs dependencies)
 ./scripts/dev.sh start
@@ -83,17 +83,17 @@ See [Development Guide](docs/DEVELOPING.md) for more details.
 3. View active Claude Code sessions
 4. Click any session to interact with Claude
 
-### Running the Proxy
+### Running the Portal
 
 On your development machine:
 
 ```bash
-claude-proxy \
+claude-portal \
   --backend-url wss://your-domain.com \
   --session-name "my-dev-machine"
 ```
 
-On first run, the proxy will display a verification URL and code for OAuth authentication. Credentials are cached in `~/.config/cc-proxy/config.json`.
+On first run, the portal will display a verification URL and code for OAuth authentication. Credentials are cached in `~/.config/claude-code-portal/config.json`.
 
 ## Documentation
 
@@ -124,7 +124,7 @@ On first run, the proxy will display a verification URL and code for OAuth authe
 
 | Endpoint | Description |
 |----------|-------------|
-| `/ws/session` | Proxy connection (Claude Code to backend) |
+| `/ws/session` | Portal connection (Claude Code to backend) |
 | `/ws/client` | Browser connection (real-time updates) |
 
 ### Message Protocol
@@ -155,7 +155,7 @@ enum ProxyMessage {
 | macOS (Intel) | Untested (builds in CI) |
 | Windows (x86_64) | Untested (builds in CI) |
 
-Pre-built binaries available from [GitHub Releases](https://github.com/meawoppl/cc-proxy/releases/latest).
+Pre-built binaries available from [GitHub Releases](https://github.com/meawoppl/claude-code-portal/releases/latest).
 
 ## Contributing
 
@@ -174,5 +174,5 @@ MIT License - see [LICENSE](LICENSE) file for details
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/meawoppl/cc-proxy/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/meawoppl/cc-proxy/discussions)
+- **Issues**: [GitHub Issues](https://github.com/meawoppl/claude-code-portal/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/meawoppl/claude-code-portal/discussions)

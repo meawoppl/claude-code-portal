@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide covers setting up a development environment and contributing to cc-proxy.
+This guide covers setting up a development environment and contributing to claude-code-portal.
 
 ## Prerequisites
 
@@ -33,8 +33,8 @@ The fastest way to get a dev environment running:
 
 ```bash
 # Clone the repository
-git clone https://github.com/meawoppl/cc-proxy.git
-cd cc-proxy
+git clone https://github.com/meawoppl/claude-code-portal.git
+cd claude-code-portal
 
 # Start everything (auto-installs dependencies)
 ./scripts/dev.sh start
@@ -91,7 +91,7 @@ docker-compose -f docker-compose.test.yml up -d db
 
 ```bash
 # For dev mode, this is sufficient:
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 ```
 
 ### 4. Run Database Migrations
@@ -120,7 +120,7 @@ cargo run -p proxy -- --backend-url ws://localhost:3000
 ## Project Structure
 
 ```
-cc-proxy/
+claude-code-portal/
 ├── Cargo.toml              # Workspace definition
 ├── Cargo.lock              # Dependency lock file
 │
@@ -340,7 +340,7 @@ psql $DATABASE_URL
 lsof -i :3000
 
 # Check logs
-tail -f /tmp/cc-proxy-backend.log
+tail -f /tmp/claude-code-portal-backend.log
 ```
 
 **Frontend won't build:**

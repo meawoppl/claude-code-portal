@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-log() { echo -e "${BLUE}[cc-proxy]${NC} $1"; }
+log() { echo -e "${BLUE}[claude-portal]${NC} $1"; }
 success() { echo -e "${GREEN}✓${NC} $1"; }
 error() { echo -e "${RED}✗${NC} $1"; }
 warn() { echo -e "${YELLOW}⚠${NC} $1"; }
@@ -57,7 +57,7 @@ docker-compose -f docker-compose.test.yml up -d db
 
 log "⏳ Waiting for database..."
 for i in {1..30}; do
-    if docker-compose -f docker-compose.test.yml exec -T db pg_isready -U ccproxy > /dev/null 2>&1; then
+    if docker-compose -f docker-compose.test.yml exec -T db pg_isready -U claude_portal > /dev/null 2>&1; then
         success "Database is ready"
         break
     fi
@@ -65,7 +65,7 @@ for i in {1..30}; do
     sleep 1
 done
 
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 
 log "🔄 Running migrations..."
 
@@ -90,7 +90,7 @@ cd frontend && trunk build --release && cd ..
 success "Frontend built"
 
 log "🚀 Starting backend with OAuth..."
-cargo run -p backend > /tmp/cc-proxy-backend.log 2>&1 &
+cargo run -p backend > /tmp/claude-portal-backend.log 2>&1 &
 BACKEND_PID=$!
 
 log "⏳ Waiting for backend..."
@@ -120,7 +120,7 @@ echo "  🌐 Web Interface:  http://localhost:3000/app/"
 echo "  📊 Backend API:    http://localhost:3000/"
 echo ""
 echo "  📝 Logs:"
-echo "     Backend: tail -f /tmp/cc-proxy-backend.log"
+echo "     Backend: tail -f /tmp/claude-portal-backend.log"
 echo ""
 echo "  🔐 OAuth Flow:"
 echo "     1. Follow the link displayed by the proxy"

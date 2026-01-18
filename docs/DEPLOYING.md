@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This guide covers deploying cc-proxy to production.
+This guide covers deploying claude-code-portal to production.
 
 ## Prerequisites
 
@@ -96,7 +96,7 @@ cargo run --release -p backend
 
 ```bash
 cargo build --release -p proxy
-# Copy target/release/claude-proxy to dev machines
+# Copy target/release/claude-portal to dev machines
 ```
 
 ## Backend Command-Line Options
@@ -113,7 +113,7 @@ Options:
 ## Proxy Command-Line Options
 
 ```bash
-claude-proxy [OPTIONS] -- [CLAUDE_ARGS]
+claude-portal [OPTIONS] -- [CLAUDE_ARGS]
 
 Options:
   --backend-url <URL>     Backend WebSocket URL [default: ws://localhost:3000]
@@ -165,7 +165,7 @@ Admins can access the admin dashboard at `/admin` which provides:
 | macOS (Intel) | Untested | Builds in CI, PRs welcome |
 | Windows (x86_64) | Untested | Builds in CI, PRs welcome |
 
-Pre-built binaries for all platforms are available from [GitHub Releases](https://github.com/meawoppl/cc-proxy/releases/latest).
+Pre-built binaries for all platforms are available from [GitHub Releases](https://github.com/meawoppl/claude-code-portal/releases/latest).
 
 ## Troubleshooting
 

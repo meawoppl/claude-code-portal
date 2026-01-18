@@ -1,5 +1,5 @@
 # =============================================================================
-# Dockerfile for CC-Proxy Backend
+# Dockerfile for Claude Code Portal Backend
 # Uses pre-built binaries from CI (faster builds with caching)
 # =============================================================================
 
@@ -19,17 +19,17 @@ RUN apt-get update && \
 # Copy pre-built backend binary from CI
 COPY build-output/backend /app/backend
 
-# Download pre-built claude-proxy binary from GitHub releases
+# Download pre-built claude-portal binary from GitHub releases
 RUN mkdir -p /app/bin && \
-    curl -fsSL https://github.com/meawoppl/cc-proxy/releases/download/latest/claude-proxy-linux-x86_64 \
-    -o /app/bin/claude-proxy && \
-    chmod +x /app/bin/claude-proxy
+    curl -fsSL https://github.com/meawoppl/claude-code-portal/releases/download/latest/claude-portal-linux-x86_64 \
+    -o /app/bin/claude-portal && \
+    chmod +x /app/bin/claude-portal
 
 # Copy pre-built frontend dist from CI
 COPY build-output/frontend-dist /app/frontend/dist
 
 # Set proxy binary path for the download endpoint
-ENV PROXY_BINARY_PATH=/app/bin/claude-proxy
+ENV PROXY_BINARY_PATH=/app/bin/claude-portal
 
 # Create non-root user
 RUN useradd -m -u 1001 -s /bin/bash appuser && \

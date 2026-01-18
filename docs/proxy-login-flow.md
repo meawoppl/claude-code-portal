@@ -1,6 +1,6 @@
 # Proxy Binary Login Flow
 
-This document describes how the `claude-proxy` CLI authenticates with the cc-proxy backend.
+This document describes how the `claude-portal` CLI authenticates with the claude-code-portal backend.
 
 ## Overview
 
@@ -43,7 +43,7 @@ The simplest way to authenticate the proxy is using a pre-generated JWT token fr
 │                         CLI (one-time setup)                         │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│  $ claude-proxy --init "https://server.com/p/eyJ0Ijoi..."           │
+│  $ claude-portal --init "https://server.com/p/eyJ0Ijoi..."           │
 │                     │                                                │
 │                     ▼                                                │
 │  5. Proxy decodes config from URL                                   │
@@ -52,13 +52,13 @@ The simplest way to authenticate the proxy is using a pre-generated JWT token fr
 │     - Extracts optional session prefix                              │
 │                     │                                                │
 │                     ▼                                                │
-│  6. Saves to ~/.config/cc-proxy/config.json                         │
+│  6. Saves to ~/.config/claude-code-portal/config.json                         │
 │                     │                                                │
 │                     ▼                                                │
 │  ✓ Configuration saved for user@example.com                         │
 │    Backend: wss://server.com                                        │
 │                                                                      │
-│    You can now run claude-proxy without arguments.                  │
+│    You can now run claude-portal without arguments.                  │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
                       │
@@ -68,7 +68,7 @@ The simplest way to authenticate the proxy is using a pre-generated JWT token fr
 │                         CLI (normal usage)                           │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│  $ claude-proxy                                                      │
+│  $ claude-portal                                                      │
 │                     │                                                │
 │                     ▼                                                │
 │  7. Loads token from config.json                                    │
@@ -95,16 +95,16 @@ The simplest way to authenticate the proxy is using a pre-generated JWT token fr
 
 ```bash
 # One-time setup with init URL
-claude-proxy --init "https://server.com/p/eyJ0IjoiZXlKaGJHY2lP..."
+claude-portal --init "https://server.com/p/eyJ0IjoiZXlKaGJHY2lP..."
 
 # One-time setup with raw JWT token
-claude-proxy --init "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+claude-portal --init "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 
 # Normal usage after init
-claude-proxy
+claude-portal
 
 # With custom session name
-claude-proxy --session-name "my-workstation"
+claude-portal --session-name "my-workstation"
 ```
 
 #### JWT Token Structure
@@ -151,7 +151,7 @@ For environments where you can't easily copy an init URL, the proxy supports OAu
 │                              CLI                                     │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│  $ claude-proxy --backend-url wss://server.com                      │
+│  $ claude-portal --backend-url wss://server.com                      │
 │                     │                                                │
 │                     ▼                                                │
 │  1. No cached credentials found                                     │
@@ -217,13 +217,13 @@ For environments where you can't easily copy an init URL, the proxy supports OAu
 
 ```bash
 # Trigger device flow (when no cached credentials)
-claude-proxy --backend-url wss://server.com
+claude-portal --backend-url wss://server.com
 
 # Force re-authentication
-claude-proxy --reauth
+claude-portal --reauth
 
 # Logout (clear cached credentials)
-claude-proxy --logout
+claude-portal --logout
 ```
 
 ---
@@ -237,7 +237,7 @@ For local development, authentication can be bypassed entirely.
 cargo run -p backend -- --dev-mode
 
 # Proxy uses --dev flag
-claude-proxy --dev --backend-url ws://localhost:3000
+claude-portal --dev --backend-url ws://localhost:3000
 ```
 
 In dev mode:
@@ -252,7 +252,7 @@ In dev mode:
 Credentials are stored in:
 
 ```
-~/.config/cc-proxy/config.json
+~/.config/claude-code-portal/config.json
 ```
 
 Structure:
@@ -331,8 +331,8 @@ Credentials are stored per-directory, allowing different authentication for diff
 
 ### "No cached credentials"
 
-- Run `claude-proxy --init <url>` with a token from the web UI
-- Or use device flow by just running `claude-proxy`
+- Run `claude-portal --init <url>` with a token from the web UI
+- Or use device flow by just running `claude-portal`
 
 ### "Connection refused"
 
@@ -343,5 +343,5 @@ Credentials are stored per-directory, allowing different authentication for diff
 ### Clear credentials and start fresh
 
 ```bash
-claude-proxy --logout
+claude-portal --logout
 ```

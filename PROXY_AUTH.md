@@ -4,10 +4,10 @@ The proxy CLI authenticates users through an OAuth device flow, similar to how `
 
 ## How It Works
 
-1. **First Run**: When you run `claude-proxy` for the first time in a directory, it will:
+1. **First Run**: When you run `claude-portal` for the first time in a directory, it will:
    - Display a link and verification code
    - Wait for you to authenticate in your browser
-   - Store the auth token in `~/.config/cc-proxy/config.json`
+   - Store the auth token in `~/.config/claude-code-portal/config.json`
 
 2. **Subsequent Runs**: The proxy automatically uses the cached authentication
 
@@ -19,7 +19,7 @@ The proxy CLI authenticates users through an OAuth device flow, similar to how `
 
 ```bash
 $ cd ~/my-project
-$ claude-proxy
+$ claude-portal
 
 ╔═══════════════════════════════════════════════════════╗
 ║           🔐 Authentication Required                  ║
@@ -54,7 +54,7 @@ $ claude-proxy
 
 ```bash
 $ cd ~/my-project
-$ claude-proxy
+$ claude-portal
 # Uses cached auth - no prompt!
 ```
 
@@ -63,20 +63,20 @@ $ claude-proxy
 ```bash
 # Work project - authenticated as work@company.com
 $ cd ~/work-project
-$ claude-proxy
+$ claude-portal
 # Uses work account
 
 # Personal project - authenticated as personal@gmail.com
 $ cd ~/personal-project
-$ claude-proxy --reauth  # Force new authentication
+$ claude-portal --reauth  # Force new authentication
 # Now uses personal account
 ```
 
 ### Config File Location
 
 The config file is stored at:
-- **Linux/Mac**: `~/.config/cc-proxy/config.json`
-- **Windows**: `%APPDATA%\cc-proxy\config.json`
+- **Linux/Mac**: `~/.config/claude-code-portal/config.json`
+- **Windows**: `%APPDATA%\claude-code-portal\config.json`
 
 ### Config File Format
 
@@ -107,30 +107,30 @@ The config file is stored at:
 
 ```bash
 # Use a specific backend URL
-claude-proxy --backend-url wss://my-server.com
+claude-portal --backend-url wss://my-server.com
 
 # Force re-authentication
-claude-proxy --reauth
+claude-portal --reauth
 
 # Logout (remove cached auth for this directory)
-claude-proxy --logout
+claude-portal --logout
 
 # Provide auth token directly (skips OAuth)
-claude-proxy --auth-token ccp_your_token_here
+claude-portal --auth-token ccp_your_token_here
 
 # Custom session name
-claude-proxy --session-name "my-machine"
+claude-portal --session-name "my-machine"
 ```
 
 ## Troubleshooting
 
 ### "Authentication timed out"
 
-The verification code expires after 5 minutes. Just run `claude-proxy` again to get a new code.
+The verification code expires after 5 minutes. Just run `claude-portal` again to get a new code.
 
 ### "Authentication was denied"
 
-You clicked "Deny" in the browser. Run `claude-proxy --reauth` to try again.
+You clicked "Deny" in the browser. Run `claude-portal --reauth` to try again.
 
 ### "Failed to connect to backend"
 
@@ -143,27 +143,27 @@ curl http://localhost:3000/
 
 ```bash
 # Remove cached auth
-claude-proxy --logout
+claude-portal --logout
 
 # Run again to authenticate with a different account
-claude-proxy
+claude-portal
 ```
 
 ### View config file
 
 ```bash
 # Linux/Mac
-cat ~/.config/cc-proxy/config.json | jq
+cat ~/.config/claude-code-portal/config.json | jq
 
 # Or use the full path
-cat $(dirname $(which claude-proxy))/../config/cc-proxy/config.json
+cat $(dirname $(which claude-portal))/../config/claude-code-portal/config.json
 ```
 
 ### Manually edit config
 
 ```bash
 # Open in editor
-vim ~/.config/cc-proxy/config.json
+vim ~/.config/claude-code-portal/config.json
 ```
 
 ## Security Considerations
@@ -187,7 +187,7 @@ For testing without OAuth:
 DEV_MODE=true cargo run -p backend -- --dev-mode
 
 # Proxy with explicit token (skips OAuth)
-claude-proxy --auth-token dev_token_12345
+claude-portal --auth-token dev_token_12345
 ```
 
 In dev mode, all sessions are associated with `testing@testing.local`.

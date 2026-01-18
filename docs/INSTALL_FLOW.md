@@ -81,7 +81,7 @@ curl -fsSL "http://localhost:3000/api/download/install.sh?init_url=http%3A%2F%2F
 
 When the user runs the curl command, the backend generates a bash script that:
 
-1. **Downloads the binary** to `~/.config/cc-proxy/claude-proxy`
+1. **Downloads the binary** to `~/.config/claude-code-portal/claude-portal`
 2. **Makes it executable**
 3. **Adds to PATH** in `.bashrc`/`.zshrc`/`.profile`
 4. **Runs initialization** (if init_url was provided):
@@ -91,13 +91,13 @@ When the user runs the curl command, the backend generates a bash script that:
 
 ### 5. Proxy Parses the Init URL
 
-When `claude-proxy --init <url>` runs, it:
+When `claude-portal --init <url>` runs, it:
 
 1. **Parses the URL** (`proxy/src/util.rs:parse_init_url`)
 2. **Extracts the backend URL** (converts `http://` to `ws://` for WebSocket)
 3. **Decodes the base64 config** from the `/p/{config}` path
 4. **Extracts the JWT token** from the config
-5. **Saves to config file** (`~/.config/cc-proxy/cc-proxy/config.json`):
+5. **Saves to config file** (`~/.config/claude-code-portal/claude-code-portal/config.json`):
    ```json
    {
      "sessions": {
@@ -116,7 +116,7 @@ When `claude-proxy --init <url>` runs, it:
 
 Now the user can simply run:
 ```bash
-claude-proxy
+claude-portal
 ```
 
 The proxy will:

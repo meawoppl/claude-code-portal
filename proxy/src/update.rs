@@ -1,4 +1,4 @@
-//! Auto-update functionality for the claude-proxy binary
+//! Auto-update functionality for the claude-portal binary
 //!
 //! On startup, checks if a newer version is available and self-updates if necessary.
 //! Supports two update sources:
@@ -12,7 +12,7 @@ use std::fs;
 use tracing::{info, warn};
 
 /// GitHub repository for releases
-const GITHUB_REPO: &str = "meawoppl/cc-proxy";
+const GITHUB_REPO: &str = "meawoppl/claude-code-portal";
 
 /// Result of an update check
 #[derive(Debug)]
@@ -53,11 +53,11 @@ impl Platform {
         };
 
         let binary_name = match (os, arch) {
-            ("linux", "x86_64") => "claude-proxy-linux-x86_64",
-            ("darwin", "aarch64") => "claude-proxy-darwin-aarch64",
-            ("darwin", "x86_64") => "claude-proxy-darwin-x86_64",
-            ("windows", "x86_64") => "claude-proxy-windows-x86_64.exe",
-            _ => "claude-proxy",
+            ("linux", "x86_64") => "claude-portal-linux-x86_64",
+            ("darwin", "aarch64") => "claude-portal-darwin-aarch64",
+            ("darwin", "x86_64") => "claude-portal-darwin-x86_64",
+            ("windows", "x86_64") => "claude-portal-windows-x86_64.exe",
+            _ => "claude-portal",
         };
 
         Platform {
@@ -128,7 +128,7 @@ pub fn check_for_update(backend_url: &str) -> Result<UpdateResult> {
     // HEAD request to get remote hash
     info!("Checking for updates at {}", download_url);
     let client = reqwest::blocking::Client::builder()
-        .user_agent("claude-proxy")
+        .user_agent("claude-portal")
         .build()
         .context("Failed to create HTTP client")?;
 
@@ -206,7 +206,7 @@ pub fn check_for_update_github(check_only: bool) -> Result<UpdateResult> {
     info!("Platform: {} {}", platform.os, platform.arch);
 
     let client = reqwest::blocking::Client::builder()
-        .user_agent("claude-proxy")
+        .user_agent("claude-portal")
         .build()
         .context("Failed to create HTTP client")?;
 

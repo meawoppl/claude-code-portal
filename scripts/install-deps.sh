@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install all required dependencies for cc-proxy development
+# Install all required dependencies for claude-portal development
 
 set -e
 
@@ -9,12 +9,12 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-log() { echo -e "${BLUE}[cc-proxy]${NC} $1"; }
+log() { echo -e "${BLUE}[claude-portal]${NC} $1"; }
 success() { echo -e "${GREEN}✓${NC} $1"; }
 error() { echo -e "${RED}✗${NC} $1"; }
 warn() { echo -e "${YELLOW}⚠${NC} $1"; }
 
-log "Installing cc-proxy dependencies..."
+log "Installing claude-portal dependencies..."
 echo ""
 
 # Check for Rust

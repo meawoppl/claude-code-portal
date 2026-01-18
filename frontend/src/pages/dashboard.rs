@@ -17,7 +17,7 @@ use web_sys::{Element, HtmlInputElement, KeyboardEvent};
 use yew::prelude::*;
 use yew_router::prelude::*;
 
-const PAUSED_SESSIONS_STORAGE_KEY: &str = "cc-proxy-paused-sessions";
+const PAUSED_SESSIONS_STORAGE_KEY: &str = "claude-portal-paused-sessions";
 
 /// Load paused session IDs from localStorage
 fn load_paused_sessions() -> HashSet<Uuid> {
@@ -811,7 +811,7 @@ pub fn dashboard_page() -> Html {
                             }
                         </div>
                         <a
-                            href="https://github.com/meawoppl/cc-proxy/issues/new"
+                            href="https://github.com/meawoppl/claude-code-portal/issues/new"
                             target="_blank"
                             rel="noopener noreferrer"
                             class="bug-report-link"

@@ -94,7 +94,7 @@ This script:
 - Stops Docker containers and removes volumes
 - Cleans cargo build artifacts
 - Removes log files
-- Optionally removes ~/.config/cc-proxy/
+- Optionally removes ~/.config/claude-code-portal/
 
 **Usage:**
 ```bash
@@ -112,9 +112,9 @@ Opens an interactive PostgreSQL shell to inspect data.
 ./scripts/db-shell.sh
 
 # Then run SQL:
-ccproxy=# SELECT * FROM users;
-ccproxy=# SELECT * FROM sessions;
-ccproxy=# \q
+claude_portal=# SELECT * FROM users;
+claude_portal=# SELECT * FROM sessions;
+claude_portal=# \q
 ```
 
 ## Manual Testing (Without Scripts)
@@ -125,13 +125,13 @@ ccproxy=# \q
 docker-compose -f docker-compose.test.yml up -d db
 
 # Wait for it to be ready
-docker-compose -f docker-compose.test.yml exec db pg_isready -U ccproxy
+docker-compose -f docker-compose.test.yml exec db pg_isready -U claude_portal
 ```
 
 ### 2. Run Migrations
 
 ```bash
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 cd backend && diesel migration run && cd ..
 ```
 
@@ -163,13 +163,13 @@ cargo run -p proxy -- \
 ## Log Files
 
 Scripts write logs to `/tmp/`:
-- `/tmp/cc-proxy-backend.log` - Backend logs
-- `/tmp/cc-proxy-proxy.log` - Proxy logs
+- `/tmp/claude-code-portal-backend.log` - Backend logs
+- `/tmp/claude-code-portal-proxy.log` - Proxy logs
 
 View logs:
 ```bash
-tail -f /tmp/cc-proxy-backend.log
-tail -f /tmp/cc-proxy-proxy.log
+tail -f /tmp/claude-code-portal-backend.log
+tail -f /tmp/claude-code-portal-proxy.log
 ```
 
 ## Troubleshooting
@@ -178,7 +178,7 @@ tail -f /tmp/cc-proxy-proxy.log
 
 ```bash
 # Check if database is running
-docker ps | grep cc-proxy
+docker ps | grep claude-code-portal
 
 # If not, start it
 docker-compose -f docker-compose.test.yml up -d db

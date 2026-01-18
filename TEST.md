@@ -23,7 +23,7 @@ docker-compose up -d db
 sleep 5
 
 # Set database URL
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 
 # Run migrations
 cd backend
@@ -51,7 +51,7 @@ cd ..
 ```bash
 # Set dev mode and minimal required env vars
 export DEV_MODE=true
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 export HOST=0.0.0.0
 export PORT=3000
 
@@ -254,7 +254,7 @@ docker-compose up -d db
 sleep 5
 
 echo "🔄 Running migrations..."
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 cd backend && diesel migration run && cd ..
 
 echo "🎨 Building frontend..."

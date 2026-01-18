@@ -1,11 +1,11 @@
 [package]
-name = "claude-proxy"
+name = "claude-portal"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "claude-proxy"
+name = "claude-portal"
 path = "src/main.rs"
 
 [dependencies]

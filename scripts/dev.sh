@@ -12,15 +12,15 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # PID file locations
-PID_DIR="/tmp/cc-proxy-dev"
+PID_DIR="/tmp/claude-portal-dev"
 BACKEND_PID_FILE="$PID_DIR/backend.pid"
-DB_CONTAINER="cc-proxy-db"
+DB_CONTAINER="claude-portal-db"
 
 # Log file locations
-BACKEND_LOG="/tmp/cc-proxy-backend.log"
+BACKEND_LOG="/tmp/claude-portal-backend.log"
 
 log() {
-    echo -e "${BLUE}[cc-proxy]${NC} $1"
+    echo -e "${BLUE}[claude-portal]${NC} $1"
 }
 
 success() {
@@ -63,7 +63,7 @@ is_db_running() {
         return 1
     fi
     # Then check if it's actually accepting connections
-    docker compose -f docker-compose.test.yml exec -T db pg_isready -U ccproxy > /dev/null 2>&1
+    docker compose -f docker-compose.test.yml exec -T db pg_isready -U claude_portal > /dev/null 2>&1
 }
 
 # Start the database
@@ -78,7 +78,7 @@ start_db() {
 
     log "Waiting for database to be ready..."
     for i in {1..30}; do
-        if docker compose -f docker-compose.test.yml exec -T db pg_isready -U ccproxy > /dev/null 2>&1; then
+        if docker compose -f docker-compose.test.yml exec -T db pg_isready -U claude_portal > /dev/null 2>&1; then
             success "Database is ready"
             return 0
         fi
@@ -91,7 +91,7 @@ start_db() {
 
 # Run migrations
 run_migrations() {
-    export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+    export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 
     if ! command -v diesel &> /dev/null; then
         warn "diesel CLI not installed. Installing..."
@@ -136,7 +136,7 @@ start_backend() {
         return 0
     fi
 
-    export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+    export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
     export DEV_MODE=true
 
     log "Starting backend in dev mode..."
@@ -191,8 +191,8 @@ stop_all() {
 # Show status
 show_status() {
     echo ""
-    echo "CC-Proxy Development Environment Status"
-    echo "========================================"
+    echo "Claude Code Portal Development Environment Status"
+    echo "=================================================="
     echo ""
 
     # Database status
@@ -251,9 +251,9 @@ show_logs() {
 # Full start sequence
 do_start() {
     echo ""
-    echo "╔══════════════════════════════════════════════════════╗"
-    echo "║       Starting CC-Proxy Development Environment      ║"
-    echo "╚══════════════════════════════════════════════════════╝"
+    echo "╔═══════════════════════════════════════════════════════════╗"
+    echo "║     Starting Claude Code Portal Development Environment   ║"
+    echo "╚═══════════════════════════════════════════════════════════╝"
     echo ""
 
     start_db || exit 1
@@ -262,9 +262,9 @@ do_start() {
     start_backend || exit 1
 
     echo ""
-    echo "╔══════════════════════════════════════════════════════╗"
-    echo "║          ✅ CC-Proxy Dev Environment Ready           ║"
-    echo "╚══════════════════════════════════════════════════════╝"
+    echo "╔═══════════════════════════════════════════════════════════╗"
+    echo "║        ✅ Claude Code Portal Dev Environment Ready        ║"
+    echo "╚═══════════════════════════════════════════════════════════╝"
     echo ""
     echo "  🌐 Web Interface:  http://localhost:3000/"
     echo "  📊 Backend API:    http://localhost:3000/api/"
@@ -272,7 +272,7 @@ do_start() {
     echo "  🧪 Test Account:   testing@testing.local"
     echo "  ⚠️  DEV MODE:       OAuth bypassed"
     echo ""
-    echo "  🔌 To start a proxy session:"
+    echo "  🔌 To start a portal session:"
     echo "     1. Open http://localhost:3000/ and generate a setup token"
     echo "     2. Run the setup command shown in the UI"
     echo ""
@@ -298,7 +298,7 @@ nuke_db() {
     stop_all
 
     log "Removing database volume..."
-    docker volume rm cc-proxy_test_postgres_data 2>/dev/null || true
+    docker volume rm claude-code-portal_test_postgres_data 2>/dev/null || true
 
     success "Database nuked. Run './scripts/dev.sh start' to recreate."
 }

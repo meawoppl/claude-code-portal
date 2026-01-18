@@ -1,6 +1,6 @@
 # Voice Input Implementation Plan
 
-This document outlines the implementation strategy for adding voice-to-text input to cc-proxy using Google Cloud Speech-to-Text streaming API.
+This document outlines the implementation strategy for adding voice-to-text input to claude-code-portal using Google Cloud Speech-to-Text streaming API.
 
 ## Architecture Overview
 
@@ -336,7 +336,7 @@ SPEECH_TO_TEXT_ENABLED=true
 
 Update `backend/.env.example`:
 ```bash
-GOOGLE_APPLICATION_CREDENTIALS=op://cc-proxy/gcp-speech/credential
+GOOGLE_APPLICATION_CREDENTIALS=op://claude-code-portal/gcp-speech/credential
 ```
 
 ## Audio Format Specifications

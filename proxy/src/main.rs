@@ -17,32 +17,32 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 #[derive(Parser, Debug)]
-#[command(name = "claude-proxy")]
+#[command(name = "claude-portal")]
 #[command(about = "Wrapper for Claude CLI that proxies sessions to web interface")]
 #[command(
-    long_about = "A proxy wrapper for Claude Code CLI that forwards your terminal sessions \
+    long_about = "A portal wrapper for Claude Code CLI that forwards your terminal sessions \
 to a web interface for remote viewing and collaboration.\n\n\
 QUICK START:\n  \
 1. Get a setup token from the web interface\n  \
-2. Run: claude-proxy --init <token-url>\n  \
-3. Start coding: claude-proxy [claude args]\n\n\
+2. Run: claude-portal --init <token-url>\n  \
+3. Start coding: claude-portal [claude args]\n\n\
 CONFIG:\n  \
-Configuration is stored in ~/.config/cc-proxy/config.json and includes\n  \
+Configuration is stored in ~/.config/claude-code-portal/config.json and includes\n  \
 the backend URL and authentication tokens per working directory."
 )]
 #[command(after_help = "EXAMPLES:\n  \
   # First-time setup with token from web UI\n  \
-  claude-proxy --init https://myserver.com/p/abc123\n\n  \
+  claude-portal --init https://myserver.com/p/abc123\n\n  \
   # Start a new session in current directory\n  \
-  claude-proxy\n\n  \
+  claude-portal\n\n  \
   # Start with a custom session name\n  \
-  claude-proxy --session-name \"feature-xyz\"\n\n  \
+  claude-portal --session-name \"feature-xyz\"\n\n  \
   # Force a fresh session (don't resume previous)\n  \
-  claude-proxy --new-session\n\n  \
+  claude-portal --new-session\n\n  \
   # Pass arguments through to claude CLI\n  \
-  claude-proxy --model sonnet -- \"explain this code\"\n\n  \
+  claude-portal --model sonnet -- \"explain this code\"\n\n  \
   # Re-authenticate if token expired\n  \
-  claude-proxy --reauth")]
+  claude-portal --reauth")]
 struct Args {
     /// Initialize proxy with a setup token from the web interface.
     ///
@@ -74,7 +74,7 @@ struct Args {
 
     /// Start a fresh session instead of resuming the previous one.
     ///
-    /// By default, claude-proxy resumes your last session in this directory.
+    /// By default, claude-portal resumes your last session in this directory.
     /// Use this flag to start with a clean slate.
     #[arg(long)]
     new_session: bool,
@@ -102,7 +102,7 @@ struct Args {
 
     /// Skip the automatic update check on startup.
     ///
-    /// By default, claude-proxy checks for updates from the backend
+    /// By default, claude-portal checks for updates from the backend
     /// and auto-updates if a newer version is available.
     #[arg(long)]
     no_update: bool,

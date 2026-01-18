@@ -4,17 +4,17 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: cc-proxy-test-db
+    container_name: claude-portal-test-db
     environment:
-      POSTGRES_DB: ccproxy
-      POSTGRES_USER: ccproxy
+      POSTGRES_DB: claude_portal
+      POSTGRES_USER: claude_portal
       POSTGRES_PASSWORD: dev_password_change_in_production
     ports:
       - "5432:5432"
     volumes:
       - test_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ccproxy"]
+      test: ["CMD-SHELL", "pg_isready -U claude_portal"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -25,4 +25,4 @@ volumes:
 
 networks:
   default:
-    name: cc-proxy-test-network
+    name: claude-portal-test-network

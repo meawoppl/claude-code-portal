@@ -1,4 +1,4 @@
-//! Download handlers for serving the proxy binary and install script
+//! Download handlers for serving the portal binary and install script
 
 use axum::{
     body::Body,
@@ -21,7 +21,7 @@ pub struct InstallScriptParams {
     backend_url: Option<String>,
 }
 
-/// Serve the install script that downloads and sets up the proxy
+/// Serve the install script that downloads and sets up the portal
 pub async fn install_script(
     State(_app_state): State<Arc<AppState>>,
     Query(params): Query<InstallScriptParams>,
@@ -38,37 +38,37 @@ pub async fn install_script(
         format!(
             r##"
 # Initialize with provided token
-echo "Initializing claude-proxy..."
+echo "Initializing claude-portal..."
 "${{BIN_PATH}}" --init "{init_url}"{backend_flag}
 echo ""
-echo "Setup complete! Run 'claude-proxy' to start a session."
+echo "Setup complete! Run 'claude-portal' to start a session."
 "##
         )
     } else {
         r##"
 echo "Next steps:"
 echo "  1. Restart your shell or source your rc file"
-echo "  2. Initialize with your token: claude-proxy --init <URL>"
-echo "  3. Start a session: claude-proxy"
+echo "  2. Initialize with your token: claude-portal --init <URL>"
+echo "  3. Start a session: claude-portal"
 "##
         .to_string()
     };
 
     let script = format!(
         r##"#!/bin/bash
-# CC-Proxy Installer
-# This script downloads and installs the claude-proxy binary from GitHub releases
+# Claude Code Portal Installer
+# This script downloads and installs the claude-portal binary from GitHub releases
 # If already installed, skips download and just runs init
 
 set -e
 
-CONFIG_DIR="${{HOME}}/.config/cc-proxy"
-BIN_NAME="claude-proxy"
+CONFIG_DIR="${{HOME}}/.config/claude-code-portal"
+BIN_NAME="claude-portal"
 BIN_PATH="${{CONFIG_DIR}}/${{BIN_NAME}}"
-GITHUB_RELEASE_URL="https://github.com/meawoppl/cc-proxy/releases/download/latest"
+GITHUB_RELEASE_URL="https://github.com/meawoppl/claude-code-portal/releases/download/latest"
 
-echo "CC-Proxy Installer"
-echo "=================="
+echo "Claude Code Portal Installer"
+echo "============================"
 echo ""
 
 # Create config directory
@@ -76,8 +76,8 @@ mkdir -p "${{CONFIG_DIR}}"
 
 # Check if binary already exists (has auto-update, skip download)
 if [ -x "${{BIN_PATH}}" ]; then
-    echo "claude-proxy already installed at: ${{BIN_PATH}}"
-    echo "Skipping download (proxy has auto-update built in)"
+    echo "claude-portal already installed at: ${{BIN_PATH}}"
+    echo "Skipping download (portal has auto-update built in)"
     echo ""
 else
     # Detect OS and architecture
@@ -88,7 +88,7 @@ else
         Linux)
             case "${{ARCH}}" in
                 x86_64|amd64)
-                    BINARY_NAME="claude-proxy-linux-x86_64"
+                    BINARY_NAME="claude-portal-linux-x86_64"
                     ;;
                 *)
                     echo "Error: Unsupported Linux architecture: ${{ARCH}}"
@@ -100,10 +100,10 @@ else
         Darwin)
             case "${{ARCH}}" in
                 arm64|aarch64)
-                    BINARY_NAME="claude-proxy-darwin-aarch64"
+                    BINARY_NAME="claude-portal-darwin-aarch64"
                     ;;
                 x86_64)
-                    BINARY_NAME="claude-proxy-darwin-x86_64"
+                    BINARY_NAME="claude-portal-darwin-x86_64"
                     ;;
                 *)
                     echo "Error: Unsupported macOS architecture: ${{ARCH}}"
@@ -116,7 +116,7 @@ else
             echo "Error: Unsupported operating system: ${{OS}}"
             echo "Supported: Linux, Darwin (macOS)"
             echo "For Windows, download manually from:"
-            echo "  ${{GITHUB_RELEASE_URL}}/claude-proxy-windows-x86_64.exe"
+            echo "  ${{GITHUB_RELEASE_URL}}/claude-portal-windows-x86_64.exe"
             exit 1
             ;;
     esac
@@ -130,7 +130,7 @@ else
 
     # Download the binary to a temp file first (allows replacing running binary)
     TEMP_BIN="${{BIN_PATH}}.new.$$"
-    echo "Downloading claude-proxy from GitHub releases..."
+    echo "Downloading claude-portal from GitHub releases..."
     if command -v curl &> /dev/null; then
         curl -fsSL "${{DOWNLOAD_URL}}" -o "${{TEMP_BIN}}"
     elif command -v wget &> /dev/null; then
@@ -161,9 +161,9 @@ add_to_path() {{
     local path_line="export PATH=\"\$PATH:${{CONFIG_DIR}}\""
 
     if [ -f "${{rc_file}}" ]; then
-        if ! grep -q "cc-proxy" "${{rc_file}}" 2>/dev/null; then
+        if ! grep -q "claude-code-portal" "${{rc_file}}" 2>/dev/null; then
             echo "" >> "${{rc_file}}"
-            echo "# CC-Proxy binary path" >> "${{rc_file}}"
+            echo "# Claude Code Portal binary path" >> "${{rc_file}}"
             echo "${{path_line}}" >> "${{rc_file}}"
             echo "Updated: ${{rc_file}}"
             return 0
@@ -204,12 +204,12 @@ echo "Installation complete!"
         .unwrap()
 }
 
-/// Resolve the path to the proxy binary
+/// Resolve the path to the portal binary
 fn resolve_binary_path(dev_mode: bool) -> Result<std::path::PathBuf, (StatusCode, String)> {
     if dev_mode {
         // Try release first, then debug
-        let release_path = std::path::Path::new("target/release/claude-proxy");
-        let debug_path = std::path::Path::new("target/debug/claude-proxy");
+        let release_path = std::path::Path::new("target/release/claude-portal");
+        let debug_path = std::path::Path::new("target/debug/claude-portal");
 
         if release_path.exists() {
             Ok(release_path.to_path_buf())
@@ -218,20 +218,20 @@ fn resolve_binary_path(dev_mode: bool) -> Result<std::path::PathBuf, (StatusCode
         } else {
             Err((
                 StatusCode::NOT_FOUND,
-                "Proxy binary not found. Run 'cargo build -p claude-proxy --release' first."
+                "Portal binary not found. Run 'cargo build -p claude-portal --release' first."
                     .to_string(),
             ))
         }
     } else {
         // Production: use env var or default location
         let path = std::env::var("PROXY_BINARY_PATH")
-            .unwrap_or_else(|_| "/app/bin/claude-proxy".to_string());
+            .unwrap_or_else(|_| "/app/bin/claude-portal".to_string());
         let path = std::path::PathBuf::from(path);
 
         if !path.exists() {
             Err((
                 StatusCode::NOT_FOUND,
-                format!("Proxy binary not found at: {:?}", path),
+                format!("Portal binary not found at: {:?}", path),
             ))
         } else {
             Ok(path)
@@ -254,7 +254,7 @@ async fn compute_binary_sha256(path: &std::path::Path) -> Result<String, (Status
     Ok(hex::encode(hash))
 }
 
-/// Serve the proxy binary (GET) or return hash info (HEAD)
+/// Serve the portal binary (GET) or return hash info (HEAD)
 ///
 /// GET: Returns the binary file with X-Binary-SHA256 header
 /// HEAD: Returns empty body with X-Binary-SHA256 header (for update checks)
@@ -298,7 +298,7 @@ pub async fn proxy_binary(
             .header(header::CONTENT_TYPE, "application/octet-stream")
             .header(
                 header::CONTENT_DISPOSITION,
-                "attachment; filename=\"claude-proxy\"",
+                "attachment; filename=\"claude-portal\"",
             )
             .header("X-Binary-SHA256", &sha256_hash)
             .body(body)

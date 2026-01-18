@@ -129,7 +129,7 @@ impl Drop for ConfigLock {
 
 impl ProxyConfig {
     pub fn config_path() -> Result<PathBuf> {
-        let config_dir = directories::ProjectDirs::from("com", "cc-proxy", "cc-proxy")
+        let config_dir = directories::ProjectDirs::from("com", "anthropic", "claude-code-portal")
             .context("Failed to determine config directory")?
             .config_dir()
             .to_path_buf();

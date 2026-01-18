@@ -17,7 +17,7 @@ pub fn splash_page() -> Html {
         <div class="splash-container">
             <div class="splash-content">
                 <div class="splash-header">
-                    <h1>{ "Claude Code Proxy" }</h1>
+                    <h1>{ "Claude Code Portal" }</h1>
                     <p class="tagline">
                         { "Access your remote Claude Code sessions from anywhere" }
                     </p>
@@ -36,7 +36,7 @@ pub fn splash_page() -> Html {
                         <div class="terminal-body">
                             <div class="terminal-line">
                                 <span class="prompt">{ "$ " }</span>
-                                <span class="command">{ "claude-proxy --session my-dev-machine" }</span>
+                                <span class="command">{ "claude-portal --session my-dev-machine" }</span>
                             </div>
                             <div class="terminal-line">
                                 <span class="output">{ "✓ Connected to backend" }</span>
@@ -79,7 +79,7 @@ pub fn splash_page() -> Html {
                 <div class="splash-footer">
                     <span class="version">{ format!("v{}", VERSION) }</span>
                     <a
-                        href="https://github.com/meawoppl/cc-proxy"
+                        href="https://github.com/meawoppl/claude-code-portal"
                         target="_blank"
                         rel="noopener noreferrer"
                         class="footer-link"
@@ -88,7 +88,7 @@ pub fn splash_page() -> Html {
                         { "GitHub" }
                     </a>
                     <a
-                        href="https://github.com/meawoppl/cc-proxy/issues/new"
+                        href="https://github.com/meawoppl/claude-code-portal/issues/new"
                         target="_blank"
                         rel="noopener noreferrer"
                         class="footer-link bug-report"

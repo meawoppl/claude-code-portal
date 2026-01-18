@@ -141,13 +141,13 @@ pub fn proxy_token_setup() -> Html {
                     base_url, encoded_init_url, encoded_backend_url
                 ),
                 Platform::Windows => format!(
-                    "# Download from GitHub releases, then run:\n.\\claude-proxy.exe --init \"{}\" --backend-url \"{}\"",
+                    "# Download from GitHub releases, then run:\n.\\claude-portal.exe --init \"{}\" --backend-url \"{}\"",
                     token_response.init_url, ws_backend_url
                 ),
             };
             let run_command = match *selected_platform {
-                Platform::Linux | Platform::MacOS => "claude-proxy".to_string(),
-                Platform::Windows => ".\\claude-proxy.exe".to_string(),
+                Platform::Linux | Platform::MacOS => "claude-portal".to_string(),
+                Platform::Windows => ".\\claude-portal.exe".to_string(),
             };
 
             html! {
@@ -204,14 +204,14 @@ pub fn proxy_token_setup() -> Html {
                                     <p class="note warning-note">
                                         <span class="note-icon">{ "!" }</span>
                                         { "Windows support is experimental and largely untested. " }
-                                        <a href="https://github.com/meawoppl/cc-proxy/issues" target="_blank">
+                                        <a href="https://github.com/meawoppl/claude-code-portal/issues" target="_blank">
                                             { "Please report issues!" }
                                         </a>
                                     </p>
                                     <p class="note windows-note">
                                         <span class="note-icon">{ "!" }</span>
                                         { "Download Windows binary from " }
-                                        <a href="https://github.com/meawoppl/cc-proxy/releases/latest" target="_blank">
+                                        <a href="https://github.com/meawoppl/claude-code-portal/releases/latest" target="_blank">
                                             { "GitHub releases" }
                                         </a>
                                     </p>
@@ -222,7 +222,7 @@ pub fn proxy_token_setup() -> Html {
                                 <p class="note warning-note">
                                     <span class="note-icon">{ "!" }</span>
                                     { "macOS support is experimental and largely untested. " }
-                                    <a href="https://github.com/meawoppl/cc-proxy/issues" target="_blank">
+                                    <a href="https://github.com/meawoppl/claude-code-portal/issues" target="_blank">
                                         { "Please report issues!" }
                                     </a>
                                 </p>

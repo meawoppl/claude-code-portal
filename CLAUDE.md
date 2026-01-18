@@ -1,10 +1,10 @@
 # CLAUDE.md - AI Assistant Instructions
 
-This file contains instructions for AI assistants (like Claude) working on the cc-proxy codebase. It documents the architecture, conventions, and common tasks.
+This file contains instructions for AI assistants (like Claude) working on the claude-code-portal codebase. It documents the architecture, conventions, and common tasks.
 
 ## Project Overview
 
-cc-proxy is a web-based proxy system for Claude Code sessions built with:
+claude-code-portal is a web-based proxy system for Claude Code sessions built with:
 - **Backend**: Rust + Axum + PostgreSQL + Diesel ORM
 - **Frontend**: Rust + Yew (WebAssembly)
 - **Proxy**: Rust CLI wrapper for claude binary
@@ -15,7 +15,7 @@ cc-proxy is a web-based proxy system for Claude Code sessions built with:
 ### Workspace Structure
 
 ```
-cc-proxy/
+claude-code-portal/
 ├── shared/         # WASM-compatible common types
 ├── backend/        # Axum server (native only)
 ├── frontend/       # Yew WASM app (WASM target)
@@ -294,7 +294,7 @@ diesel migration generate add_feature_name
 
 # Individual components
 cargo build -p backend        # Build backend
-cargo build -p claude-proxy   # Build proxy CLI
+cargo build -p claude-portal   # Build proxy CLI
 cd frontend && trunk build    # Build frontend (WASM)
 
 # Testing
@@ -339,7 +339,7 @@ docker-compose -f docker-compose.test.yml up db
 
 **Terminal 2 - Backend**:
 ```bash
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 cargo run -p backend -- --dev-mode
 ```
 
@@ -351,7 +351,7 @@ trunk serve  # Auto-reload on changes
 
 **Terminal 4 - Proxy** (optional):
 ```bash
-cargo run -p claude-proxy -- --backend-url ws://localhost:3000
+cargo run -p claude-portal -- --backend-url ws://localhost:3000
 ```
 
 ### GitHub CI / Waiting for Checks
@@ -439,7 +439,7 @@ diesel migration run     # Regenerates schema.rs
 **Production Mode**:
 - Requires Google OAuth credentials in `.env`
 - Proxy uses device flow for CLI auth
-- Credentials cached in `~/.config/cc-proxy/config.json`
+- Credentials cached in `~/.config/claude-code-portal/config.json`
 
 ## Troubleshooting Guide for AI Assistants
 
@@ -495,7 +495,7 @@ sessions::table.filter(sessions::id.eq(...))
 **Fix**:
 1. Check backend is running: `curl http://localhost:3000/`
 2. Verify WebSocket URL: should be `ws://localhost:3000` (not `wss://`)
-3. Check backend logs: `tail -f /tmp/cc-proxy-backend.log`
+3. Check backend logs: `tail -f /tmp/claude-code-portal-backend.log`
 4. Try dev mode authentication: backend with `--dev-mode`
 
 ## Code Conventions

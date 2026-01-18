@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 log() {
-    echo -e "${BLUE}[cc-proxy]${NC} $1"
+    echo -e "${BLUE}[claude-portal]${NC} $1"
 }
 
 success() {
@@ -48,7 +48,7 @@ docker compose -f docker-compose.test.yml up -d db
 
 log "⏳ Waiting for database to be ready..."
 for i in {1..30}; do
-    if docker compose -f docker-compose.test.yml exec -T db pg_isready -U ccproxy > /dev/null 2>&1; then
+    if docker compose -f docker-compose.test.yml exec -T db pg_isready -U claude_portal > /dev/null 2>&1; then
         success "Database is ready"
         break
     fi
@@ -60,7 +60,7 @@ for i in {1..30}; do
 done
 
 # Set database URL
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 
 log "🔄 Running database migrations..."
 
@@ -128,7 +128,7 @@ else
         echo ""
         echo "Try running migrations manually:"
         echo "  cd backend"
-        echo "  export DATABASE_URL='postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy'"
+        echo "  export DATABASE_URL='postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal'"
         echo "  diesel migration run"
         echo ""
         exit 1
@@ -174,7 +174,7 @@ success "Frontend built"
 
 log "🚀 Starting backend in dev mode..."
 export DEV_MODE=true
-cargo run -p backend -- --dev-mode > /tmp/cc-proxy-backend.log 2>&1 &
+cargo run -p backend -- --dev-mode > /tmp/claude-portal-backend.log 2>&1 &
 BACKEND_PID=$!
 
 log "⏳ Waiting for backend to start..."
@@ -185,7 +185,7 @@ for i in {1..30}; do
     fi
     if [ $i -eq 30 ]; then
         error "Backend failed to start. Check logs:"
-        echo "  tail -f /tmp/cc-proxy-backend.log"
+        echo "  tail -f /tmp/claude-portal-backend.log"
         exit 1
     fi
     sleep 1
@@ -198,10 +198,10 @@ echo "╚═══════════════════════�
 echo ""
 echo "  🌐 Web Interface:  http://localhost:3000/"
 echo "  📊 Backend API:    http://localhost:3000/api/"
-echo "  🗄️  Database:       postgresql://ccproxy:***@localhost:5432/ccproxy"
+echo "  🗄️  Database:       postgresql://claude_portal:***@localhost:5432/claude_portal"
 echo ""
 echo "  📝 Logs:"
-echo "     Backend: tail -f /tmp/cc-proxy-backend.log"
+echo "     Backend: tail -f /tmp/claude-portal-backend.log"
 echo ""
 echo "  🧪 Test Account:"
 echo "     Email: testing@testing.local"

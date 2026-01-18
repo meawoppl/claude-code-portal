@@ -94,7 +94,7 @@ jobs:
           shared-key: "backend"
 
       - name: Build backend
-        run: cargo build -p backend -p claude-proxy -p shared
+        run: cargo build -p backend -p claude-portal -p shared
 
   build-frontend:
     name: Build Frontend (WASM)
@@ -153,13 +153,13 @@ jobs:
           shared-key: "proxy-linux"
 
       - name: Build proxy
-        run: cargo build -p claude-proxy --release
+        run: cargo build -p claude-portal --release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: proxy-linux-x86_64
-          path: target/release/claude-proxy
+          path: target/release/claude-portal
 
   build-proxy-macos-arm64:
     name: Build Proxy (macOS ARM64)
@@ -176,14 +176,14 @@ jobs:
           shared-key: "proxy-macos-arm64"
 
       - name: Build proxy
-        run: cargo build -p claude-proxy --release
+        run: cargo build -p claude-portal --release
 
       - name: Ad-hoc code sign
-        run: codesign -s - target/release/claude-proxy
+        run: codesign -s - target/release/claude-portal
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: proxy-darwin-aarch64
-          path: target/release/claude-proxy
+          path: target/release/claude-portal
 

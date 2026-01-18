@@ -35,16 +35,16 @@ docker-compose down
 
 3. **Build the Docker image**
    ```bash
-   docker build -f backend/Dockerfile -t cc-proxy-backend .
+   docker build -f backend/Dockerfile -t claude-code-portal-backend .
    ```
 
 4. **Run with service account token**
    ```bash
    docker run -d \
-     --name cc-proxy-backend \
+     --name claude-code-portal-backend \
      -p 3000:3000 \
      -e OP_SERVICE_ACCOUNT_TOKEN="your_service_account_token" \
-     cc-proxy-backend
+     claude-code-portal-backend
    ```
 
 ### Option 2: Using 1Password Connect
@@ -62,12 +62,12 @@ docker-compose down
 2. **Configure backend to use Connect**
    ```bash
    docker run -d \
-     --name cc-proxy-backend \
+     --name claude-code-portal-backend \
      -p 3000:3000 \
      -e OP_CONNECT_HOST="http://op-connect:8080" \
      -e OP_CONNECT_TOKEN="your_connect_token" \
      --link op-connect \
-     cc-proxy-backend
+     claude-code-portal-backend
    ```
 
 ### Option 3: Mount 1Password CLI Config (Local Testing)
@@ -78,10 +78,10 @@ op signin
 
 # Run container with mounted config
 docker run -d \
-  --name cc-proxy-backend \
+  --name claude-code-portal-backend \
   -p 3000:3000 \
   -v ~/.config/op:/root/.config/op:ro \
-  cc-proxy-backend
+  claude-code-portal-backend
 ```
 
 ## Docker Compose Production Setup
@@ -94,7 +94,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: cc-proxy-backend
+    container_name: claude-code-portal-backend
     ports:
       - "3000:3000"
     environment:
@@ -112,7 +112,7 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - cc-proxy-network
+      - claude-code-portal-network
 
   # Optional: 1Password Connect
   op-connect:
@@ -125,10 +125,10 @@ services:
     environment:
       OP_SESSION: ${OP_CONNECT_TOKEN}
     networks:
-      - cc-proxy-network
+      - claude-code-portal-network
 
 networks:
-  cc-proxy-network:
+  claude-code-portal-network:
     driver: bridge
 ```
 
@@ -162,9 +162,9 @@ docker-compose -f docker-compose.prod.yml logs -f
    apiVersion: onepassword.com/v1
    kind: OnePasswordItem
    metadata:
-     name: cc-proxy-secrets
+     name: claude-code-portal-secrets
    spec:
-     itemPath: "vaults/Development/items/cc-proxy-secrets"
+     itemPath: "vaults/Development/items/claude-code-portal-secrets"
    ```
 
 3. **Deploy backend**
@@ -173,32 +173,32 @@ docker-compose -f docker-compose.prod.yml logs -f
    apiVersion: apps/v1
    kind: Deployment
    metadata:
-     name: cc-proxy-backend
+     name: claude-code-portal-backend
    spec:
      replicas: 2
      selector:
        matchLabels:
-         app: cc-proxy-backend
+         app: claude-code-portal-backend
      template:
        metadata:
          labels:
-           app: cc-proxy-backend
+           app: claude-code-portal-backend
        spec:
          containers:
          - name: backend
-           image: cc-proxy-backend:latest
+           image: claude-code-portal-backend:latest
            ports:
            - containerPort: 3000
            env:
            - name: DATABASE_URL
              valueFrom:
                secretKeyRef:
-                 name: cc-proxy-secrets
+                 name: claude-code-portal-secrets
                  key: database_url
            - name: GOOGLE_CLIENT_ID
              valueFrom:
                secretKeyRef:
-                 name: cc-proxy-secrets
+                 name: claude-code-portal-secrets
                  key: google_client_id
            # ... etc
    ```
@@ -215,7 +215,7 @@ docker buildx create --use
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   -f backend/Dockerfile \
-  -t your-registry/cc-proxy-backend:latest \
+  -t your-registry/claude-code-portal-backend:latest \
   --push \
   .
 ```
@@ -230,9 +230,9 @@ export DOCKER_BUILDKIT=1
 
 # Build with cache
 docker build \
-  --cache-from cc-proxy-backend:latest \
+  --cache-from claude-code-portal-backend:latest \
   -f backend/Dockerfile \
-  -t cc-proxy-backend:latest \
+  -t claude-code-portal-backend:latest \
   .
 ```
 
@@ -243,14 +243,14 @@ docker build \
 docker build \
   --target builder \
   -f backend/Dockerfile \
-  -t cc-proxy-backend:deps \
+  -t claude-code-portal-backend:deps \
   .
 
 # Then build full image (will use cached deps)
 docker build \
-  --cache-from cc-proxy-backend:deps \
+  --cache-from claude-code-portal-backend:deps \
   -f backend/Dockerfile \
-  -t cc-proxy-backend:latest \
+  -t claude-code-portal-backend:latest \
   .
 ```
 
@@ -280,7 +280,7 @@ The Docker container supports these environment variables:
 
 Check logs:
 ```bash
-docker logs cc-proxy-backend
+docker logs claude-code-portal-backend
 ```
 
 Common issues:
@@ -294,7 +294,7 @@ Verify your service account token:
 ```bash
 docker run --rm \
   -e OP_SERVICE_ACCOUNT_TOKEN="your_token" \
-  cc-proxy-backend \
+  claude-code-portal-backend \
   op vault list
 ```
 
@@ -304,7 +304,7 @@ Test database connectivity:
 ```bash
 docker run --rm \
   -e DATABASE_URL="postgresql://..." \
-  cc-proxy-backend \
+  claude-code-portal-backend \
   bash -c 'apt-get update && apt-get install -y postgresql-client && psql $DATABASE_URL -c "SELECT 1"'
 ```
 
@@ -312,7 +312,7 @@ docker run --rm \
 
 Test the endpoint manually:
 ```bash
-docker exec cc-proxy-backend curl -f http://localhost:3000/
+docker exec claude-code-portal-backend curl -f http://localhost:3000/
 ```
 
 ## Production Checklist
@@ -351,7 +351,7 @@ services:
       - ./letsencrypt:/letsencrypt
 
   backend:
-    image: cc-proxy-backend:latest
+    image: claude-code-portal-backend:latest
     environment:
       OP_SERVICE_ACCOUNT_TOKEN: ${OP_SERVICE_ACCOUNT_TOKEN}
     labels:

@@ -12,7 +12,7 @@ pub fn print_startup_banner() {
     );
     println!(
         "{}",
-        "│       Claude Code Proxy Starting     │".bright_blue()
+        "│      Claude Code Portal Starting     │".bright_blue()
     );
     println!(
         "{}",
@@ -143,7 +143,7 @@ pub fn print_reauth_hint() {
     println!(
         "  {} Run: {} to re-authenticate",
         "→".bright_blue(),
-        "claude-proxy logout && claude-proxy login".bright_cyan()
+        "claude-portal logout && claude-portal login".bright_cyan()
     );
 }
 
@@ -213,7 +213,7 @@ pub fn print_init_complete(email: &str, backend_url: &str) {
     println!();
     println!(
         "You can now run {} without arguments.",
-        "claude-proxy".bright_cyan()
+        "claude-portal".bright_cyan()
     );
 }
 
@@ -250,7 +250,7 @@ pub fn print_update_complete() {
     println!();
     println!(
         "  A new version of {} has been installed.",
-        "claude-proxy".bright_cyan()
+        "claude-portal".bright_cyan()
     );
     println!("  Please run the command again to use the updated version.");
     println!();
@@ -270,7 +270,7 @@ pub fn print_up_to_date() {
     println!(
         "  {} {} is up to date.",
         "✓".bright_green(),
-        "claude-proxy".bright_cyan()
+        "claude-portal".bright_cyan()
     );
     println!();
 }
@@ -297,7 +297,7 @@ pub fn print_update_available(version: &str, download_url: &str) {
     println!(
         "    {} {}",
         "$".dimmed(),
-        "claude-proxy --update".bright_cyan()
+        "claude-portal --update".bright_cyan()
     );
     println!();
     println!("  Or download manually from:");

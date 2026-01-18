@@ -10,7 +10,7 @@ docker-compose up -d db
 sleep 5
 
 # Run migrations
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 cd backend && diesel migration run && cd ..
 
 # Terminal 2: Build frontend
@@ -50,7 +50,7 @@ docker-compose up -d db
 sleep 5
 
 # Run migrations
-export DATABASE_URL="postgresql://ccproxy:dev_password_change_in_production@localhost:5432/ccproxy"
+export DATABASE_URL="postgresql://claude_portal:dev_password_change_in_production@localhost:5432/claude_portal"
 cd backend && diesel migration run && cd ..
 ```
 
@@ -129,7 +129,7 @@ Terminal 4 should show:
 
 ```bash
 # Check config file was created
-cat ~/.config/cc-proxy/config.json
+cat ~/.config/claude-code-portal/config.json
 
 # Should show:
 {
@@ -190,7 +190,7 @@ cargo run -p proxy
 - [ ] Proxy shows OAuth device flow on first run
 - [ ] Can open device URL and complete OAuth
 - [ ] Proxy receives auth token after OAuth
-- [ ] Config file created at `~/.config/cc-proxy/config.json`
+- [ ] Config file created at `~/.config/claude-code-portal/config.json`
 - [ ] Config contains auth token
 - [ ] Second run uses cached auth (no OAuth prompt)
 - [ ] Web UI shows login with Google
@@ -219,15 +219,15 @@ The code expires after 5 minutes. Get a new one by running the proxy again.
 
 Check permissions on `~/.config/` directory:
 ```bash
-mkdir -p ~/.config/cc-proxy
-chmod 700 ~/.config/cc-proxy
+mkdir -p ~/.config/claude-code-portal
+chmod 700 ~/.config/claude-code-portal
 ```
 
 ### Token not working
 
 Delete config and re-authenticate:
 ```bash
-rm ~/.config/cc-proxy/config.json
+rm ~/.config/claude-code-portal/config.json
 cargo run -p proxy
 ```
 
@@ -240,5 +240,5 @@ cargo run -p proxy
 docker-compose down -v
 
 # Remove config (optional)
-rm -rf ~/.config/cc-proxy
+rm -rf ~/.config/claude-code-portal
 ```
