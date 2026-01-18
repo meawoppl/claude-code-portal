@@ -640,6 +640,27 @@ pub fn dashboard_page() -> Html {
         .filter(|id| !paused_sessions.contains(id))
         .count();
 
+    // Update browser tab title based on waiting sessions count
+    {
+        let app_title = app_title.clone();
+        use_effect_with(
+            (waiting_count, (*app_title).clone()),
+            move |(count, title)| {
+                if let Some(window) = web_sys::window() {
+                    if let Some(document) = window.document() {
+                        let new_title = if *count > 0 {
+                            format!("({}) {}", count, title)
+                        } else {
+                            title.clone()
+                        };
+                        document.set_title(&new_title);
+                    }
+                }
+                || ()
+            },
+        );
+    }
+
     // Count disconnected sessions for the reconnection banner
     // Only count sessions that are both activated (have started loading) and not paused
     let disconnected_count = active_sessions
