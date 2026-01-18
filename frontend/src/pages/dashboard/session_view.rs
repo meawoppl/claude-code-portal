@@ -17,9 +17,10 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::{Element, HtmlInputElement, KeyboardEvent};
 use yew::prelude::*;
 
+use super::permission_dialog::PermissionDialog;
 use super::types::{
-    calculate_backoff, format_permission_input, parse_ask_user_question, MessagesResponse,
-    PendingPermission, WsSender, MAX_MESSAGES_PER_SESSION,
+    calculate_backoff, parse_ask_user_question, MessagesResponse, PendingPermission, WsSender,
+    MAX_MESSAGES_PER_SESSION,
 };
 
 /// Props for the SessionView component
@@ -1034,153 +1035,26 @@ impl Component for SessionView {
 
                 {
                     if let Some(ref perm) = self.pending_permission {
-                        // Check if this is an AskUserQuestion
-                        if perm.tool_name == "AskUserQuestion" {
-                            if let Some(parsed) = parse_ask_user_question(&perm.input) {
-                                // Render specialized question UI
-                                let multi_select_options = self.multi_select_options.clone();
-                                let selected = self.permission_selected;
+                        let on_select_up = link.callback(|_| SessionViewMsg::PermissionSelectUp);
+                        let on_select_down = link.callback(|_| SessionViewMsg::PermissionSelectDown);
+                        let on_confirm = link.callback(|_| SessionViewMsg::PermissionConfirm);
+                        let on_select_and_confirm = link.callback(SessionViewMsg::PermissionSelectAndConfirm);
+                        let on_answer = link.callback(SessionViewMsg::AnswerQuestion);
+                        let on_toggle_option = link.callback(SessionViewMsg::ToggleQuestionOption);
 
-                                // For single-select questions, use keyboard navigation
-                                let onkeydown = link.callback(|e: KeyboardEvent| {
-                                    match e.key().as_str() {
-                                        "ArrowUp" | "k" => {
-                                            e.prevent_default();
-                                            SessionViewMsg::PermissionSelectUp
-                                        }
-                                        "ArrowDown" | "j" => {
-                                            e.prevent_default();
-                                            SessionViewMsg::PermissionSelectDown
-                                        }
-                                        "Enter" | " " => {
-                                            e.prevent_default();
-                                            SessionViewMsg::PermissionConfirm
-                                        }
-                                        _ => SessionViewMsg::CheckAwaiting, // No-op
-                                    }
-                                });
-
-                                html! {
-                                    <div
-                                        class="permission-prompt ask-user-question"
-                                        ref={self.permission_ref.clone()}
-                                        tabindex="0"
-                                        onkeydown={onkeydown}
-                                    >
-                                        {
-                                            parsed.questions.iter().map(|q| {
-                                                let is_multi = q.multi_select;
-                                                html! {
-                                                    <div class="question-container">
-                                                        {
-                                                            if !q.header.is_empty() {
-                                                                html! {
-                                                                    <div class="question-header-badge">
-                                                                        <span class="badge">{ &q.header }</span>
-                                                                        {
-                                                                            if is_multi {
-                                                                                html! { <span class="multi-badge">{ "multi-select" }</span> }
-                                                                            } else {
-                                                                                html! {}
-                                                                            }
-                                                                        }
-                                                                    </div>
-                                                                }
-                                                            } else if is_multi {
-                                                                html! {
-                                                                    <div class="question-header-badge">
-                                                                        <span class="multi-badge">{ "multi-select" }</span>
-                                                                    </div>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                        <div class="question-text">{ &q.question }</div>
-                                                        <div class="question-options">
-                                                            {
-                                                                q.options.iter().enumerate().map(|(i, opt)| {
-                                                                    let is_selected = if is_multi {
-                                                                        multi_select_options.contains(&i)
-                                                                    } else {
-                                                                        i == selected
-                                                                    };
-                                                                    let item_class = if is_selected {
-                                                                        "question-option selected"
-                                                                    } else {
-                                                                        "question-option"
-                                                                    };
-                                                                    let label_clone = opt.label.clone();
-                                                                    let onclick = if is_multi {
-                                                                        link.callback(move |_| SessionViewMsg::ToggleQuestionOption(i))
-                                                                    } else {
-                                                                        link.callback(move |_| SessionViewMsg::AnswerQuestion(label_clone.clone()))
-                                                                    };
-                                                                    let icon = if is_selected {
-                                                                        if is_multi { "☑" } else { "●" }
-                                                                    } else if is_multi {
-                                                                        "☐"
-                                                                    } else {
-                                                                        "○"
-                                                                    };
-
-                                                                    html! {
-                                                                        <div class={item_class} onclick={onclick}>
-                                                                            <span class="option-icon">{ icon }</span>
-                                                                            <div class="option-content">
-                                                                                <span class="option-label">{ &opt.label }</span>
-                                                                                {
-                                                                                    if !opt.description.is_empty() {
-                                                                                        html! { <span class="option-description">{ &opt.description }</span> }
-                                                                                    } else {
-                                                                                        html! {}
-                                                                                    }
-                                                                                }
-                                                                            </div>
-                                                                        </div>
-                                                                    }
-                                                                }).collect::<Html>()
-                                                            }
-                                                        </div>
-                                                        {
-                                                            // Show submit button for multi-select
-                                                            if is_multi {
-                                                                let options_clone = q.options.clone();
-                                                                let multi_select_clone = multi_select_options.clone();
-                                                                let onclick = link.callback(move |_| {
-                                                                    // Build comma-separated answer from selected indices
-                                                                    let answer: String = multi_select_clone
-                                                                        .iter()
-                                                                        .filter_map(|&idx| options_clone.get(idx).map(|o| o.label.clone()))
-                                                                        .collect::<Vec<_>>()
-                                                                        .join(", ");
-                                                                    SessionViewMsg::AnswerQuestion(answer)
-                                                                });
-                                                                html! {
-                                                                    <button class="submit-answer" onclick={onclick} disabled={multi_select_options.is_empty()}>
-                                                                        { "Submit" }
-                                                                    </button>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        }
-                                                    </div>
-                                                }
-                                            }).collect::<Html>()
-                                        }
-                                        <div class="question-hint">
-                                            { "Click an option or use ↑↓ and Enter" }
-                                        </div>
-                                    </div>
-                                }
-                            } else {
-                                // Fallback to regular permission UI if parsing fails
-                                render_permission_dialog(link, perm, self.permission_selected, self.permission_ref.clone())
-                            }
-                        } else {
-                            // Regular permission dialog
-                            render_permission_dialog(link, perm, self.permission_selected, self.permission_ref.clone())
+                        html! {
+                            <PermissionDialog
+                                permission={perm.clone()}
+                                selected={self.permission_selected}
+                                multi_select_options={self.multi_select_options.clone()}
+                                dialog_ref={self.permission_ref.clone()}
+                                {on_select_up}
+                                {on_select_down}
+                                {on_confirm}
+                                {on_select_and_confirm}
+                                {on_answer}
+                                {on_toggle_option}
+                            />
                         }
                     } else {
                         html! {}
@@ -1247,93 +1121,5 @@ impl Component for SessionView {
                 </form>
             </div>
         }
-    }
-}
-
-/// Render the standard permission dialog (Allow/Deny)
-fn render_permission_dialog(
-    link: &yew::html::Scope<SessionView>,
-    perm: &PendingPermission,
-    selected: usize,
-    permission_ref: NodeRef,
-) -> Html {
-    let input_preview = format_permission_input(&perm.tool_name, &perm.input);
-    let has_suggestions = !perm.permission_suggestions.is_empty();
-
-    let onkeydown = link.callback(|e: KeyboardEvent| {
-        match e.key().as_str() {
-            "ArrowUp" | "k" => {
-                e.prevent_default();
-                SessionViewMsg::PermissionSelectUp
-            }
-            "ArrowDown" | "j" => {
-                e.prevent_default();
-                SessionViewMsg::PermissionSelectDown
-            }
-            "Enter" | " " => {
-                e.prevent_default();
-                SessionViewMsg::PermissionConfirm
-            }
-            _ => SessionViewMsg::CheckAwaiting, // No-op
-        }
-    });
-
-    // Build options list
-    let options: Vec<(&str, &str)> = if has_suggestions {
-        vec![
-            ("allow", "Allow"),
-            ("remember", "Allow & Remember"),
-            ("deny", "Deny"),
-        ]
-    } else {
-        vec![("allow", "Allow"), ("deny", "Deny")]
-    };
-
-    html! {
-        <div
-            class="permission-prompt"
-            ref={permission_ref}
-            tabindex="0"
-            onkeydown={onkeydown}
-        >
-            <div class="permission-header">
-                <span class="permission-icon">{ "⚠️" }</span>
-                <span class="permission-title">{ "Permission Required" }</span>
-            </div>
-            <div class="permission-body">
-                <div class="permission-tool">
-                    <span class="tool-label">{ "Tool:" }</span>
-                    <span class="tool-name">{ &perm.tool_name }</span>
-                </div>
-                <div class="permission-input">
-                    <pre>{ input_preview }</pre>
-                </div>
-            </div>
-            <div class="permission-options">
-                {
-                    options.iter().enumerate().map(|(i, (class, label))| {
-                        let is_selected = i == selected;
-                        let cursor = if is_selected { ">" } else { " " };
-                        let item_class = if is_selected {
-                            format!("permission-option selected {}", class)
-                        } else {
-                            format!("permission-option {}", class)
-                        };
-                        let onclick = link.callback(move |_| {
-                            SessionViewMsg::PermissionSelectAndConfirm(i)
-                        });
-                        html! {
-                            <div class={item_class} {onclick}>
-                                <span class="option-cursor">{ cursor }</span>
-                                <span class="option-label">{ *label }</span>
-                            </div>
-                        }
-                    }).collect::<Html>()
-                }
-            </div>
-            <div class="permission-hint">
-                { "↑↓ or tap to select" }
-            </div>
-        </div>
     }
 }

@@ -44,7 +44,7 @@ pub struct MessagesResponse {
 }
 
 /// Pending permission request
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PendingPermission {
     pub request_id: String,
     pub tool_name: String,
