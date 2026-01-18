@@ -36,6 +36,12 @@ struct AdminStats {
     connected_proxy_clients: usize,
     connected_web_clients: usize,
     total_spend_usd: f64,
+    total_input_tokens: i64,
+    total_output_tokens: i64,
+    #[allow(dead_code)]
+    total_cache_creation_tokens: i64,
+    #[allow(dead_code)]
+    total_cache_read_tokens: i64,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -100,6 +106,17 @@ struct RawMessagesResponse {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/// Format token count with K/M suffix for readability
+fn format_tokens(count: i64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}K", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
+    }
+}
 
 /// Format a timestamp for display
 fn format_timestamp(ts: &str) -> String {
@@ -1019,6 +1036,14 @@ pub fn admin_page() -> Html {
                                                                 label="Total API Spend"
                                                                 value={format!("${:.2}", s.total_spend_usd)}
                                                                 class="spend-card"
+                                                            />
+                                                            <StatCard
+                                                                label="Input Tokens"
+                                                                value={format_tokens(s.total_input_tokens)}
+                                                            />
+                                                            <StatCard
+                                                                label="Output Tokens"
+                                                                value={format_tokens(s.total_output_tokens)}
                                                             />
                                                         </div>
                                                     </div>
