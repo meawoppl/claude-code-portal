@@ -704,15 +704,6 @@ pub fn dashboard_page() -> Html {
                 return;
             }
 
-            // Ctrl+Shift+P toggles pause (works in both modes)
-            if e.ctrl_key() && e.shift_key() && (e.key() == "P" || e.key() == "p") {
-                e.prevent_default();
-                if let Some(session) = active_sessions.get(*focused_index) {
-                    on_toggle_pause.emit(session.id);
-                }
-                return;
-            }
-
             if in_nav_mode {
                 // Navigation Mode
                 match e.key().as_str() {
@@ -929,7 +920,6 @@ pub fn dashboard_page() -> Html {
                                         <>
                                             <span>{ "Esc = nav mode" }</span>
                                             <span>{ "Shift+Tab = next (skip paused)" }</span>
-                                            <span>{ "Ctrl+Shift+P = pause" }</span>
                                             if *voice_enabled {
                                                 <span>{ "Ctrl+M = voice" }</span>
                                             }
