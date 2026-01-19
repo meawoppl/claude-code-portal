@@ -465,8 +465,6 @@
 
 .result-message .stat-item.tokens {
     color: var(--text-secondary);
-    font-family: 'Courier New', monospace;
-    font-size: 0.75rem;
 }
 
 .result-message .stat-item.turns {
