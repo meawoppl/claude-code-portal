@@ -340,11 +340,10 @@ fn render_assistant_group(messages: &[String]) -> Html {
                     }
                 }
                 {
-                    if total_output_tokens > 0 {
+                    if total_input_tokens > 0 || total_output_tokens > 0 {
                         html! {
                             <span class="usage-badge" title={usage_tooltip}>
-                                <span class="token-count">{ format!("{}", total_output_tokens) }</span>
-                                <span class="token-label">{ "tokens" }</span>
+                                <span class="token-count">{ format!("{}↓ {}↑", total_input_tokens, total_output_tokens) }</span>
                             </span>
                         }
                     } else {
@@ -628,8 +627,7 @@ fn render_assistant_message(msg: &AssistantMessage) -> Html {
                     if let Some(u) = usage {
                         html! {
                             <span class="usage-badge" title={usage_tooltip}>
-                                <span class="token-count">{ format!("{}", u.output_tokens.unwrap_or(0)) }</span>
-                                <span class="token-label">{ "tokens" }</span>
+                                <span class="token-count">{ format!("{}↓ {}↑", u.input_tokens.unwrap_or(0), u.output_tokens.unwrap_or(0)) }</span>
                             </span>
                         }
                     } else {
