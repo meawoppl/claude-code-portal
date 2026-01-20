@@ -11,10 +11,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_cookies::Cookies;
-use tracing::info;
+use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::AppState;
+use crate::{
+    jwt::{create_proxy_token, hash_token},
+    models::NewProxyAuthToken,
+    schema::proxy_auth_tokens,
+    AppState,
+};
 
 const SESSION_COOKIE_NAME: &str = "cc_session";
 
@@ -152,17 +157,6 @@ fn generate_device_code() -> String {
         .collect()
 }
 
-fn generate_access_token() -> String {
-    format!(
-        "ccp_{}",
-        rand::thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(40)
-            .map(|c| c as char)
-            .collect::<String>()
-    )
-}
-
 // POST /auth/device/code
 pub async fn device_code(
     State(app_state): State<Arc<AppState>>,
@@ -292,7 +286,7 @@ pub async fn device_verify_page(
     {
         if let Ok(user_id) = cookie.value().parse::<Uuid>() {
             // User is already logged in - complete device flow directly
-            if let Ok(()) = complete_device_flow(store, &user_code, user_id).await {
+            if let Ok(()) = complete_device_flow(&app_state, store, &user_code, user_id).await {
                 info!(
                     "Device flow completed using existing session for user: {}",
                     user_id
@@ -426,11 +420,55 @@ const DEVICE_CODE_FORM_HTML: &str = r#"<!DOCTYPE html>
 "#;
 
 // Called after OAuth success to complete device flow
+// Creates a proper JWT token and stores it in the database
 pub async fn complete_device_flow(
+    app_state: &AppState,
     store: &DeviceFlowStore,
     user_code: &str,
     user_id: Uuid,
 ) -> Result<(), ()> {
+    // First, get user email from database (needed for JWT claims)
+    let mut conn = app_state.db_pool.get().map_err(|e| {
+        error!("Failed to get database connection: {}", e);
+    })?;
+
+    use crate::schema::users;
+    let user: crate::models::User = users::table.find(user_id).first(&mut conn).map_err(|e| {
+        error!("Failed to find user: {}", e);
+    })?;
+
+    // Generate token ID and create JWT
+    let token_id = Uuid::new_v4();
+    let expires_in_days: u32 = 30; // Device flow tokens valid for 30 days
+    let jwt_secret = app_state.jwt_secret.as_bytes();
+
+    let token = create_proxy_token(jwt_secret, token_id, user_id, &user.email, expires_in_days)
+        .map_err(|e| {
+            error!("Failed to create JWT: {}", e);
+        })?;
+
+    // Store token hash in database
+    let token_hash = hash_token(&token);
+    let expires_at = chrono::Utc::now() + chrono::Duration::days(expires_in_days as i64);
+
+    let new_token = NewProxyAuthToken {
+        user_id,
+        name: format!(
+            "Device auth {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M")
+        ),
+        token_hash,
+        expires_at: expires_at.naive_utc(),
+    };
+
+    diesel::insert_into(proxy_auth_tokens::table)
+        .values(&new_token)
+        .execute(&mut conn)
+        .map_err(|e| {
+            error!("Failed to save token to database: {}", e);
+        })?;
+
+    // Now update the in-memory store with the JWT token
     let mut store_lock = store.write().await;
 
     // Find the device flow by user_code
@@ -439,11 +477,15 @@ pub async fn complete_device_flow(
         .find(|s| s.user_code == user_code && s.status == DeviceFlowStatus::Pending)
     {
         state.user_id = Some(user_id);
-        state.access_token = Some(generate_access_token());
+        state.access_token = Some(token);
         state.status = DeviceFlowStatus::Complete;
-        info!("Device flow completed for user_code: {}", user_code);
+        info!(
+            "Device flow completed for user_code: {}, user: {}",
+            user_code, user.email
+        );
         Ok(())
     } else {
+        error!("Device flow state not found for user_code: {}", user_code);
         Err(())
     }
 }
