@@ -430,109 +430,21 @@ diesel migration run     # Regenerates schema.rs
 
 ### Authentication Flows
 
-There are **TWO COMPLETELY SEPARATE** authentication flows. Do not confuse them:
+**📖 See [docs/AUTH_FLOWS.md](docs/AUTH_FLOWS.md) for complete documentation with diagrams.**
 
-#### 1. Web Browser Login (Regular Users)
+There are **TWO COMPLETELY SEPARATE** authentication flows:
 
-**Purpose**: User logs into the web dashboard via browser
+| Flow | Purpose | Initiator | Result | Key Endpoint |
+|------|---------|-----------|--------|--------------|
+| **Web Login** | Dashboard access | Browser | Session cookie | `/api/auth/google` |
+| **Device Flow** | CLI authentication | CLI tool | JWT token | `/api/auth/device/code` |
 
-**Endpoints**:
-- `GET /api/auth/google` - Initiates OAuth with Google
-- `GET /api/auth/google/callback` - OAuth callback, redirects to `/dashboard`
+**Critical**: The OAuth callback distinguishes flows by checking if `state` starts with `device:`. Regular CSRF tokens don't have this prefix.
 
-**Production Flow**:
-```
-Browser → /api/auth/google
-       → Google OAuth consent screen
-       → /api/auth/google/callback?code=...&state=<csrf_token>
-       → Set session cookie
-       → Redirect to /dashboard
-```
-
-**Dev Mode Flow**:
-```
-Browser → /api/auth/google
-       → /api/auth/dev-login (auto-login as testing@testing.local)
-       → Set session cookie
-       → Redirect to /dashboard
-```
-
-**Success**: User lands on `/dashboard` with valid session cookie
-**Failure**: User sees error page or access denied
-
----
-
-#### 2. Device Flow (CLI/Proxy Authentication)
-
-**Purpose**: CLI tool authenticates without browser access on the same machine
-
-**This is NOT OAuth** - it's a separate flow that may use OAuth for user verification.
-
-**Endpoints**:
-- `POST /api/auth/device/code` - CLI requests a device code
-- `GET /api/auth/device?user_code=XXX-XXX` - User enters code in browser
-- `GET /api/auth/device-login?device_user_code=XXX-XXX` - Device-specific OAuth (if user not logged in)
-- `POST /api/auth/device/approve` - User approves the device
-- `POST /api/auth/device/deny` - User denies the device
-- `POST /api/auth/device/poll` - CLI polls for completion
-
-**Production Flow**:
-```
-1. CLI: POST /api/auth/device/code
-   Response: { device_code, user_code: "ABC-123", verification_uri }
-
-2. CLI: Display "Visit https://example.com/api/auth/device and enter: ABC-123"
-
-3. User in browser: Visit /api/auth/device?user_code=ABC-123
-   - If logged in → Show approval page with hostname/directory
-   - If NOT logged in → Redirect to /api/auth/device-login?device_user_code=ABC-123
-                      → Google OAuth (with state="device:ABC-123")
-                      → Back to /api/auth/device?user_code=ABC-123
-                      → Show approval page
-
-4. User clicks "Approve" → POST /api/auth/device/approve
-   - Creates JWT token for CLI
-   - Marks device flow as complete
-
-5. CLI: POST /api/auth/device/poll (polling every 5s)
-   - Returns: { status: "complete", access_token, user_id, user_email }
-
-6. CLI: Stores token in ~/.config/claude-code-portal/config.json
-```
-
-**Dev Mode Flow** (no Google OAuth):
-```
-1-2. Same as production
-
-3. User visits /api/auth/device?user_code=ABC-123
-   - If logged in → Show approval page
-   - If NOT logged in → /api/auth/device-login?device_user_code=ABC-123
-                      → Auto-login as testing@testing.local
-                      → Back to /api/auth/device?user_code=ABC-123
-                      → Show approval page
-
-4-6. Same as production
-```
-
-**Success**: CLI receives JWT token, can connect to backend
-**Failure Cases**:
-- Invalid/expired code → Error page "Invalid or expired code"
-- User denies → Poll returns "denied"
-- Timeout (code expires after 15 min) → Poll returns "expired"
-
----
-
-#### Key Differences
-
-| Aspect | Web Login | Device Flow |
-|--------|-----------|-------------|
-| Initiator | Browser | CLI tool |
-| OAuth state | Random CSRF token | `device:XXX-XXX` prefix |
-| Callback redirect | `/dashboard` | `/api/auth/device?user_code=...` |
-| Result | Session cookie | JWT token |
-| Endpoint | `/api/auth/google` | `/api/auth/device-login` |
-
-**IMPORTANT**: The OAuth callback (`/api/auth/google/callback`) checks if `state` starts with `device:` to determine which flow to complete. Regular OAuth CSRF tokens are random strings that don't have this prefix.
+**Quick Reference**:
+- Web login → `/api/auth/google` → Google OAuth → `/dashboard`
+- Device flow → CLI polls `/api/auth/device/poll` while user approves in browser
+- Dev mode bypasses OAuth, auto-logs in as `testing@testing.local`
 
 ## Troubleshooting Guide for AI Assistants
 
