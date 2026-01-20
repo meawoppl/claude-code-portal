@@ -41,7 +41,7 @@ pub async fn device_flow_login(backend_url: &str) -> Result<(String, String, Str
     let auth_base = backend_url
         .replace("ws://", "http://")
         .replace("wss://", "https://");
-    let device_code_url = format!("{}/auth/device/code", auth_base);
+    let device_code_url = format!("{}/api/auth/device/code", auth_base);
 
     info!("Requesting device code from {}", device_code_url);
 
@@ -109,7 +109,7 @@ pub async fn device_flow_login(backend_url: &str) -> Result<(String, String, Str
     println!();
 
     // Step 3: Poll for completion
-    let poll_url = format!("{}/auth/device/poll", auth_base);
+    let poll_url = format!("{}/api/auth/device/poll", auth_base);
     let interval = Duration::from_secs(response.interval.max(5));
     let expires_at = std::time::Instant::now() + Duration::from_secs(response.expires_in);
 

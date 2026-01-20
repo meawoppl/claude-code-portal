@@ -1371,6 +1371,11 @@
    ========================================================================== */
 
 @media (max-width: 768px) {
+    /* Ensure dashboard fills exactly the viewport on mobile */
+    .focus-flow-container {
+        overflow: hidden;
+    }
+
     /* Header - make more compact */
     .focus-flow-header {
         padding: 0.5rem 0.75rem;
@@ -1498,14 +1503,12 @@
         -webkit-overflow-scrolling: touch;
     }
 
-    /* Input area - full width, sticky to bottom */
+    /* Input area - full width at bottom */
     .session-view-input {
         padding: 0.75rem;
         gap: 0.5rem;
         flex-wrap: wrap;
-        position: sticky;
-        bottom: 0;
-        z-index: 10;
+        flex-shrink: 0; /* Prevent input from shrinking */
     }
 
     .session-view-input .input-prompt {
