@@ -10,10 +10,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tower_cookies::Cookies;
 use tracing::info;
 use uuid::Uuid;
 
 use crate::AppState;
+
+const SESSION_COOKIE_NAME: &str = "cc_session";
 
 /// Error response for device flow endpoints
 #[derive(Debug, Serialize)]
@@ -254,6 +257,7 @@ pub async fn device_poll(
 // GET /auth/device - Show verification page
 pub async fn device_verify_page(
     State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
     Query(query): Query<VerifyQuery>,
 ) -> impl IntoResponse {
     // If no user_code provided, show a form to enter it
@@ -281,7 +285,24 @@ pub async fn device_verify_page(
             .into_response();
     }
 
-    // Redirect to Google OAuth with user_code in state
+    // Check if user is already logged in via session cookie
+    if let Some(cookie) = cookies
+        .signed(&app_state.cookie_key)
+        .get(SESSION_COOKIE_NAME)
+    {
+        if let Ok(user_id) = cookie.value().parse::<Uuid>() {
+            // User is already logged in - complete device flow directly
+            if let Ok(()) = complete_device_flow(store, &user_code, user_id).await {
+                info!(
+                    "Device flow completed using existing session for user: {}",
+                    user_id
+                );
+                return Redirect::temporary("/api/auth/device/success").into_response();
+            }
+        }
+    }
+
+    // User not logged in - redirect to Google OAuth with user_code in state
     Redirect::temporary(&format!("/api/auth/google?device_user_code={}", user_code)).into_response()
 }
 
