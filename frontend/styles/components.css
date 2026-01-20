@@ -313,6 +313,13 @@
     margin-bottom: 0.5rem;
 }
 
+.step-hint {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
 .setup-step .copy-command {
     margin: 0;
 }

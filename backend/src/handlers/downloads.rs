@@ -15,57 +15,36 @@ use crate::AppState;
 
 #[derive(Deserialize)]
 pub struct InstallScriptParams {
-    /// Optional init URL to automatically initialize after install
-    init_url: Option<String>,
-    /// Optional backend URL override (WebSocket URL for runtime connection)
+    /// Backend URL (WebSocket URL for runtime connection)
     backend_url: Option<String>,
 }
 
 /// Serve the install script that downloads and sets up the portal
 pub async fn install_script(
-    State(_app_state): State<Arc<AppState>>,
+    State(app_state): State<Arc<AppState>>,
     Query(params): Query<InstallScriptParams>,
 ) -> impl IntoResponse {
-    // Generate the init section if an init_url was provided
-    let init_section = if let Some(ref init_url) = params.init_url {
-        // Add --backend-url flag if explicitly provided
-        let backend_flag = params
-            .backend_url
-            .as_ref()
-            .map(|url| format!(r#" --backend-url "{url}""#))
-            .unwrap_or_default();
-
-        format!(
-            r##"
-# Initialize with provided token
-echo "Initializing claude-portal..."
-"${{BIN_PATH}}" --init "{init_url}"{backend_flag}
-echo ""
-echo "Setup complete! Run 'claude-portal' to start a session."
-"##
-        )
-    } else {
-        r##"
-echo "Next steps:"
-echo "  1. Restart your shell or source your rc file"
-echo "  2. Initialize with your token: claude-portal --init <URL>"
-echo "  3. Start a session: claude-portal"
-"##
-        .to_string()
-    };
+    // Use provided backend_url or derive from public_url
+    let backend_url = params.backend_url.unwrap_or_else(|| {
+        app_state
+            .public_url
+            .replace("https://", "wss://")
+            .replace("http://", "ws://")
+    });
 
     let script = format!(
         r##"#!/bin/bash
 # Claude Code Portal Installer
-# This script downloads and installs the claude-portal binary from GitHub releases
-# If already installed, skips download and just runs init
+# Downloads and installs the claude-portal binary, then configures backend URL
 
 set -e
 
 CONFIG_DIR="${{HOME}}/.config/claude-code-portal"
 BIN_NAME="claude-portal"
 BIN_PATH="${{CONFIG_DIR}}/${{BIN_NAME}}"
+CONFIG_FILE="${{CONFIG_DIR}}/config.json"
 GITHUB_RELEASE_URL="https://github.com/meawoppl/claude-code-portal/releases/download/latest"
+BACKEND_URL="{backend_url}"
 
 echo "Claude Code Portal Installer"
 echo "============================"
@@ -155,6 +134,15 @@ else
     echo ""
 fi
 
+# Write config with backend URL
+echo "Configuring backend URL: ${{BACKEND_URL}}"
+cat > "${{CONFIG_FILE}}" << EOF
+{{
+  "backend_url": "${{BACKEND_URL}}"
+}}
+EOF
+echo ""
+
 # Add to PATH in shell rc files
 add_to_path() {{
     local rc_file="$1"
@@ -189,7 +177,11 @@ fi
 
 echo ""
 echo "Installation complete!"
-{init_section}
+echo ""
+echo "To start a session, run:"
+echo "  claude-portal"
+echo ""
+echo "(You'll be prompted to authenticate in your browser on first run)"
 "##
     );
 
