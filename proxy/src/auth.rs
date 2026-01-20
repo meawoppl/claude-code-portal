@@ -80,6 +80,10 @@ pub async fn device_flow_login(backend_url: &str) -> Result<(String, String, Str
         .context("Failed to parse device code response")?;
 
     // Step 2: Display instructions to user
+    let full_url = format!(
+        "{}?user_code={}",
+        response.verification_uri, response.user_code
+    );
     println!();
     println!(
         "{}",
@@ -94,15 +98,14 @@ pub async fn device_flow_login(backend_url: &str) -> Result<(String, String, Str
         "╚═══════════════════════════════════════════════════════╝".bright_blue()
     );
     println!();
-    println!("  To authenticate this machine, please visit:");
+    println!("  To authenticate this machine, visit:");
     println!();
-    println!("    {}", response.verification_uri.bright_green().bold());
-    println!();
-    println!("  And enter the code:");
+    println!("    {}", full_url.bright_green().bold());
     println!();
     println!(
-        "    {}",
-        response.user_code.bright_yellow().bold().underline()
+        "  {} Code: {}",
+        "📋".bright_cyan(),
+        response.user_code.bright_yellow().bold()
     );
     println!();
     println!("  {} Waiting for authentication...", "⏳".bright_cyan());
