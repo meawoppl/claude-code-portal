@@ -167,24 +167,28 @@ pub async fn callback(
     }
 
     // Check if this is part of a device flow
-    if let Some(device_user_code) = query.state {
-        // Set session cookie first so user is logged in
-        let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
-        cookie.set_path("/");
-        cookie.set_http_only(true);
-        cookie.set_secure(!app_state.dev_mode);
-        cookie.set_same_site(SameSite::Lax);
-        cookies.signed(&app_state.cookie_key).add(cookie);
+    // Device user codes have format XXX-XXX (6 uppercase alphanumeric + dash)
+    // CSRF tokens from OAuth are longer random strings, so check format to distinguish
+    if let Some(ref state) = query.state {
+        if is_device_user_code(state) {
+            // Set session cookie first so user is logged in
+            let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
+            cookie.set_path("/");
+            cookie.set_http_only(true);
+            cookie.set_secure(!app_state.dev_mode);
+            cookie.set_same_site(SameSite::Lax);
+            cookies.signed(&app_state.cookie_key).add(cookie);
 
-        // Redirect back to device verify page to show approval UI
-        info!(
-            "OAuth complete for device flow, redirecting to approval page for user: {}",
-            user.email
-        );
-        return Ok(Redirect::temporary(&format!(
-            "/api/auth/device?user_code={}",
-            device_user_code
-        )));
+            // Redirect back to device verify page to show approval UI
+            info!(
+                "OAuth complete for device flow, redirecting to approval page for user: {}",
+                user.email
+            );
+            return Ok(Redirect::temporary(&format!(
+                "/api/auth/device?user_code={}",
+                state
+            )));
+        }
     }
 
     // Set session cookie with user ID
@@ -341,4 +345,43 @@ fn check_email_allowed(app_state: &AppState, email: &str) -> Result<(), Redirect
     // Access denied
     info!("Access denied for email: {} (not in allowlist)", email);
     Err(Redirect::temporary("/access-denied"))
+}
+
+/// Check if a string matches the device user code format (XXX-XXX)
+/// Device codes are 6 uppercase alphanumeric chars with a dash in the middle
+fn is_device_user_code(s: &str) -> bool {
+    if s.len() != 7 {
+        return false;
+    }
+    let chars: Vec<char> = s.chars().collect();
+    chars[3] == '-'
+        && chars[0..3].iter().all(|c| c.is_ascii_alphanumeric())
+        && chars[4..7].iter().all(|c| c.is_ascii_alphanumeric())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_device_user_code() {
+        // Valid device codes
+        assert!(is_device_user_code("ABC-123"));
+        assert!(is_device_user_code("XYZ-789"));
+        assert!(is_device_user_code("A1B-C2D"));
+
+        // Invalid - wrong length
+        assert!(!is_device_user_code("AB-123"));
+        assert!(!is_device_user_code("ABCD-1234"));
+        assert!(!is_device_user_code(""));
+
+        // Invalid - wrong format
+        assert!(!is_device_user_code("ABC1234"));
+        assert!(!is_device_user_code("ABC_123"));
+        assert!(!is_device_user_code("ABC-12!"));
+
+        // OAuth CSRF tokens (much longer random strings)
+        assert!(!is_device_user_code("xK9mN2pQ8rT1vZ"));
+        assert!(!is_device_user_code("a1b2c3d4e5f6g7h8i9j0"));
+    }
 }
