@@ -208,3 +208,99 @@
     padding: 0.5rem 1rem;
 }
 
+/* ==========================================================================
+   Mobile Responsiveness
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .splash-container {
+        padding: 1rem;
+        align-items: flex-start;
+        padding-top: 2rem;
+    }
+
+    .splash-content {
+        max-width: 100%;
+    }
+
+    .splash-header h1 {
+        font-size: 1.8rem;
+        line-height: 1.2;
+    }
+
+    .tagline {
+        font-size: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Hide terminal preview on mobile - takes too much space */
+    .splash-hero {
+        display: none;
+    }
+
+    .splash-features {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        margin: 1.5rem 0;
+    }
+
+    .feature {
+        text-align: left;
+        padding: 0.75rem;
+        background: var(--bg-darker);
+        border-radius: 8px;
+        border: 1px solid var(--border);
+    }
+
+    .feature h3 {
+        font-size: 1rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .feature p {
+        font-size: 0.85rem;
+        margin: 0;
+    }
+
+    .login-button {
+        width: 100%;
+        justify-content: center;
+        padding: 1rem;
+        font-size: 1rem;
+    }
+
+    .splash-footer {
+        margin-top: 1.5rem;
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .footer-link {
+        padding: 0.75rem 1rem;
+        width: 100%;
+        justify-content: center;
+        background: var(--bg-darker);
+        border-radius: 6px;
+    }
+
+    .version {
+        order: -1;
+        padding: 0.25rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .splash-header h1 {
+        font-size: 1.5rem;
+    }
+
+    .tagline {
+        font-size: 0.9rem;
+    }
+
+    .feature h3 {
+        font-size: 0.95rem;
+    }
+}
+
