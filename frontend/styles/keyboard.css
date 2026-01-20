@@ -132,3 +132,13 @@
     border-color: #ff5a72;
 }
 
+/* ==========================================================================
+   Mobile - hide keyboard hints (no keyboard on mobile)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .keyboard-hints {
+        display: none;
+    }
+}
+
