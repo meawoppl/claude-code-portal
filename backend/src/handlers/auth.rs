@@ -171,6 +171,7 @@ pub async fn callback(
         // Complete device flow
         if let Some(ref store) = app_state.device_flow_store {
             if let Ok(()) = crate::handlers::device_flow::complete_device_flow(
+                &app_state,
                 store,
                 &device_user_code,
                 user.id,
