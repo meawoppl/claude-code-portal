@@ -316,9 +316,13 @@ pub async fn device_verify_page(
         }
     }
 
-    // User not logged in - redirect to Google OAuth with user_code in state
-    // After OAuth completes, they'll be redirected back here to see the approval page
-    Redirect::temporary(&format!("/api/auth/google?device_user_code={}", user_code)).into_response()
+    // User not logged in - redirect to device-specific login endpoint
+    // This endpoint will handle OAuth and redirect back to the approval page
+    Redirect::temporary(&format!(
+        "/api/auth/device-login?device_user_code={}",
+        user_code
+    ))
+    .into_response()
 }
 
 /// POST /auth/device/approve - Approve device authorization

@@ -335,6 +335,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/me", get(handlers::auth::me))
         .route("/api/auth/logout", get(handlers::auth::logout))
         .route("/api/auth/dev-login", get(handlers::auth::dev_login))
+        // Device-specific login endpoint (separate from regular web login)
+        .route("/api/auth/device-login", get(handlers::auth::device_login))
         // Device flow endpoints for CLI (under /api/auth)
         .route(
             "/api/auth/device/code",

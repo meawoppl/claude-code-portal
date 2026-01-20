@@ -428,18 +428,23 @@ diesel migration run     # Regenerates schema.rs
 - ✅ `diesel migration generate add_feature`
 - ❌ Manual SQL in production
 
-### Authentication Flow
+### Authentication Flows
 
-**Dev Mode**:
-- Set `--dev-mode` flag on backend
-- Bypasses OAuth completely
-- Creates test user: `testing@testing.local`
-- Good for local development
+**📖 See [docs/AUTH_FLOWS.md](docs/AUTH_FLOWS.md) for complete documentation with diagrams.**
 
-**Production Mode**:
-- Requires Google OAuth credentials in `.env`
-- Proxy uses device flow for CLI auth
-- Credentials cached in `~/.config/claude-code-portal/config.json`
+There are **TWO COMPLETELY SEPARATE** authentication flows:
+
+| Flow | Purpose | Initiator | Result | Key Endpoint |
+|------|---------|-----------|--------|--------------|
+| **Web Login** | Dashboard access | Browser | Session cookie | `/api/auth/google` |
+| **Device Flow** | CLI authentication | CLI tool | JWT token | `/api/auth/device/code` |
+
+**Critical**: The OAuth callback distinguishes flows by checking if `state` starts with `device:`. Regular CSRF tokens don't have this prefix.
+
+**Quick Reference**:
+- Web login → `/api/auth/google` → Google OAuth → `/dashboard`
+- Device flow → CLI polls `/api/auth/device/poll` while user approves in browser
+- Dev mode bypasses OAuth, auto-logs in as `testing@testing.local`
 
 ## Troubleshooting Guide for AI Assistants
 

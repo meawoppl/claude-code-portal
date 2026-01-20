@@ -7,7 +7,7 @@ use axum::{
 use diesel::prelude::*;
 use oauth2::{AuthorizationCode, CsrfToken, Scope, TokenResponse};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use tower_cookies::{cookie::SameSite, Cookie, Cookies};
 use tracing::{error, info};
 use uuid::Uuid;
@@ -19,29 +19,85 @@ use crate::{
 
 const SESSION_COOKIE_NAME: &str = "cc_session";
 
-pub async fn login(
-    State(app_state): State<Arc<AppState>>,
-    Query(query): Query<HashMap<String, String>>,
-) -> impl IntoResponse {
+/// Regular web login - redirects to Google OAuth
+pub async fn login(State(app_state): State<Arc<AppState>>) -> impl IntoResponse {
     let client = match &app_state.oauth_basic_client {
         Some(c) => c,
         None => return Redirect::temporary("/api/auth/dev-login").into_response(),
     };
 
-    let mut auth_request = client
+    let auth_request = client
         .authorize_url(CsrfToken::new_random)
         .add_scope(Scope::new("openid".to_string()))
         .add_scope(Scope::new("email".to_string()))
         .add_scope(Scope::new("profile".to_string()));
 
-    // If device_user_code is provided, include it in state
-    if let Some(device_user_code) = query.get("device_user_code") {
-        auth_request = auth_request.add_extra_param("state", device_user_code);
-    }
-
     let (auth_url, _csrf_token) = auth_request.url();
 
     Redirect::temporary(auth_url.as_str()).into_response()
+}
+
+/// Device flow login - separate endpoint that stores device_user_code in state
+/// This is used when the user needs to authenticate before approving a device
+#[derive(Debug, Deserialize)]
+pub struct DeviceLoginQuery {
+    pub device_user_code: String,
+}
+
+pub async fn device_login(
+    State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
+    Query(query): Query<DeviceLoginQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    // In dev mode, auto-login and redirect to device approval page
+    if app_state.oauth_basic_client.is_none() {
+        use crate::schema::users::dsl::*;
+
+        let mut conn = app_state
+            .db_pool
+            .get()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        let user = users
+            .filter(email.eq("testing@testing.local"))
+            .first::<User>(&mut conn)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        if user.disabled {
+            info!("Banned user {} attempted dev device login", user.email);
+            return Ok(Redirect::temporary("/banned").into_response());
+        }
+
+        info!("Dev mode: auto-logged in for device flow");
+
+        let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
+        cookie.set_path("/");
+        cookie.set_http_only(true);
+        cookie.set_secure(false);
+        cookie.set_same_site(SameSite::Lax);
+        cookies.signed(&app_state.cookie_key).add(cookie);
+
+        return Ok(Redirect::temporary(&format!(
+            "/api/auth/device?user_code={}",
+            query.device_user_code
+        ))
+        .into_response());
+    }
+
+    let client = app_state.oauth_basic_client.as_ref().unwrap();
+
+    // Use a prefixed state to identify this as a device flow callback
+    let state_value = format!("device:{}", query.device_user_code);
+
+    let auth_request = client
+        .authorize_url(|| CsrfToken::new(state_value))
+        .add_scope(Scope::new("openid".to_string()))
+        .add_scope(Scope::new("email".to_string()))
+        .add_scope(Scope::new("profile".to_string()));
+
+    let (auth_url, _csrf_token) = auth_request.url();
+
+    Ok(Redirect::temporary(auth_url.as_str()).into_response())
 }
 
 #[derive(Debug, Deserialize)]
@@ -166,25 +222,27 @@ pub async fn callback(
         )));
     }
 
-    // Check if this is part of a device flow
-    if let Some(device_user_code) = query.state {
-        // Set session cookie first so user is logged in
-        let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
-        cookie.set_path("/");
-        cookie.set_http_only(true);
-        cookie.set_secure(!app_state.dev_mode);
-        cookie.set_same_site(SameSite::Lax);
-        cookies.signed(&app_state.cookie_key).add(cookie);
+    // Check if this is part of a device flow (state starts with "device:")
+    if let Some(ref state) = query.state {
+        if let Some(device_user_code) = state.strip_prefix("device:") {
+            // Set session cookie first so user is logged in
+            let mut cookie = Cookie::new(SESSION_COOKIE_NAME, user.id.to_string());
+            cookie.set_path("/");
+            cookie.set_http_only(true);
+            cookie.set_secure(!app_state.dev_mode);
+            cookie.set_same_site(SameSite::Lax);
+            cookies.signed(&app_state.cookie_key).add(cookie);
 
-        // Redirect back to device verify page to show approval UI
-        info!(
-            "OAuth complete for device flow, redirecting to approval page for user: {}",
-            user.email
-        );
-        return Ok(Redirect::temporary(&format!(
-            "/api/auth/device?user_code={}",
-            device_user_code
-        )));
+            // Redirect back to device verify page to show approval UI
+            info!(
+                "OAuth complete for device flow, redirecting to approval page for user: {}",
+                user.email
+            );
+            return Ok(Redirect::temporary(&format!(
+                "/api/auth/device?user_code={}",
+                device_user_code
+            )));
+        }
     }
 
     // Set session cookie with user ID
