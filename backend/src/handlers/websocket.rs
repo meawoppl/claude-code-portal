@@ -1,5 +1,5 @@
 use crate::{
-    models::{NewSessionMember, NewSessionWithId},
+    models::{NewPendingInput, NewSessionMember, NewSessionWithId},
     AppState,
 };
 use axum::{
@@ -249,6 +249,78 @@ impl SessionManager {
         }
         ids
     }
+}
+
+/// Replay pending inputs from the database to a reconnected proxy
+/// Returns the number of inputs replayed
+fn replay_pending_inputs_from_db(
+    db_pool: &crate::db::DbPool,
+    session_id: Uuid,
+    sender: &ClientSender,
+) -> usize {
+    use crate::schema::pending_inputs;
+
+    let mut conn = match db_pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!(
+                "Failed to get DB connection for pending inputs replay: {}",
+                e
+            );
+            return 0;
+        }
+    };
+
+    // Fetch all pending inputs for this session, ordered by sequence number
+    let pending: Vec<crate::models::PendingInput> = match pending_inputs::table
+        .filter(pending_inputs::session_id.eq(session_id))
+        .order(pending_inputs::seq_num.asc())
+        .load(&mut conn)
+    {
+        Ok(inputs) => inputs,
+        Err(e) => {
+            error!(
+                "Failed to load pending inputs for session {}: {}",
+                session_id, e
+            );
+            return 0;
+        }
+    };
+
+    let mut replayed = 0;
+    for input in pending {
+        // Parse the stored content back to JSON value
+        let content: serde_json::Value = match serde_json::from_str(&input.content) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("Failed to parse pending input content: {}", e);
+                continue;
+            }
+        };
+
+        // Send as SequencedInput to the proxy
+        let msg = ProxyMessage::SequencedInput {
+            session_id,
+            seq: input.seq_num,
+            content,
+        };
+
+        if sender.send(msg).is_ok() {
+            replayed += 1;
+        } else {
+            warn!("Failed to send pending input to proxy, channel closed");
+            break;
+        }
+    }
+
+    if replayed > 0 {
+        info!(
+            "Replayed {} pending inputs to reconnected proxy for session {}",
+            replayed, session_id
+        );
+    }
+
+    replayed
 }
 
 /// Handle Claude output (both legacy ClaudeOutput and new SequencedOutput)
@@ -635,6 +707,13 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                 registration_success,
                                 client_version
                             );
+
+                            // Replay any pending inputs from the database to the reconnected proxy
+                            if registration_success {
+                                if let Some(session_id) = db_session_id {
+                                    replay_pending_inputs_from_db(&db_pool, session_id, &tx);
+                                }
+                            }
                         }
                         ProxyMessage::ClaudeOutput { content } => {
                             // Legacy: Handle unsequenced output (for backwards compatibility)
@@ -773,6 +852,45 @@ async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
                                     warn!(
                                         "SessionUpdate session_id mismatch: {} != {}",
                                         update_session_id, current_session_id
+                                    );
+                                }
+                            }
+                        }
+                        ProxyMessage::InputAck {
+                            session_id: ack_session_id,
+                            ack_seq,
+                        } => {
+                            // Proxy acknowledged receipt of inputs, delete them from pending
+                            if let Some(current_session_id) = db_session_id {
+                                if ack_session_id == current_session_id {
+                                    if let Ok(mut conn) = db_pool.get() {
+                                        use crate::schema::pending_inputs;
+                                        let deleted = diesel::delete(
+                                            pending_inputs::table
+                                                .filter(
+                                                    pending_inputs::session_id
+                                                        .eq(current_session_id),
+                                                )
+                                                .filter(pending_inputs::seq_num.le(ack_seq)),
+                                        )
+                                        .execute(&mut conn);
+
+                                        match deleted {
+                                            Ok(count) => {
+                                                info!(
+                                                    "Deleted {} pending inputs for session {} (ack_seq={})",
+                                                    count, current_session_id, ack_seq
+                                                );
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to delete pending inputs: {}", e);
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    warn!(
+                                        "InputAck session_id mismatch: {} != {}",
+                                        ack_session_id, current_session_id
                                     );
                                 }
                             }
@@ -1060,12 +1178,70 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                         ProxyMessage::ClaudeInput { content } => {
                             // Only allow if session ownership was verified
                             if let Some(ref key) = session_key {
-                                if verified_session_id.is_some() {
+                                if let Some(session_id) = verified_session_id {
                                     info!("Web client sending ClaudeInput to session: {}", key);
-                                    if !session_manager
-                                        .send_to_session(key, ProxyMessage::ClaudeInput { content })
-                                    {
-                                        warn!("Failed to send to session '{}', session not found in SessionManager", key);
+
+                                    // Store as pending input with sequence number
+                                    let seq = match db_pool.get() {
+                                        Ok(mut conn) => {
+                                            use crate::schema::{pending_inputs, sessions};
+
+                                            // Increment and get the next sequence number atomically
+                                            let next_seq: i64 =
+                                                diesel::update(sessions::table.find(session_id))
+                                                    .set(
+                                                        sessions::input_seq
+                                                            .eq(sessions::input_seq + 1),
+                                                    )
+                                                    .returning(sessions::input_seq)
+                                                    .get_result(&mut conn)
+                                                    .unwrap_or(1);
+
+                                            // Store the pending input
+                                            let new_input = NewPendingInput {
+                                                session_id,
+                                                seq_num: next_seq,
+                                                content: serde_json::to_string(&content)
+                                                    .unwrap_or_default(),
+                                            };
+                                            if let Err(e) =
+                                                diesel::insert_into(pending_inputs::table)
+                                                    .values(&new_input)
+                                                    .execute(&mut conn)
+                                            {
+                                                error!("Failed to store pending input: {}", e);
+                                            }
+                                            next_seq
+                                        }
+                                        Err(e) => {
+                                            error!(
+                                                "Failed to get db connection for pending input: {}",
+                                                e
+                                            );
+                                            0 // Fall back to unsequenced
+                                        }
+                                    };
+
+                                    // Send as SequencedInput to proxy
+                                    if seq > 0 {
+                                        if !session_manager.send_to_session(
+                                            key,
+                                            ProxyMessage::SequencedInput {
+                                                session_id,
+                                                seq,
+                                                content,
+                                            },
+                                        ) {
+                                            warn!("Failed to send to session '{}', session not found in SessionManager (input queued)", key);
+                                        }
+                                    } else {
+                                        // Fallback to old behavior if sequencing failed
+                                        if !session_manager.send_to_session(
+                                            key,
+                                            ProxyMessage::ClaudeInput { content },
+                                        ) {
+                                            warn!("Failed to send to session '{}', session not found in SessionManager", key);
+                                        }
                                     }
                                 } else {
                                     warn!(

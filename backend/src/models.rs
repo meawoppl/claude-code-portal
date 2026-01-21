@@ -49,6 +49,7 @@ pub struct Session {
     pub cache_creation_tokens: i64,
     pub cache_read_tokens: i64,
     pub client_version: Option<String>,
+    pub input_seq: i64,
 }
 
 #[derive(Debug, Insertable)]
@@ -217,4 +218,27 @@ pub struct NewRawMessageLog {
     pub message_source: String,
     pub render_reason: Option<String>,
     pub content_hash: String,
+}
+
+// ============================================================================
+// Pending Input Models (for reliable frontend->proxy message delivery)
+// ============================================================================
+
+#[derive(Debug, Queryable, Selectable, Serialize, Deserialize, Clone)]
+#[diesel(table_name = crate::schema::pending_inputs)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct PendingInput {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub seq_num: i64,
+    pub content: String,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = crate::schema::pending_inputs)]
+pub struct NewPendingInput {
+    pub session_id: Uuid,
+    pub seq_num: i64,
+    pub content: String,
 }

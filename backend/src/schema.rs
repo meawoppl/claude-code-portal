@@ -28,6 +28,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    pending_inputs (id) {
+        id -> Uuid,
+        session_id -> Uuid,
+        seq_num -> Int8,
+        content -> Text,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     pending_permission_requests (id) {
         id -> Uuid,
         session_id -> Uuid,
@@ -106,6 +116,7 @@ diesel::table! {
         cache_read_tokens -> Int8,
         #[max_length = 32]
         client_version -> Nullable<Varchar>,
+        input_seq -> Int8,
     }
 }
 
@@ -131,6 +142,7 @@ diesel::table! {
 diesel::joinable!(deleted_session_costs -> users (user_id));
 diesel::joinable!(messages -> sessions (session_id));
 diesel::joinable!(messages -> users (user_id));
+diesel::joinable!(pending_inputs -> sessions (session_id));
 diesel::joinable!(pending_permission_requests -> sessions (session_id));
 diesel::joinable!(proxy_auth_tokens -> users (user_id));
 diesel::joinable!(raw_message_log -> sessions (session_id));
@@ -142,6 +154,7 @@ diesel::joinable!(sessions -> users (user_id));
 diesel::allow_tables_to_appear_in_same_query!(
     deleted_session_costs,
     messages,
+    pending_inputs,
     pending_permission_requests,
     proxy_auth_tokens,
     raw_message_log,
