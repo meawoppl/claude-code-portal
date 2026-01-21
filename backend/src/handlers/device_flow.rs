@@ -606,8 +606,8 @@ fn render_approval_page(
                 }});
                 const data = await response.json();
                 if (response.ok) {{
-                    showResult('success', 'Device authorized! You can close this page.');
-                    setTimeout(() => window.location.href = '/api/auth/device/success', 1500);
+                    showResult('success', 'Device authorized! You can close this page or return to the dashboard.');
+                    setTimeout(() => window.location.href = '/dashboard', 2000);
                 }} else {{
                     showResult('error', data.message || 'Failed to authorize device');
                 }}
