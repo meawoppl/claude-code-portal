@@ -56,9 +56,16 @@ pub fn proxy_token_setup() -> Html {
         .replace("https://", "wss://")
         .replace("http://", "ws://");
 
+    // URL-encode the backend URL for the query parameter
+    let encoded_backend_url = js_sys::encode_uri_component(&ws_backend_url);
+
     let install_command = match *selected_platform {
         Platform::Linux | Platform::MacOS => {
-            format!("curl -fsSL \"{}/api/download/install.sh\" | bash", base_url)
+            // Pass backend_url as query param so install script configures the correct WebSocket URL
+            format!(
+                "curl -fsSL \"{}/api/download/install.sh?backend_url={}\" | bash",
+                base_url, encoded_backend_url
+            )
         }
         Platform::Windows => format!(
             "# Download from GitHub releases, then run:\n.\\claude-portal.exe --backend-url \"{}\"",
