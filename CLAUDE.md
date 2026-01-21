@@ -10,6 +10,18 @@ claude-code-portal is a web-based proxy system for Claude Code sessions built wi
 - **Proxy**: Rust CLI wrapper for claude binary
 - **Protocol**: WebSocket-based bidirectional communication
 
+### Related Projects
+
+We maintain **[meawoppl/rust-claude-codes](https://github.com/meawoppl/rust-claude-codes)** - the `claude-codes` crate that provides Rust types for parsing Claude Code's JSON output. This crate is used by the proxy to deserialize Claude's stdout.
+
+**Known limitations** requiring workarounds in this repo:
+- `ResultMessage` missing `errors` field ([#36](https://github.com/meawoppl/rust-claude-codes/issues/36), [#37](https://github.com/meawoppl/rust-claude-codes/issues/37))
+- `SystemMessage.data` is untyped JSON ([#38](https://github.com/meawoppl/rust-claude-codes/issues/38))
+- Tool inputs are untyped JSON ([#39](https://github.com/meawoppl/rust-claude-codes/issues/39))
+- No helper methods for common operations ([#40](https://github.com/meawoppl/rust-claude-codes/issues/40))
+
+Improvements to rust-claude-codes would simplify several workarounds in `proxy/src/session.rs`.
+
 ## Architecture Quick Reference
 
 ### Workspace Structure
