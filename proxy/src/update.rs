@@ -73,6 +73,8 @@ impl Platform {
 struct GitHubAsset {
     name: String,
     browser_download_url: String,
+    /// SHA256 digest in format "sha256:abc123..."
+    digest: Option<String>,
 }
 
 /// GitHub release from the API
@@ -154,7 +156,27 @@ pub async fn check_for_update_github(check_only: bool) -> Result<UpdateResult> {
 
     info!("Found asset: {}", asset.name);
 
-    // Download to check hash (we don't have a remote hash from GitHub, so we compare content)
+    // Check if we can compare hashes without downloading (GitHub provides digest in API)
+    if let Some(ref digest) = asset.digest {
+        // GitHub digest format: "sha256:abc123..."
+        if let Some(remote_hash) = digest.strip_prefix("sha256:") {
+            info!("Remote binary hash: {}", &remote_hash[..16]);
+            if self_hash == remote_hash {
+                info!("Binary is up to date (verified via API)");
+                return Ok(UpdateResult::UpToDate);
+            }
+            info!("Update available (hash mismatch)");
+        }
+    }
+
+    if check_only {
+        return Ok(UpdateResult::UpdateAvailable {
+            version: release.name,
+            download_url: asset.browser_download_url.clone(),
+        });
+    }
+
+    // Download the new binary
     info!("Downloading update from GitHub...");
     let resp = client
         .get(&asset.browser_download_url)
@@ -174,16 +196,23 @@ pub async fn check_for_update_github(check_only: bool) -> Result<UpdateResult> {
 
     info!("Downloaded binary hash: {}", &new_hash[..16]);
 
+    // Verify downloaded hash matches what we expected (if we had a digest)
+    if let Some(ref digest) = asset.digest {
+        if let Some(remote_hash) = digest.strip_prefix("sha256:") {
+            if new_hash != remote_hash {
+                bail!(
+                    "Downloaded binary hash mismatch! Expected {}, got {}",
+                    &remote_hash[..16],
+                    &new_hash[..16]
+                );
+            }
+        }
+    }
+
+    // Final check - maybe we already have this version
     if self_hash == new_hash {
         info!("Binary is up to date");
         return Ok(UpdateResult::UpToDate);
-    }
-
-    if check_only {
-        return Ok(UpdateResult::UpdateAvailable {
-            version: release.name,
-            download_url: asset.browser_download_url.clone(),
-        });
     }
 
     install_binary(&self_path, &new_binary)?;
