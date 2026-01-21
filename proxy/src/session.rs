@@ -967,6 +967,32 @@ async fn handle_ws_text_message(
                 return false;
             }
         }
+        ProxyMessage::SequencedInput {
+            session_id,
+            seq,
+            content,
+        } => {
+            let text = match &content {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            debug!("→ [seq_input] seq={} {}", seq, truncate(&text, 80));
+            if input_tx.send(text).is_err() {
+                error!("Failed to send input to channel");
+                return false;
+            }
+            // Send InputAck back to backend
+            let ack = ProxyMessage::InputAck {
+                session_id,
+                ack_seq: seq,
+            };
+            let mut ws = ws_write.lock().await;
+            if let Ok(json) = serde_json::to_string(&ack) {
+                if let Err(e) = ws.send(Message::Text(json)).await {
+                    error!("Failed to send InputAck: {}", e);
+                }
+            }
+        }
         ProxyMessage::PermissionResponse {
             request_id,
             allow,

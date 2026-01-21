@@ -138,6 +138,26 @@ pub enum ProxyMessage {
         ack_seq: u64,
     },
 
+    /// Sequenced input from frontend (frontend -> backend -> proxy)
+    /// Backend stores these until proxy acknowledges receipt
+    SequencedInput {
+        /// The session this input is for
+        session_id: Uuid,
+        /// Monotonic sequence number for this input
+        seq: i64,
+        /// The actual input content
+        content: serde_json::Value,
+    },
+
+    /// Acknowledge receipt of input messages (proxy -> backend)
+    /// Backend removes pending inputs with seq <= ack_seq
+    InputAck {
+        /// The session this acknowledgment is for
+        session_id: Uuid,
+        /// All inputs with sequence <= this are confirmed received
+        ack_seq: i64,
+    },
+
     // =========================================================================
     // Voice Input Messages (frontend <-> backend)
     // =========================================================================
