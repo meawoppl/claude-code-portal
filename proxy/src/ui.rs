@@ -143,7 +143,7 @@ pub fn print_reauth_hint() {
     println!(
         "  {} Run: {} to re-authenticate",
         "→".bright_blue(),
-        "claude-portal logout && claude-portal login".bright_cyan()
+        "claude-portal --reauth".bright_cyan()
     );
 }
 
