@@ -149,6 +149,7 @@ fn session_row(props: &SessionRowProps) -> Html {
     });
 
     let project = utils::extract_folder(&session.working_directory);
+    let hostname = utils::extract_hostname(&session.session_name);
 
     // Only owners can share
     let is_owner = session.my_role == "owner";
@@ -156,6 +157,7 @@ fn session_row(props: &SessionRowProps) -> Html {
     html! {
         <tr class="session-row">
             <td class="session-name" title={session.session_name.clone()}>{ project }</td>
+            <td class="session-hostname">{ hostname }</td>
             <td class="session-directory" title={session.working_directory.clone()}>
                 { if session.working_directory.is_empty() { "—" } else { &session.working_directory } }
             </td>
@@ -675,6 +677,7 @@ pub fn settings_page() -> Html {
                                     <thead>
                                         <tr>
                                             <th>{ "Project" }</th>
+                                            <th>{ "Host" }</th>
                                             <th>{ "Directory" }</th>
                                             <th>{ "Branch" }</th>
                                             <th>{ "Last Activity" }</th>
