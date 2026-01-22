@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use claude_codes::io::{ContentBlock, ControlRequestPayload};
+use claude_codes::io::{ContentBlock, ControlRequestPayload, ToolUseBlock};
 use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
@@ -430,7 +430,7 @@ pub struct PermissionResponseData {
     pub request_id: String,
     pub allow: bool,
     pub input: Option<serde_json::Value>,
-    pub permissions: Vec<serde_json::Value>,
+    pub permissions: Vec<claude_codes::io::PermissionSuggestion>,
     pub reason: Option<String>,
 }
 
@@ -590,16 +590,10 @@ fn is_git_bash_command(output: &ClaudeOutput) -> bool {
         }
     }
     // Also check if an assistant message contains a Bash tool_use with git
-    if let ClaudeOutput::Assistant(asst) = output {
-        for block in &asst.message.content {
-            if let ContentBlock::ToolUse(tu) = block {
-                if tu.name == "Bash" {
-                    if let Some(cmd) = tu.input.get("command").and_then(|v| v.as_str()) {
-                        if cmd.contains("git ") {
-                            return true;
-                        }
-                    }
-                }
+    if let Some(bash) = output.as_tool_use("Bash") {
+        if let Some(claude_codes::tool_inputs::ToolInput::Bash(input)) = bash.typed_input() {
+            if input.command.contains("git ") {
+                return true;
             }
         }
     }
@@ -695,13 +689,14 @@ fn spawn_output_forwarder(
 
             // Check for "No conversation found" error in result messages
             if let ClaudeOutput::Result(res) = &output {
-                if res.is_error {
-                    // Check the serialized content for the error message
-                    let content_str = content.to_string();
-                    if content_str.contains("No conversation found") {
-                        warn!("Detected 'No conversation found' error in result message");
-                        let _ = session_not_found_tx.send(());
-                    }
+                if res.is_error
+                    && res
+                        .errors
+                        .iter()
+                        .any(|e| e.contains("No conversation found"))
+                {
+                    warn!("Detected 'No conversation found' error in result message");
+                    let _ = session_not_found_tx.send(());
                 }
             }
 
@@ -744,15 +739,15 @@ fn log_claude_output(output: &ClaudeOutput) {
     match output {
         ClaudeOutput::System(sys) => {
             debug!("← [system] subtype={}", sys.subtype);
-            if sys.subtype == "init" {
-                if let Some(model) = sys.data.get("model").and_then(|v| v.as_str()) {
+            if let Some(init) = sys.as_init() {
+                if let Some(ref model) = init.model {
                     debug!("  model: {}", model);
                 }
-                if let Some(cwd) = sys.data.get("cwd").and_then(|v| v.as_str()) {
+                if let Some(ref cwd) = init.cwd {
                     debug!("  cwd: {}", truncate(cwd, 60));
                 }
-                if let Some(tools) = sys.data.get("tools").and_then(|v| v.as_array()) {
-                    debug!("  tools: {} available", tools.len());
+                if !init.tools.is_empty() {
+                    debug!("  tools: {} available", init.tools.len());
                 }
             }
         }
@@ -774,7 +769,7 @@ fn log_claude_output(output: &ClaudeOutput) {
                     }
                     ContentBlock::ToolUse(tu) => {
                         tool_count += 1;
-                        let input_preview = format_tool_input(&tu.name, &tu.input);
+                        let input_preview = format_tool_input(tu);
                         debug!("← [assistant] tool_use: {} {}", tu.name, input_preview);
                     }
                     ContentBlock::Thinking(th) => {
@@ -853,7 +848,7 @@ fn log_claude_output(output: &ClaudeOutput) {
             debug!("← [control_request] id={}", req.request_id);
             match &req.request {
                 ControlRequestPayload::CanUseTool(tool_req) => {
-                    let input_preview = format_tool_input(&tool_req.tool_name, &tool_req.input);
+                    let input_preview = format_tool_input_json(&tool_req.input);
                     debug!("  tool: {} {}", tool_req.tool_name, input_preview);
                 }
                 ControlRequestPayload::HookCallback(_) => {
@@ -874,44 +869,44 @@ fn log_claude_output(output: &ClaudeOutput) {
 }
 
 /// Format tool input for logging
-fn format_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
-    match tool_name {
-        "Bash" => input
-            .get("command")
-            .and_then(|v| v.as_str())
-            .map(|s| format!("$ {}", truncate(s, 70)))
-            .unwrap_or_default(),
-        "Read" | "Edit" | "Write" => input
-            .get("file_path")
-            .and_then(|v| v.as_str())
-            .map(|s| truncate(s, 70).to_string())
-            .unwrap_or_default(),
-        "Glob" | "Grep" => {
-            let pattern = input.get("pattern").and_then(|v| v.as_str()).unwrap_or("?");
-            let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-            format!("'{}' in {}", truncate(pattern, 40), truncate(path, 30))
-        }
-        "Task" => input
-            .get("description")
-            .and_then(|v| v.as_str())
-            .map(|s| truncate(s, 60).to_string())
-            .unwrap_or_default(),
-        "WebFetch" | "WebSearch" => input
-            .get("url")
-            .or_else(|| input.get("query"))
-            .and_then(|v| v.as_str())
-            .map(|s| truncate(s, 60).to_string())
-            .unwrap_or_default(),
-        _ => {
-            // Generic: show first string field
-            if let Some(obj) = input.as_object() {
-                obj.iter()
-                    .find_map(|(k, v)| v.as_str().map(|s| format!("{}={}", k, truncate(s, 50))))
-                    .unwrap_or_default()
-            } else {
-                String::new()
-            }
-        }
+fn format_tool_input(tool: &ToolUseBlock) -> String {
+    format_tool_input_json(&tool.input)
+}
+
+fn format_tool_input_json(input: &serde_json::Value) -> String {
+    use claude_codes::tool_inputs::ToolInput;
+
+    // Try to parse as typed input first
+    if let Ok(typed) = serde_json::from_value::<ToolInput>(input.clone()) {
+        return match typed {
+            ToolInput::Bash(b) => format!("$ {}", truncate(&b.command, 70)),
+            ToolInput::Read(r) => truncate(&r.file_path, 70).to_string(),
+            ToolInput::Edit(e) => truncate(&e.file_path, 70).to_string(),
+            ToolInput::Write(w) => truncate(&w.file_path, 70).to_string(),
+            ToolInput::Glob(g) => format!(
+                "'{}' in {}",
+                truncate(&g.pattern, 40),
+                truncate(g.path.as_deref().unwrap_or("."), 30)
+            ),
+            ToolInput::Grep(g) => format!(
+                "'{}' in {}",
+                truncate(&g.pattern, 40),
+                truncate(g.path.as_deref().unwrap_or("."), 30)
+            ),
+            ToolInput::Task(t) => truncate(&t.description, 60).to_string(),
+            ToolInput::WebFetch(w) => truncate(&w.url, 60).to_string(),
+            ToolInput::WebSearch(w) => truncate(&w.query, 60).to_string(),
+            _ => String::new(),
+        };
+    }
+
+    // Fallback to manual JSON extraction for unknown tools
+    if let Some(obj) = input.as_object() {
+        obj.iter()
+            .find_map(|(k, v)| v.as_str().map(|s| format!("{}={}", k, truncate(s, 50))))
+            .unwrap_or_default()
+    } else {
+        String::new()
     }
 }
 
@@ -1139,9 +1134,15 @@ async fn run_main_loop(
                         )
                     } else {
                         // Allow with permissions for future similar operations
+                        // Convert typed permissions back to JSON for Claude protocol
+                        let perms_json: Vec<serde_json::Value> = perm_response
+                            .permissions
+                            .iter()
+                            .filter_map(|p| serde_json::to_value(p).ok())
+                            .collect();
                         ControlResponse::from_result(
                             &perm_response.request_id,
-                            PermissionResult::allow_with_permissions(input, perm_response.permissions)
+                            PermissionResult::allow_with_permissions(input, perms_json)
                         )
                     }
                 } else {

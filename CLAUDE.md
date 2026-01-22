@@ -14,13 +14,11 @@ claude-code-portal is a web-based proxy system for Claude Code sessions built wi
 
 We maintain **[meawoppl/rust-claude-codes](https://github.com/meawoppl/rust-claude-codes)** - the `claude-codes` crate that provides Rust types for parsing Claude Code's JSON output. This crate is used by the proxy to deserialize Claude's stdout.
 
-**Known limitations** requiring workarounds in this repo:
-- `ResultMessage` missing `errors` field ([#36](https://github.com/meawoppl/rust-claude-codes/issues/36), [#37](https://github.com/meawoppl/rust-claude-codes/issues/37))
-- `SystemMessage.data` is untyped JSON ([#38](https://github.com/meawoppl/rust-claude-codes/issues/38))
-- Tool inputs are untyped JSON ([#39](https://github.com/meawoppl/rust-claude-codes/issues/39))
-- No helper methods for common operations ([#40](https://github.com/meawoppl/rust-claude-codes/issues/40))
-
-Improvements to rust-claude-codes would simplify several workarounds in `proxy/src/session.rs`.
+**Recent improvements** (claude-codes 2.1.15+):
+- ✅ `ResultMessage.errors` field for typed error access
+- ✅ `SystemMessage.as_init()` for typed init data
+- ✅ `ToolUseBlock.typed_input()` for typed tool inputs
+- ✅ Helper methods: `as_tool_use()`, `tool_uses()`, `session_id()`, etc.
 
 ## Architecture Quick Reference
 

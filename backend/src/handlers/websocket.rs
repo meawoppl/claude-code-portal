@@ -1147,10 +1147,11 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                                             );
 
                                             // Convert stored permission_suggestions back to Vec
-                                            let suggestions: Vec<serde_json::Value> = pending
-                                                .permission_suggestions
-                                                .and_then(|v| serde_json::from_value(v).ok())
-                                                .unwrap_or_default();
+                                            let suggestions: Vec<shared::PermissionSuggestion> =
+                                                pending
+                                                    .permission_suggestions
+                                                    .and_then(|v| serde_json::from_value(v).ok())
+                                                    .unwrap_or_default();
 
                                             let _ = tx.send(ProxyMessage::PermissionRequest {
                                                 request_id: pending.request_id,

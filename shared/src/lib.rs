@@ -11,8 +11,8 @@ pub use api::{ApiClientConfig, ApiError, CcProxyApi};
 
 // Re-export claude-codes types for frontend message parsing
 pub use claude_codes::io::{
-    ContentBlock, ImageBlock, ImageSource, TextBlock, ThinkingBlock, ToolResultBlock,
-    ToolResultContent, ToolUseBlock,
+    ContentBlock, ImageBlock, ImageSource, PermissionSuggestion, TextBlock, ThinkingBlock,
+    ToolResultBlock, ToolResultContent, ToolUseBlock,
 };
 
 /// Message types for the WebSocket proxy protocol
@@ -72,7 +72,7 @@ pub enum ProxyMessage {
         input: serde_json::Value,
         /// Suggested permissions to grant (for "allow & remember" feature)
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        permission_suggestions: Vec<serde_json::Value>,
+        permission_suggestions: Vec<PermissionSuggestion>,
     },
 
     /// Permission response from user
@@ -86,7 +86,7 @@ pub enum ProxyMessage {
         input: Option<serde_json::Value>,
         /// Permissions to grant for future similar operations
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        permissions: Vec<serde_json::Value>,
+        permissions: Vec<PermissionSuggestion>,
         /// Optional reason for denial
         #[serde(skip_serializing_if = "Option::is_none")]
         reason: Option<String>,

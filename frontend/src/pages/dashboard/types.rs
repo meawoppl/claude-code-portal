@@ -53,7 +53,7 @@ pub struct PendingPermission {
     pub request_id: String,
     pub tool_name: String,
     pub input: serde_json::Value,
-    pub permission_suggestions: Vec<serde_json::Value>,
+    pub permission_suggestions: Vec<shared::PermissionSuggestion>,
 }
 
 /// Parsed AskUserQuestion option
