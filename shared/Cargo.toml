@@ -16,4 +16,4 @@ uuid = { workspace = true }
 chrono = { workspace = true, default-features = false, features = ["serde", "wasmbind"] }
 
 # Claude Code types (WASM-compatible, no tokio)
-claude-codes = { version = "2.1.3", default-features = false, features = ["types"] }
+claude-codes = { version = "2.1.16", default-features = false, features = ["types"] }
