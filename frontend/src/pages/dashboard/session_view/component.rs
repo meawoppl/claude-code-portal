@@ -12,7 +12,7 @@ use uuid::Uuid;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{Element, HtmlInputElement, KeyboardEvent};
+use web_sys::{Element, HtmlTextAreaElement, KeyboardEvent};
 use yew::prelude::*;
 
 use super::history::CommandHistory;
@@ -180,7 +180,7 @@ impl Component for SessionView {
         self.was_focused = now_focused;
 
         if became_focused {
-            if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
+            if let Some(input) = self.input_ref.cast::<HtmlTextAreaElement>() {
                 let _ = input.focus();
             }
         }
@@ -190,7 +190,7 @@ impl Component for SessionView {
 
     fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
         if first_render && ctx.props().focused {
-            if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
+            if let Some(input) = self.input_ref.cast::<HtmlTextAreaElement>() {
                 let _ = input.focus();
             }
         }
@@ -390,7 +390,7 @@ impl Component for SessionView {
         });
 
         let handle_input = link.callback(|e: InputEvent| {
-            let input: HtmlInputElement = e.target_unchecked_into();
+            let input: HtmlTextAreaElement = e.target_unchecked_into();
             SessionViewMsg::UpdateInput(input.value())
         });
 
@@ -401,6 +401,15 @@ impl Component for SessionView {
             }
 
             match e.key().as_str() {
+                "Enter" if !e.shift_key() => {
+                    // Enter without Shift submits
+                    e.prevent_default();
+                    SessionViewMsg::SendInput
+                }
+                "Enter" => {
+                    // Shift+Enter inserts newline (default behavior)
+                    SessionViewMsg::CheckAwaiting
+                }
                 "ArrowUp" => {
                     e.prevent_default();
                     SessionViewMsg::HistoryUp
@@ -428,18 +437,18 @@ impl Component for SessionView {
                 <form class="session-view-input" onsubmit={handle_submit}>
                     <span class="input-prompt">{ ">" }</span>
                     { self.render_interim_transcription() }
-                    <input
+                    <textarea
                         ref={self.input_ref.clone()}
-                        type="text"
                         class={classes!(
                             "message-input",
                             self.interim_transcription.is_some().then_some("has-interim")
                         )}
-                        placeholder="Type your message..."
+                        placeholder="Type your message... (Shift+Enter for new line)"
                         value={self.input_value.clone()}
                         oninput={handle_input}
                         onkeydown={handle_keydown}
                         disabled={!self.ws_connected}
+                        rows="1"
                     />
                     { self.render_voice_input(ctx) }
                     <button type="submit" class="send-button" disabled={!self.ws_connected}>
@@ -611,7 +620,7 @@ impl SessionView {
                 send_message(sender, msg);
             }
             ctx.link().send_message(SessionViewMsg::CheckAwaiting);
-            if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
+            if let Some(input) = self.input_ref.cast::<HtmlTextAreaElement>() {
                 let _ = input.focus();
             }
         }
@@ -631,7 +640,7 @@ impl SessionView {
                 send_message(sender, msg);
             }
             ctx.link().send_message(SessionViewMsg::CheckAwaiting);
-            if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
+            if let Some(input) = self.input_ref.cast::<HtmlTextAreaElement>() {
                 let _ = input.focus();
             }
         }
@@ -709,7 +718,7 @@ impl SessionView {
             self.multi_select_options.clear();
             self.question_answers.clear();
             ctx.link().send_message(SessionViewMsg::CheckAwaiting);
-            if let Some(input) = self.input_ref.cast::<HtmlInputElement>() {
+            if let Some(input) = self.input_ref.cast::<HtmlTextAreaElement>() {
                 let _ = input.focus();
             }
         }
