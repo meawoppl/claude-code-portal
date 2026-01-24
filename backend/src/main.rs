@@ -516,14 +516,18 @@ async fn broadcast_user_spend_updates(app_state: &Arc<AppState>) {
             continue;
         };
 
-        // Query total spend and per-session costs for this user
+        // Query per-session costs for this user (active sessions only)
         let result: Result<Vec<(uuid::Uuid, f64)>, _> = sessions
             .filter(user_id.eq(user_id_val))
             .select((id, total_cost_usd))
             .load(&mut conn);
 
+        // Get total spend including deleted sessions (matches admin dashboard)
+        let total_spend = db::get_user_usage(&mut conn, user_id_val)
+            .map(|u| u.cost_usd)
+            .unwrap_or(0.0);
+
         if let Ok(session_costs_data) = result {
-            let total_spend: f64 = session_costs_data.iter().map(|(_, cost)| cost).sum();
             let session_costs_vec: Vec<SessionCost> = session_costs_data
                 .into_iter()
                 .filter(|(_, cost)| *cost > 0.0) // Only include sessions with costs
