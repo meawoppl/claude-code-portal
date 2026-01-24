@@ -4,7 +4,7 @@ use crate::utils;
 use shared::SessionInfo;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
-use web_sys::Element;
+use web_sys::{Element, HtmlElement, WheelEvent};
 use yew::prelude::*;
 
 /// Props for the SessionRail component
@@ -43,6 +43,18 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             || ()
         });
     }
+
+    // Handle wheel event to translate vertical scroll to horizontal
+    let on_wheel = {
+        let rail_ref = rail_ref.clone();
+        Callback::from(move |e: WheelEvent| {
+            if let Some(rail) = rail_ref.cast::<HtmlElement>() {
+                e.prevent_default();
+                let delta = e.delta_y();
+                rail.set_scroll_left(rail.scroll_left() + delta as i32);
+            }
+        })
+    };
 
     // Helper to render a single session pill
     // index: position in full sessions array (for selection)
@@ -196,7 +208,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
     let visible_count = visible_indices.len();
 
     html! {
-        <div class="session-rail" ref={rail_ref}>
+        <div class="session-rail" ref={rail_ref} onwheel={on_wheel}>
             // Visible sessions (not paused) - always get numbers starting from 0
             { visible_indices.iter().enumerate().map(|(display_idx, (index, session))| {
                 render_pill(*index, session, Some(display_idx))
