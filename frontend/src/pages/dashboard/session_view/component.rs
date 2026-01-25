@@ -71,6 +71,8 @@ pub enum SessionViewMsg {
     WsEvent(WsEvent),
     /// Toggle send mode dropdown visibility
     ToggleSendModeDropdown,
+    /// Close send mode dropdown (click outside)
+    CloseSendModeDropdown,
     /// Set the send mode
     SetSendMode(SendMode),
     /// Send with wiggum mode specifically
@@ -392,6 +394,14 @@ impl Component for SessionView {
                 self.send_mode_dropdown_open = !self.send_mode_dropdown_open;
                 true
             }
+            SessionViewMsg::CloseSendModeDropdown => {
+                if self.send_mode_dropdown_open {
+                    self.send_mode_dropdown_open = false;
+                    true
+                } else {
+                    false
+                }
+            }
             SessionViewMsg::SetSendMode(mode) => {
                 self.send_mode = mode;
                 self.send_mode_dropdown_open = false;
@@ -446,8 +456,10 @@ impl Component for SessionView {
             }
         });
 
+        let close_dropdown = link.callback(|_| SessionViewMsg::CloseSendModeDropdown);
+
         html! {
-            <div class="session-view">
+            <div class="session-view" onclick={close_dropdown}>
                 <div class="session-view-messages" ref={self.messages_ref.clone()}>
                     {
                         group_messages(&self.messages).into_iter().map(|group| {

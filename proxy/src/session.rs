@@ -439,6 +439,9 @@ pub struct PermissionResponseData {
     pub reason: Option<String>,
 }
 
+/// Maximum iterations for wiggum mode before auto-stopping
+const WIGGUM_MAX_ITERATIONS: u32 = 50;
+
 /// Wiggum mode state
 #[derive(Debug, Clone)]
 pub struct WiggumState {
@@ -1230,20 +1233,30 @@ async fn handle_session_event_with_wiggum(
             if should_continue_wiggum {
                 if let Some(ref mut state) = wiggum_state {
                     state.iteration += 1;
-                    info!("Wiggum iteration {} - resending prompt", state.iteration);
 
-                    // Resend the prompt
-                    let wiggum_prompt = format!(
-                        "{}\n\nTake action on the directions above until fully complete. If complete, respond only with DONE.",
-                        state.original_prompt
-                    );
-                    if let Err(e) = claude_session
-                        .send_input(serde_json::Value::String(wiggum_prompt))
-                        .await
-                    {
-                        error!("Failed to resend wiggum prompt: {}", e);
+                    // Check max iterations safety limit
+                    if state.iteration > WIGGUM_MAX_ITERATIONS {
+                        warn!(
+                            "Wiggum reached max iterations ({}), stopping",
+                            WIGGUM_MAX_ITERATIONS
+                        );
                         *wiggum_state = None;
-                        return Some(ConnectionResult::ClaudeExited);
+                    } else {
+                        info!("Wiggum iteration {} - resending prompt", state.iteration);
+
+                        // Resend the prompt
+                        let wiggum_prompt = format!(
+                            "{}\n\nTake action on the directions above until fully complete. If complete, respond only with DONE.",
+                            state.original_prompt
+                        );
+                        if let Err(e) = claude_session
+                            .send_input(serde_json::Value::String(wiggum_prompt))
+                            .await
+                        {
+                            error!("Failed to resend wiggum prompt: {}", e);
+                            *wiggum_state = None;
+                            return Some(ConnectionResult::ClaudeExited);
+                        }
                     }
                 }
             } else if matches!(output, ClaudeOutput::Result(_)) && wiggum_state.is_some() {
