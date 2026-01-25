@@ -40,7 +40,7 @@
 //!             }
 //!             SessionEvent::PermissionRequest { request_id, tool_name, .. } => {
 //!                 // Auto-approve for this example
-//!                 session.respond_permission(request_id, PermissionResponse::allow()).await?;
+//!                 session.respond_permission(&request_id, PermissionResponse::allow()).await?;
 //!             }
 //!             SessionEvent::Exited { code } => {
 //!                 println!("Session exited with code {}", code);

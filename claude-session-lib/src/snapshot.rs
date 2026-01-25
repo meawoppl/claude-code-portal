@@ -84,3 +84,104 @@ impl SessionSnapshot {
         serde_json::from_slice(bytes)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_config() -> SessionConfig {
+        SessionConfig {
+            session_id: Uuid::new_v4(),
+            working_directory: PathBuf::from("/tmp/test"),
+            session_name: "test-session".to_string(),
+            resume: false,
+            claude_path: None,
+        }
+    }
+
+    #[test]
+    fn test_session_config_serialization() {
+        let config = sample_config();
+        let json = serde_json::to_string(&config).unwrap();
+        let restored: SessionConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(config.session_id, restored.session_id);
+        assert_eq!(config.working_directory, restored.working_directory);
+        assert_eq!(config.session_name, restored.session_name);
+        assert_eq!(config.resume, restored.resume);
+        assert_eq!(config.claude_path, restored.claude_path);
+    }
+
+    #[test]
+    fn test_pending_permission_serialization() {
+        let perm = PendingPermission {
+            request_id: "req-123".to_string(),
+            tool_name: "Bash".to_string(),
+            input: serde_json::json!({"command": "ls -la"}),
+            requested_at: Utc::now(),
+        };
+
+        let json = serde_json::to_string(&perm).unwrap();
+        let restored: PendingPermission = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(perm.request_id, restored.request_id);
+        assert_eq!(perm.tool_name, restored.tool_name);
+        assert_eq!(perm.input, restored.input);
+    }
+
+    #[test]
+    fn test_snapshot_roundtrip() {
+        let config = sample_config();
+        let id = config.session_id;
+
+        let pending_outputs = vec![
+            BufferedOutput {
+                seq: 0,
+                content: serde_json::json!({"type": "output", "text": "hello"}),
+                timestamp: Utc::now(),
+            },
+            BufferedOutput {
+                seq: 1,
+                content: serde_json::json!({"type": "output", "text": "world"}),
+                timestamp: Utc::now(),
+            },
+        ];
+
+        let pending_permission = Some(PendingPermission {
+            request_id: "perm-456".to_string(),
+            tool_name: "Write".to_string(),
+            input: serde_json::json!({"file_path": "/tmp/test.txt"}),
+            requested_at: Utc::now(),
+        });
+
+        let snapshot = SessionSnapshot::new(id, config, pending_outputs, pending_permission, true);
+
+        // Serialize to bytes
+        let bytes = snapshot.to_bytes().unwrap();
+
+        // Deserialize
+        let restored = SessionSnapshot::from_bytes(&bytes).unwrap();
+
+        assert_eq!(restored.id, id);
+        assert_eq!(restored.pending_outputs.len(), 2);
+        assert!(restored.pending_permission.is_some());
+        assert!(restored.was_running);
+        assert_eq!(restored.pending_permission.unwrap().tool_name, "Write");
+    }
+
+    #[test]
+    fn test_snapshot_without_pending_permission() {
+        let config = sample_config();
+        let id = config.session_id;
+
+        let snapshot = SessionSnapshot::new(id, config, vec![], None, false);
+
+        let bytes = snapshot.to_bytes().unwrap();
+        let restored = SessionSnapshot::from_bytes(&bytes).unwrap();
+
+        assert_eq!(restored.id, id);
+        assert!(restored.pending_outputs.is_empty());
+        assert!(restored.pending_permission.is_none());
+        assert!(!restored.was_running);
+    }
+}
