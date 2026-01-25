@@ -270,11 +270,39 @@
     font-weight: bold;
 }
 
+.bash-tool .tool-use-header {
+    flex-wrap: nowrap;
+}
+
+.bash-command-inline {
+    flex: 1;
+    min-width: 0;
+    padding: 0.15rem 0.4rem;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 3px;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tool-header-spacer {
+    flex: 1;
+}
+
+.tool-meta.timeout {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+}
+
 .bash-description {
     color: var(--text-secondary);
     font-size: 0.8rem;
     font-style: italic;
     padding: 0.25rem 0;
+    margin-top: 0.25rem;
 }
 
 .bash-command {
@@ -306,6 +334,14 @@
     border-left-color: var(--accent);
 }
 
+.glob-pattern-inline {
+    padding: 0.15rem 0.4rem;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 3px;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
 .glob-pattern {
     color: var(--text-primary);
     font-size: 0.9rem;
@@ -315,12 +351,21 @@
 .glob-path {
     color: var(--text-muted);
     font-size: 0.8rem;
+    margin-top: 0.25rem;
 }
 
 /* Grep Tool */
 .grep-tool {
     background: rgba(122, 162, 247, 0.08);
     border-left-color: var(--accent);
+}
+
+.grep-pattern-inline {
+    padding: 0.15rem 0.4rem;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 3px;
+    color: var(--text-primary);
+    font-size: 0.85rem;
 }
 
 .grep-pattern {
@@ -333,6 +378,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+    margin-top: 0.25rem;
 }
 
 .grep-option {

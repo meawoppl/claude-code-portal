@@ -931,11 +931,16 @@ fn render_bash_tool(input: &Value) -> Html {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    // Format timeout with appropriate units (ms for <1s, seconds, minutes)
+    let timeout_str = timeout.map(format_duration);
+
     html! {
         <div class="tool-use bash-tool">
             <div class="tool-use-header">
                 <span class="tool-icon">{ "$" }</span>
                 <span class="tool-name">{ "Bash" }</span>
+                <code class="bash-command-inline">{ command }</code>
+                <span class="tool-header-spacer"></span>
                 {
                     if background {
                         html! { <span class="tool-badge background">{ "background" }</span> }
@@ -944,8 +949,8 @@ fn render_bash_tool(input: &Value) -> Html {
                     }
                 }
                 {
-                    if let Some(t) = timeout {
-                        html! { <span class="tool-meta">{ format!("timeout: {}ms", t) }</span> }
+                    if let Some(t) = timeout_str {
+                        html! { <span class="tool-meta timeout">{ t }</span> }
                     } else {
                         html! {}
                     }
@@ -958,7 +963,6 @@ fn render_bash_tool(input: &Value) -> Html {
                     html! {}
                 }
             }
-            <pre class="bash-command">{ format!("$ {}", command) }</pre>
         </div>
     }
 }
@@ -1007,8 +1011,8 @@ fn render_glob_tool(input: &Value) -> Html {
             <div class="tool-use-header">
                 <span class="tool-icon">{ "🔍" }</span>
                 <span class="tool-name">{ "Glob" }</span>
+                <code class="glob-pattern-inline">{ pattern }</code>
             </div>
-            <div class="glob-pattern">{ pattern }</div>
             {
                 if let Some(p) = path {
                     html! { <div class="glob-path">{ format!("in {}", p) }</div> }
@@ -1033,6 +1037,7 @@ fn render_grep_tool(input: &Value) -> Html {
             <div class="tool-use-header">
                 <span class="tool-icon">{ "🔎" }</span>
                 <span class="tool-name">{ "Grep" }</span>
+                <code class="grep-pattern-inline">{ format!("/{}/", pattern) }</code>
                 {
                     if case_insensitive {
                         html! { <span class="tool-badge">{ "-i" }</span> }
@@ -1041,7 +1046,6 @@ fn render_grep_tool(input: &Value) -> Html {
                     }
                 }
             </div>
-            <div class="grep-pattern">{ format!("/{}/", pattern) }</div>
             <div class="grep-options">
                 {
                     if let Some(g) = glob {
