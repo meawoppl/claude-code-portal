@@ -895,7 +895,10 @@ impl SessionView {
                         class={classes!("dropdown-option", "wiggum", (self.send_mode == SendMode::Wiggum).then_some("selected"))}
                         onclick={on_wiggum}
                     >
-                        { "Wiggum" }
+                        <span class="wiggum-label">
+                            <img src="wiggum.png" alt="" class="wiggum-icon" />
+                            { "Wiggum" }
+                        </span>
                         <span class="option-hint">{ "Loop until DONE" }</span>
                     </button>
                 </div>

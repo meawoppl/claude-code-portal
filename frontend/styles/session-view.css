@@ -1089,6 +1089,18 @@
     color: #bb9af7;
 }
 
+.wiggum-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.wiggum-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+}
+
 .dropdown-option .option-hint {
     font-size: 0.7rem;
     font-weight: 400;
