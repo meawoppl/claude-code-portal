@@ -825,6 +825,17 @@ fn log_claude_output(output: &ClaudeOutput) {
         ClaudeOutput::ControlResponse(resp) => {
             debug!("← [control_response] {:?}", resp);
         }
+        ClaudeOutput::Error(err) => {
+            if err.is_overloaded() {
+                warn!("← [error] API overloaded (529)");
+            } else if err.is_rate_limited() {
+                warn!("← [error] Rate limited (429)");
+            } else if err.is_server_error() {
+                error!("← [error] Server error (500): {}", err.error.message);
+            } else {
+                error!("← [error] API error: {}", err.error.message);
+            }
+        }
     }
 }
 
@@ -1054,6 +1065,7 @@ async fn run_main_loop(
     input_rx: &mut mpsc::UnboundedReceiver<String>,
     state: &mut ConnectionState,
 ) -> ConnectionResult {
+    use claude_codes::Permission;
     use claude_session_lib::{ControlResponse, PermissionResult};
 
     loop {
@@ -1088,15 +1100,15 @@ async fn run_main_loop(
                         )
                     } else {
                         // Allow with permissions for future similar operations
-                        // Convert typed permissions back to JSON for Claude protocol
-                        let perms_json: Vec<serde_json::Value> = perm_response
+                        // Use typed Permission API for clean conversion
+                        let permissions: Vec<Permission> = perm_response
                             .permissions
                             .iter()
-                            .filter_map(|p| serde_json::to_value(p).ok())
+                            .map(Permission::from_suggestion)
                             .collect();
                         ControlResponse::from_result(
                             &perm_response.request_id,
-                            PermissionResult::allow_with_permissions(input, perms_json)
+                            PermissionResult::allow_with_typed_permissions(input, permissions)
                         )
                     }
                 } else {

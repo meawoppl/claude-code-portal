@@ -6,7 +6,7 @@ description = "Library for managing Claude Code sessions"
 license = "MIT"
 
 [dependencies]
-claude-codes = "2.1"
+claude-codes = "2.1.17"
 tokio = { version = "1", features = ["sync", "time", "process"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
