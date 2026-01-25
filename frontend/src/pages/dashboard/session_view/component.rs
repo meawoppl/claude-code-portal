@@ -4,7 +4,7 @@ use crate::components::{group_messages, MessageGroupRenderer, VoiceInput};
 use crate::utils;
 use gloo::timers::callback::Timeout;
 use gloo_net::http::Request;
-use shared::{ProxyMessage, SessionInfo};
+use shared::{ProxyMessage, SendMode, SessionInfo};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -69,6 +69,12 @@ pub enum SessionViewMsg {
     SubmitAllAnswers(QuestionAnswers),
     /// Handle WebSocket event from connection
     WsEvent(WsEvent),
+    /// Toggle send mode dropdown visibility
+    ToggleSendModeDropdown,
+    /// Set the send mode
+    SetSendMode(SendMode),
+    /// Send with wiggum mode specifically
+    SendWiggum,
 }
 
 /// SessionView - Main terminal view for a single session
@@ -98,6 +104,8 @@ pub struct SessionView {
     voice_button_ref: NodeRef,
     multi_select_options: HashMap<usize, HashSet<usize>>,
     question_answers: QuestionAnswers,
+    send_mode: SendMode,
+    send_mode_dropdown_open: bool,
 }
 
 impl Component for SessionView {
@@ -171,6 +179,8 @@ impl Component for SessionView {
             voice_button_ref: NodeRef::default(),
             multi_select_options: HashMap::new(),
             question_answers: HashMap::new(),
+            send_mode: SendMode::Normal,
+            send_mode_dropdown_open: false,
         }
     }
 
@@ -378,6 +388,20 @@ impl Component for SessionView {
                 true
             }
             SessionViewMsg::SubmitAllAnswers(answers) => self.handle_submit_answers(ctx, answers),
+            SessionViewMsg::ToggleSendModeDropdown => {
+                self.send_mode_dropdown_open = !self.send_mode_dropdown_open;
+                true
+            }
+            SessionViewMsg::SetSendMode(mode) => {
+                self.send_mode = mode;
+                self.send_mode_dropdown_open = false;
+                true
+            }
+            SessionViewMsg::SendWiggum => {
+                self.send_mode = SendMode::Wiggum;
+                self.send_mode_dropdown_open = false;
+                self.handle_send_input(ctx)
+            }
         }
     }
 
@@ -451,9 +475,7 @@ impl Component for SessionView {
                         rows="1"
                     />
                     { self.render_voice_input(ctx) }
-                    <button type="submit" class="send-button" disabled={!self.ws_connected}>
-                        { "Send" }
-                    </button>
+                    { self.render_send_button(ctx) }
                 </form>
             </div>
         }
@@ -504,9 +526,18 @@ impl SessionView {
         let session_id = ctx.props().session.id;
         ctx.props().on_message_sent.emit(session_id);
 
+        // Capture current send mode and reset to normal after sending
+        let send_mode = self.send_mode;
+        self.send_mode = SendMode::Normal;
+
         if let Some(ref sender) = self.ws_sender {
             let msg = ProxyMessage::ClaudeInput {
                 content: serde_json::Value::String(input),
+                send_mode: if send_mode == SendMode::Normal {
+                    None
+                } else {
+                    Some(send_mode)
+                },
             };
             send_message(sender, msg);
         }
@@ -797,6 +828,66 @@ impl SessionView {
             }
         } else {
             html! {}
+        }
+    }
+
+    fn render_send_button(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let on_send = link.callback(|_| SessionViewMsg::SendInput);
+        let on_toggle_dropdown = link.callback(|e: MouseEvent| {
+            e.stop_propagation();
+            SessionViewMsg::ToggleSendModeDropdown
+        });
+        let on_wiggum = link.callback(|_| SessionViewMsg::SendWiggum);
+
+        let dropdown_class = if self.send_mode_dropdown_open {
+            "send-mode-dropdown open"
+        } else {
+            "send-mode-dropdown"
+        };
+
+        let button_label = match self.send_mode {
+            SendMode::Normal => "Send",
+            SendMode::Wiggum => "Wiggum",
+        };
+
+        html! {
+            <div class="send-button-container">
+                <button
+                    type="submit"
+                    class={classes!("send-button", (self.send_mode == SendMode::Wiggum).then_some("wiggum-mode"))}
+                    disabled={!self.ws_connected}
+                    onclick={on_send}
+                >
+                    { button_label }
+                </button>
+                <button
+                    type="button"
+                    class="send-mode-toggle"
+                    disabled={!self.ws_connected}
+                    onclick={on_toggle_dropdown}
+                >
+                    { "▼" }
+                </button>
+                <div class={dropdown_class}>
+                    <button
+                        type="button"
+                        class={classes!("dropdown-option", (self.send_mode == SendMode::Normal).then_some("selected"))}
+                        onclick={link.callback(|_| SessionViewMsg::SetSendMode(SendMode::Normal))}
+                    >
+                        { "Send" }
+                        <span class="option-hint">{ "Normal message" }</span>
+                    </button>
+                    <button
+                        type="button"
+                        class={classes!("dropdown-option", "wiggum", (self.send_mode == SendMode::Wiggum).then_some("selected"))}
+                        onclick={on_wiggum}
+                    >
+                        { "Wiggum" }
+                        <span class="option-hint">{ "Loop until DONE" }</span>
+                    </button>
+                </div>
+            </div>
         }
     }
 }

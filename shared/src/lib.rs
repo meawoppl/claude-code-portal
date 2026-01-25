@@ -51,7 +51,12 @@ pub enum ProxyMessage {
     ClaudeOutput { content: serde_json::Value },
 
     /// Input to Claude Code from user
-    ClaudeInput { content: serde_json::Value },
+    ClaudeInput {
+        content: serde_json::Value,
+        /// Optional send mode (normal, wiggum)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        send_mode: Option<SendMode>,
+    },
 
     /// Heartbeat to keep connection alive
     Heartbeat,
@@ -240,6 +245,18 @@ impl SessionStatus {
             SessionStatus::Disconnected => "disconnected",
         }
     }
+}
+
+/// Send mode for user input
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SendMode {
+    /// Normal single message send
+    #[default]
+    Normal,
+    /// Wiggum mode - iterative autonomous loop until completion
+    /// Proxy will re-send the prompt after each result until Claude responds with "DONE"
+    Wiggum,
 }
 
 /// API types for HTTP endpoints

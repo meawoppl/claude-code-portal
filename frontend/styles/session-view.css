@@ -1004,6 +1004,98 @@
     cursor: not-allowed;
 }
 
+/* Send button container with dropdown */
+.send-button-container {
+    position: relative;
+    display: flex;
+}
+
+.send-button-container .send-button {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    padding: 0.75rem 1rem;
+}
+
+.send-button-container .send-button.wiggum-mode {
+    background: linear-gradient(135deg, var(--accent) 0%, #bb9af7 100%);
+}
+
+.send-mode-toggle {
+    padding: 0.75rem 0.5rem;
+    background: var(--accent);
+    border: none;
+    border-left: 1px solid rgba(0, 0, 0, 0.2);
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+    color: var(--bg-dark);
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.send-mode-toggle:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.send-mode-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.send-mode-dropdown {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 4px;
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    min-width: 140px;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+}
+
+.send-mode-dropdown.open {
+    display: flex;
+}
+
+.dropdown-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0.6rem 0.8rem;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.dropdown-option:hover {
+    background: rgba(122, 162, 247, 0.15);
+}
+
+.dropdown-option.selected {
+    background: rgba(122, 162, 247, 0.25);
+}
+
+.dropdown-option.wiggum {
+    color: #bb9af7;
+}
+
+.dropdown-option .option-hint {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-top: 0.1rem;
+}
+
 /* Voice input button */
 .voice-button {
     display: flex;

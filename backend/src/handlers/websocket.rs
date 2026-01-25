@@ -1176,7 +1176,7 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                                 }
                             }
                         }
-                        ProxyMessage::ClaudeInput { content } => {
+                        ProxyMessage::ClaudeInput { content, send_mode } => {
                             // Only allow if session ownership was verified
                             if let Some(ref key) = session_key {
                                 if let Some(session_id) = verified_session_id {
@@ -1239,7 +1239,7 @@ async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, u
                                         // Fallback to old behavior if sequencing failed
                                         if !session_manager.send_to_session(
                                             key,
-                                            ProxyMessage::ClaudeInput { content },
+                                            ProxyMessage::ClaudeInput { content, send_mode },
                                         ) {
                                             warn!("Failed to send to session '{}', session not found in SessionManager", key);
                                         }

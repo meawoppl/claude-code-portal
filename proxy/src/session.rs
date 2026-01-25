@@ -11,7 +11,7 @@ use claude_codes::ClaudeOutput;
 use claude_session_lib::{Session as ClaudeSession, SessionEvent};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use shared::ProxyMessage;
+use shared::{ProxyMessage, SendMode};
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::{debug, error, info, warn};
@@ -439,6 +439,15 @@ pub struct PermissionResponseData {
     pub reason: Option<String>,
 }
 
+/// Wiggum mode state
+#[derive(Debug, Clone)]
+pub struct WiggumState {
+    /// Original user prompt (before modification)
+    pub original_prompt: String,
+    /// Current iteration count
+    pub iteration: u32,
+}
+
 /// State for the main message loop, reducing parameter count
 /// Contains channels and state that are specific to a single connection attempt.
 /// Note: input_rx is passed separately as it persists across reconnections.
@@ -457,6 +466,10 @@ pub struct ConnectionState {
     pub connection_start: Instant,
     /// Buffer for pending outputs
     pub output_buffer: Arc<Mutex<PendingOutputBuffer>>,
+    /// Receiver for wiggum mode activation
+    pub wiggum_rx: mpsc::UnboundedReceiver<String>,
+    /// Current wiggum state (if active)
+    pub wiggum_state: Option<WiggumState>,
 }
 
 /// Run the main message forwarding loop
@@ -479,6 +492,9 @@ async fn run_message_loop(
 
     // Channel for output acknowledgments from backend
     let (ack_tx, ack_rx) = mpsc::unbounded_channel::<u64>();
+
+    // Channel for wiggum mode activation
+    let (wiggum_tx, wiggum_rx) = mpsc::unbounded_channel::<String>();
 
     // Wrap ws_write for sharing
     let ws_write = std::sync::Arc::new(tokio::sync::Mutex::new(ws_write));
@@ -507,6 +523,7 @@ async fn run_message_loop(
         ack_tx,
         ws_write.clone(),
         disconnect_tx,
+        wiggum_tx,
     );
 
     // Create connection state (per-connection channels and timing)
@@ -518,6 +535,8 @@ async fn run_message_loop(
         disconnect_rx,
         connection_start,
         output_buffer: session.output_buffer.clone(),
+        wiggum_rx,
+        wiggum_state: None,
     };
 
     // Main loop
@@ -916,12 +935,16 @@ fn spawn_ws_reader(
     ack_tx: mpsc::UnboundedSender<u64>,
     ws_write: SharedWsWrite,
     disconnect_tx: tokio::sync::oneshot::Sender<()>,
+    wiggum_tx: mpsc::UnboundedSender<String>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(msg) = ws_read.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
-                    if !handle_ws_text_message(&text, &input_tx, &perm_tx, &ack_tx, &ws_write).await
+                    if !handle_ws_text_message(
+                        &text, &input_tx, &perm_tx, &ack_tx, &ws_write, &wiggum_tx,
+                    )
+                    .await
                     {
                         break;
                     }
@@ -949,6 +972,7 @@ async fn handle_ws_text_message(
     perm_tx: &mpsc::UnboundedSender<PermissionResponseData>,
     ack_tx: &mpsc::UnboundedSender<u64>,
     ws_write: &SharedWsWrite,
+    wiggum_tx: &mpsc::UnboundedSender<String>,
 ) -> bool {
     debug!("ws recv: {}", truncate(text, 200));
 
@@ -958,15 +982,35 @@ async fn handle_ws_text_message(
     };
 
     match proxy_msg {
-        ProxyMessage::ClaudeInput { content } => {
-            let text = match &content {
+        ProxyMessage::ClaudeInput { content, send_mode } => {
+            let user_text = match &content {
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
-            debug!("→ [input] {}", truncate(&text, 80));
-            if input_tx.send(text).is_err() {
-                error!("Failed to send input to channel");
-                return false;
+
+            // Check for wiggum mode
+            if send_mode == Some(SendMode::Wiggum) {
+                debug!("→ [input/wiggum] {}", truncate(&user_text, 80));
+                // Signal wiggum mode activation with the original prompt
+                if wiggum_tx.send(user_text.clone()).is_err() {
+                    error!("Failed to send wiggum activation");
+                    return false;
+                }
+                // Send the modified prompt to Claude
+                let wiggum_prompt = format!(
+                    "{}\n\nTake action on the directions above until fully complete. If complete, respond only with DONE.",
+                    user_text
+                );
+                if input_tx.send(wiggum_prompt).is_err() {
+                    error!("Failed to send input to channel");
+                    return false;
+                }
+            } else {
+                debug!("→ [input] {}", truncate(&user_text, 80));
+                if input_tx.send(user_text).is_err() {
+                    error!("Failed to send input to channel");
+                    return false;
+                }
             }
         }
         ProxyMessage::SequencedInput {
@@ -1083,6 +1127,15 @@ async fn run_main_loop(
                 }
             }
 
+            // Wiggum mode activation
+            Some(original_prompt) = state.wiggum_rx.recv() => {
+                info!("Wiggum mode activated with prompt: {}", truncate(&original_prompt, 60));
+                state.wiggum_state = Some(WiggumState {
+                    original_prompt,
+                    iteration: 1,
+                });
+            }
+
             Some(perm_response) = state.perm_rx.recv() => {
                 debug!("sending permission response to claude: {:?}", perm_response);
 
@@ -1122,7 +1175,14 @@ async fn run_main_loop(
             }
 
             event = claude_session.next_event() => {
-                match handle_session_event(event, &state.output_tx, &state.ws_write, state.connection_start).await {
+                match handle_session_event_with_wiggum(
+                    event,
+                    &state.output_tx,
+                    &state.ws_write,
+                    state.connection_start,
+                    &mut state.wiggum_state,
+                    claude_session,
+                ).await {
                     Some(result) => return result,
                     None => continue,
                 }
@@ -1131,21 +1191,67 @@ async fn run_main_loop(
     }
 }
 
-/// Handle a session event from claude-session-lib, returning Some(result) if we should exit
-async fn handle_session_event(
+/// Handle a session event from claude-session-lib, with wiggum loop support
+async fn handle_session_event_with_wiggum(
     event: Option<SessionEvent>,
     output_tx: &mpsc::UnboundedSender<ClaudeOutput>,
     ws_write: &SharedWsWrite,
     connection_start: Instant,
+    wiggum_state: &mut Option<WiggumState>,
+    claude_session: &mut ClaudeSession,
 ) -> Option<ConnectionResult> {
     match event {
-        Some(SessionEvent::Output(output)) => {
-            let is_result = matches!(&output, ClaudeOutput::Result(_));
-            if output_tx.send(output).is_err() {
+        Some(SessionEvent::Output(ref output)) => {
+            // Check for wiggum completion before forwarding
+            let should_continue_wiggum = if let ClaudeOutput::Result(ref result) = output {
+                if let Some(ref state) = wiggum_state {
+                    // Check if Claude responded with "DONE"
+                    let is_done = check_wiggum_done(result);
+                    if is_done {
+                        info!("Wiggum mode complete after {} iterations", state.iteration);
+                        false
+                    } else {
+                        true // Continue the loop
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Forward the output
+            if output_tx.send(output.clone()).is_err() {
                 error!("Failed to forward Claude output");
                 return Some(ConnectionResult::Disconnected(connection_start.elapsed()));
             }
-            if is_result {
+
+            // Handle wiggum loop continuation
+            if should_continue_wiggum {
+                if let Some(ref mut state) = wiggum_state {
+                    state.iteration += 1;
+                    info!("Wiggum iteration {} - resending prompt", state.iteration);
+
+                    // Resend the prompt
+                    let wiggum_prompt = format!(
+                        "{}\n\nTake action on the directions above until fully complete. If complete, respond only with DONE.",
+                        state.original_prompt
+                    );
+                    if let Err(e) = claude_session
+                        .send_input(serde_json::Value::String(wiggum_prompt))
+                        .await
+                    {
+                        error!("Failed to resend wiggum prompt: {}", e);
+                        *wiggum_state = None;
+                        return Some(ConnectionResult::ClaudeExited);
+                    }
+                }
+            } else if matches!(output, ClaudeOutput::Result(_)) && wiggum_state.is_some() {
+                // Clear wiggum state when done
+                *wiggum_state = None;
+            }
+
+            if matches!(output, ClaudeOutput::Result(_)) && wiggum_state.is_none() {
                 debug!("--- ready for input ---");
             }
             None
@@ -1190,4 +1296,32 @@ async fn handle_session_event(
             Some(ConnectionResult::ClaudeExited)
         }
     }
+}
+
+/// Check if Claude's result indicates wiggum completion (responded with "DONE")
+fn check_wiggum_done(result: &claude_codes::io::ResultMessage) -> bool {
+    // Check if it was an error (don't continue on errors)
+    if result.is_error {
+        warn!("Wiggum stopping due to error");
+        return true;
+    }
+
+    // The result message has a `result` field which contains Claude's final text response
+    if let Some(ref result_text) = result.result {
+        let text_upper: String = result_text.to_uppercase();
+        // Check if the result is exactly "DONE" or contains it prominently
+        // Being strict: must be "DONE" alone or "DONE" with minimal surrounding text
+        let trimmed = text_upper.trim();
+        if trimmed == "DONE" || trimmed.starts_with("DONE.") || trimmed.starts_with("DONE!") {
+            info!("Wiggum complete: Claude responded with DONE");
+            return true;
+        }
+        // Also check if DONE appears as the main content
+        if trimmed.len() < 50 && trimmed.contains("DONE") {
+            info!("Wiggum complete: Claude responded with short message containing DONE");
+            return true;
+        }
+    }
+
+    false // Continue the loop
 }
