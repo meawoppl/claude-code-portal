@@ -950,7 +950,7 @@ fn render_bash_tool(input: &Value) -> Html {
                 }
                 {
                     if let Some(t) = timeout_str {
-                        html! { <span class="tool-meta timeout">{ t }</span> }
+                        html! { <span class="tool-meta timeout">{ format!("timeout={}", t) }</span> }
                     } else {
                         html! {}
                     }
