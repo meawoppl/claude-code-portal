@@ -174,7 +174,7 @@ impl Component for SessionView {
             permission_selected: 0,
             reconnect_attempt: 0,
             reconnect_timer: None,
-            command_history: CommandHistory::new(),
+            command_history: CommandHistory::for_session(ctx.props().session.id),
             is_recording: false,
             interim_transcription: None,
             last_message_timestamp: None,

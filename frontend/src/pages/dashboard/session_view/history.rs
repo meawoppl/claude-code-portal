@@ -1,9 +1,12 @@
 //! Command history management for SessionView
 
+use uuid::Uuid;
+use web_sys::Storage;
+
 /// Maximum number of commands to keep in history
 pub const MAX_HISTORY: usize = 100;
 
-/// Command history state
+/// Command history state with browser localStorage persistence
 #[derive(Default)]
 pub struct CommandHistory {
     /// History entries (most recent last)
@@ -12,12 +15,70 @@ pub struct CommandHistory {
     position: Option<usize>,
     /// Draft input preserved when navigating history
     draft: String,
+    /// Session ID for localStorage key
+    session_id: Option<Uuid>,
 }
 
 impl CommandHistory {
-    /// Create a new empty command history
+    /// Create a new empty command history (no persistence, for tests)
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a command history for a specific session with localStorage persistence
+    pub fn for_session(session_id: Uuid) -> Self {
+        let mut history = Self {
+            session_id: Some(session_id),
+            ..Default::default()
+        };
+        history.load_from_storage();
+        history
+    }
+
+    /// Get the localStorage key for this session
+    fn storage_key(&self) -> Option<String> {
+        self.session_id.map(|id| format!("command_history_{}", id))
+    }
+
+    /// Get localStorage handle
+    fn get_storage() -> Option<Storage> {
+        web_sys::window()?.local_storage().ok().flatten()
+    }
+
+    /// Load history from localStorage
+    fn load_from_storage(&mut self) {
+        let Some(key) = self.storage_key() else {
+            return;
+        };
+        let Some(storage) = Self::get_storage() else {
+            return;
+        };
+
+        if let Ok(Some(data)) = storage.get_item(&key) {
+            if let Ok(entries) = serde_json::from_str::<Vec<String>>(&data) {
+                self.entries = entries;
+                // Trim to max if somehow over limit
+                if self.entries.len() > MAX_HISTORY {
+                    let excess = self.entries.len() - MAX_HISTORY;
+                    self.entries.drain(0..excess);
+                }
+            }
+        }
+    }
+
+    /// Save history to localStorage
+    fn save_to_storage(&self) {
+        let Some(key) = self.storage_key() else {
+            return;
+        };
+        let Some(storage) = Self::get_storage() else {
+            return;
+        };
+
+        if let Ok(data) = serde_json::to_string(&self.entries) {
+            let _ = storage.set_item(&key, &data);
+        }
     }
 
     /// Add a command to history (avoids consecutive duplicates)
@@ -27,6 +88,7 @@ impl CommandHistory {
             if self.entries.len() > MAX_HISTORY {
                 self.entries.remove(0);
             }
+            self.save_to_storage();
         }
         // Reset navigation
         self.position = None;
