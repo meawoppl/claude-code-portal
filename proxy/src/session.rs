@@ -73,6 +73,8 @@ pub struct ProxySessionConfig {
     pub working_directory: String,
     pub resume: bool,
     pub git_branch: Option<String>,
+    /// Extra arguments to pass through to the claude CLI
+    pub claude_args: Vec<String>,
 }
 
 /// Exponential backoff helper

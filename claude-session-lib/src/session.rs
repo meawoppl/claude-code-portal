@@ -402,7 +402,37 @@ impl Session {
             cmd.arg("--session-id").arg(config.session_id.to_string());
         }
 
+        // Add extra arguments
+        for arg in &config.extra_args {
+            cmd.arg(arg);
+        }
+
         cmd.current_dir(&config.working_directory);
+
+        // Log the full command
+        let args: Vec<_> = std::iter::once(claude_path.to_string_lossy().to_string())
+            .chain(
+                [
+                    "--print",
+                    "--verbose",
+                    "--output-format",
+                    "stream-json",
+                    "--input-format",
+                    "stream-json",
+                    "--permission-prompt-tool",
+                    "stdio",
+                ]
+                .iter()
+                .map(|s| s.to_string()),
+            )
+            .chain(if config.resume {
+                vec!["--resume".to_string(), config.session_id.to_string()]
+            } else {
+                vec!["--session-id".to_string(), config.session_id.to_string()]
+            })
+            .chain(config.extra_args.iter().cloned())
+            .collect();
+        tracing::info!("Spawning Claude: {}", args.join(" "));
 
         // Configure stdio
         cmd.stdin(std::process::Stdio::piped())

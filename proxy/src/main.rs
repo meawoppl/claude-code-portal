@@ -326,6 +326,7 @@ async fn main() -> Result<()> {
         working_directory: cwd,
         resume: resuming,
         git_branch,
+        claude_args: args.claude_args.clone(),
     };
 
     // Start Claude and run session
@@ -505,6 +506,7 @@ async fn create_claude_session(config: &ProxySessionConfig) -> Result<ClaudeSess
         session_name: config.session_name.clone(),
         resume: config.resume,
         claude_path: None,
+        extra_args: config.claude_args.clone(),
     };
 
     if config.resume {

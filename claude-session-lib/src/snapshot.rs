@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::buffer::BufferedOutput;
 
 /// Configuration for creating a session
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SessionConfig {
     /// Unique session identifier
     pub session_id: Uuid,
@@ -20,6 +20,9 @@ pub struct SessionConfig {
     pub resume: bool,
     /// Optional path to claude binary (defaults to "claude" in PATH)
     pub claude_path: Option<PathBuf>,
+    /// Extra arguments to pass to the claude CLI
+    #[serde(default)]
+    pub extra_args: Vec<String>,
 }
 
 /// A pending permission request that hasn't been responded to
@@ -96,6 +99,7 @@ mod tests {
             session_name: "test-session".to_string(),
             resume: false,
             claude_path: None,
+            extra_args: vec![],
         }
     }
 
