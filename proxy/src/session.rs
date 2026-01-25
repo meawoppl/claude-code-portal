@@ -1,11 +1,14 @@
 //! Session management and WebSocket connection handling.
+//!
+//! Uses claude-session-lib for Claude process management.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use claude_codes::io::{ContentBlock, ControlRequestPayload, ToolUseBlock};
-use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
+use claude_codes::ClaudeOutput;
+use claude_session_lib::{Session as LibSession, SessionEvent};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
@@ -148,8 +151,8 @@ pub enum LoopResult {
 pub struct SessionState<'a> {
     /// Session configuration
     pub config: &'a SessionConfig,
-    /// Claude client for communication
-    pub claude_client: &'a mut AsyncClient,
+    /// Claude session from claude-session-lib
+    pub claude_session: &'a mut LibSession,
     /// Sender for input messages (cloned per connection)
     pub input_tx: mpsc::UnboundedSender<String>,
     /// Receiver for input messages (persists across connections)
@@ -166,7 +169,7 @@ impl<'a> SessionState<'a> {
     /// Create a new session state
     pub fn new(
         config: &'a SessionConfig,
-        claude_client: &'a mut AsyncClient,
+        claude_session: &'a mut LibSession,
         input_tx: mpsc::UnboundedSender<String>,
         input_rx: &'a mut mpsc::UnboundedReceiver<String>,
     ) -> Result<Self> {
@@ -184,7 +187,7 @@ impl<'a> SessionState<'a> {
 
         Ok(Self {
             config,
-            claude_client,
+            claude_session,
             input_tx,
             input_rx,
             output_buffer,
@@ -221,11 +224,11 @@ impl<'a> SessionState<'a> {
 /// Run the WebSocket connection loop with auto-reconnect
 pub async fn run_connection_loop(
     config: &SessionConfig,
-    claude_client: &mut AsyncClient,
+    claude_session: &mut LibSession,
     input_tx: mpsc::UnboundedSender<String>,
     input_rx: &mut mpsc::UnboundedReceiver<String>,
 ) -> Result<LoopResult> {
-    let mut session = SessionState::new(config, claude_client, input_tx, input_rx)?;
+    let mut session = SessionState::new(config, claude_session, input_tx, input_rx)?;
     session.log_pending_messages().await;
 
     loop {
@@ -446,8 +449,6 @@ pub struct ConnectionState {
     pub output_tx: mpsc::UnboundedSender<ClaudeOutput>,
     /// Receiver to detect WebSocket disconnection
     pub disconnect_rx: tokio::sync::oneshot::Receiver<()>,
-    /// Session ID
-    pub session_id: Uuid,
     /// When the connection was established
     pub connection_start: Instant,
     /// Buffer for pending outputs
@@ -516,14 +517,13 @@ async fn run_message_loop(
         ack_rx,
         output_tx,
         disconnect_rx,
-        session_id,
         connection_start,
         output_buffer: session.output_buffer.clone(),
         session_not_found_rx,
     };
 
     // Main loop
-    let result = run_main_loop(session.claude_client, session.input_rx, &mut conn_state).await;
+    let result = run_main_loop(session.claude_session, session.input_rx, &mut conn_state).await;
 
     // Clean up
     output_task.abort();
@@ -1090,11 +1090,11 @@ async fn handle_ws_text_message(
 
 /// Run the main select loop
 async fn run_main_loop(
-    claude_client: &mut AsyncClient,
+    claude_session: &mut LibSession,
     input_rx: &mut mpsc::UnboundedReceiver<String>,
     state: &mut ConnectionState,
 ) -> ConnectionResult {
-    use claude_codes::io::{ControlResponse, PermissionResult};
+    use claude_session_lib::{ControlResponse, PermissionResult};
 
     loop {
         tokio::select! {
@@ -1110,9 +1110,8 @@ async fn run_main_loop(
 
             Some(text) = input_rx.recv() => {
                 debug!("sending to claude process: {}", truncate(&text, 100));
-                let input = ClaudeInput::user_message(&text, state.session_id);
 
-                if let Err(e) = claude_client.send(&input).await {
+                if let Err(e) = claude_session.send_input(serde_json::Value::String(text)).await {
                     error!("Failed to send to Claude: {}", e);
                     return ConnectionResult::ClaudeExited;
                 }
@@ -1152,7 +1151,7 @@ async fn run_main_loop(
                     )
                 };
 
-                if let Err(e) = claude_client.send_control_response(ctrl_response).await {
+                if let Err(e) = claude_session.send_raw_control_response(&perm_response.request_id, ctrl_response).await {
                     error!("Failed to send permission response to Claude: {}", e);
                     return ConnectionResult::ClaudeExited;
                 }
@@ -1168,8 +1167,8 @@ async fn run_main_loop(
                 }
             }
 
-            result = claude_client.receive() => {
-                match handle_claude_output(result, &state.output_tx, state.connection_start) {
+            event = claude_session.next_event() => {
+                match handle_session_event(event, &state.output_tx, state.connection_start) {
                     Some(result) => return result,
                     None => continue,
                 }
@@ -1178,14 +1177,14 @@ async fn run_main_loop(
     }
 }
 
-/// Handle output from Claude, returning Some(result) if we should exit
-fn handle_claude_output(
-    result: Result<ClaudeOutput, claude_codes::Error>,
+/// Handle a session event from claude-session-lib, returning Some(result) if we should exit
+fn handle_session_event(
+    event: Option<SessionEvent>,
     output_tx: &mpsc::UnboundedSender<ClaudeOutput>,
     connection_start: Instant,
 ) -> Option<ConnectionResult> {
-    match result {
-        Ok(output) => {
+    match event {
+        Some(SessionEvent::Output(output)) => {
             let is_result = matches!(&output, ClaudeOutput::Result(_));
             if output_tx.send(output).is_err() {
                 error!("Failed to forward Claude output");
@@ -1196,17 +1195,23 @@ fn handle_claude_output(
             }
             None
         }
-        Err(claude_codes::Error::ConnectionClosed) => {
-            info!("Claude connection closed");
+        Some(SessionEvent::PermissionRequest { .. }) => {
+            // Permission requests are handled by the output forwarder (via ControlRequest output)
+            // The library also emits this event, but we rely on the output path
+            None
+        }
+        Some(SessionEvent::Exited { code }) => {
+            info!("Claude session exited with code {}", code);
             Some(ConnectionResult::ClaudeExited)
         }
-        Err(e) => {
-            error!("Error receiving from Claude: {}", e);
-            if matches!(e, claude_codes::Error::Io(_)) {
-                Some(ConnectionResult::ClaudeExited)
-            } else {
-                None // Continue on parse errors
-            }
+        Some(SessionEvent::Error(e)) => {
+            error!("Session error: {}", e);
+            Some(ConnectionResult::ClaudeExited)
+        }
+        None => {
+            // Session has ended
+            info!("Claude session ended");
+            Some(ConnectionResult::ClaudeExited)
         }
     }
 }

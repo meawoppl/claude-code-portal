@@ -613,6 +613,7 @@ dependencies = [
  "chrono",
  "clap",
  "claude-codes",
+ "claude-session-lib",
  "colored",
  "directories",
  "dotenvy",

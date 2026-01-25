@@ -7,12 +7,13 @@ mod ui;
 mod update;
 mod util;
 
+use std::path::PathBuf;
+
 use anyhow::{Context, Result};
 use clap::Parser;
-use claude_codes::AsyncClient;
+use claude_session_lib::{Session as LibSession, SessionConfig as LibSessionConfig};
 use config::{ProxyConfig, SessionAuth};
 use session::SessionConfig;
-use tokio::io::AsyncBufReadExt;
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -434,7 +435,7 @@ async fn resolve_auth_token(
     Ok(Some(token))
 }
 
-/// Result from stderr monitoring indicating session not found
+/// Result indicating session not found
 struct SessionNotFound;
 
 /// Start Claude and run the proxy session
@@ -442,61 +443,32 @@ async fn run_proxy_session(mut config: SessionConfig) -> Result<()> {
     loop {
         ui::print_status("Starting Claude CLI...");
 
-        let mut claude_client = create_claude_client(&config).await?;
+        let mut claude_session = create_claude_session(&config).await?;
 
         ui::print_started();
-
-        // Channel to signal session not found from stderr reader
-        let (session_not_found_tx, mut session_not_found_rx) =
-            tokio::sync::mpsc::unbounded_channel::<()>();
-
-        // Log stderr in background and detect "No conversation found" error
-        if let Some(mut stderr) = claude_client.take_stderr() {
-            tokio::spawn(async move {
-                let mut line = String::new();
-                while let Ok(n) = stderr.read_line(&mut line).await {
-                    if n == 0 {
-                        break;
-                    }
-                    let trimmed = line.trim();
-                    warn!("Claude stderr: {}", trimmed);
-
-                    // Check for the session not found error
-                    if trimmed.contains("No conversation found") {
-                        let _ = session_not_found_tx.send(());
-                    }
-                    line.clear();
-                }
-            });
-        }
 
         // Create input channel (shared across reconnections)
         let (input_tx, mut input_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
-        // Run the connection loop, but also watch for session not found signal
-        let session_not_found = tokio::select! {
-            result = session::run_connection_loop(&config, &mut claude_client, input_tx, &mut input_rx) => {
-                let _ = claude_client.shutdown().await;
-                match result {
-                    Ok(session::LoopResult::NormalExit) => {
-                        info!("Proxy shutting down");
-                        return Ok(());
-                    }
-                    Ok(session::LoopResult::SessionNotFound) => {
-                        // Session not found from JSON output - need to restart with fresh session
-                        warn!("Session not found (from JSON output), will start fresh session");
-                        SessionNotFound
-                    }
-                    Err(e) => {
-                        return Err(e);
-                    }
-                }
+        // Run the connection loop
+        let result =
+            session::run_connection_loop(&config, &mut claude_session, input_tx, &mut input_rx)
+                .await;
+
+        let _ = claude_session.stop().await;
+
+        let session_not_found = match result {
+            Ok(session::LoopResult::NormalExit) => {
+                info!("Proxy shutting down");
+                return Ok(());
             }
-            _ = session_not_found_rx.recv() => {
-                // Session not found from stderr - need to restart with fresh session
-                warn!("Local Claude session not found (from stderr), will start fresh session");
-                let _ = claude_client.shutdown().await;
+            Ok(session::LoopResult::SessionNotFound) => {
+                // Session not found from JSON output - need to restart with fresh session
+                warn!("Session not found (from JSON output), will start fresh session");
                 SessionNotFound
+            }
+            Err(e) => {
+                return Err(e);
             }
         };
 
@@ -533,49 +505,29 @@ async fn run_proxy_session(mut config: SessionConfig) -> Result<()> {
     }
 }
 
-/// Create the Claude async client
-async fn create_claude_client(config: &SessionConfig) -> Result<AsyncClient> {
-    let base_args = [
-        "--print",
-        "--verbose",
-        "--output-format",
-        "stream-json",
-        "--input-format",
-        "stream-json",
-        "--replay-user-messages",
-        "--permission-prompt-tool",
-        "stdio",
-    ];
+/// Create a Claude session using claude-session-lib
+async fn create_claude_session(config: &SessionConfig) -> Result<LibSession> {
+    let lib_config = LibSessionConfig {
+        session_id: config.session_id,
+        working_directory: PathBuf::from(&config.working_directory),
+        session_name: config.session_name.clone(),
+        resume: config.resuming,
+        claude_path: None,
+    };
 
-    let child = if config.resuming {
+    if config.resuming {
         info!(
             "Using --resume {} to resume Claude session",
             config.session_id
         );
-
-        tokio::process::Command::new("claude")
-            .args(base_args)
-            .args(["--resume", &config.session_id.to_string()])
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .context("Failed to spawn Claude process for resume")?
     } else {
         info!(
             "Starting fresh Claude session with ID {}",
             config.session_id
         );
+    }
 
-        tokio::process::Command::new("claude")
-            .args(base_args)
-            .args(["--session-id", &config.session_id.to_string()])
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .context("Failed to spawn Claude process")?
-    };
-
-    AsyncClient::new(child).map_err(|e| anyhow::anyhow!("Failed to create AsyncClient: {}", e))
+    LibSession::new(lib_config)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to create Claude session: {}", e))
 }

@@ -65,6 +65,7 @@ chrono = { workspace = true, features = ["std", "clock"] }
 # SHA256 for binary verification
 sha2 = "0.10"
 hex = "0.4"
+claude-session-lib = { version = "0.1.0", path = "../claude-session-lib" }
 
 # Unix system calls (for lock file process checking)
 [target.'cfg(unix)'.dependencies]

@@ -278,6 +278,39 @@ impl Session {
         Ok(())
     }
 
+    /// Send a raw control response to Claude
+    ///
+    /// This is an advanced method for cases where the simple `respond_permission`
+    /// doesn't provide enough control (e.g., sending permissions to remember).
+    /// The caller is responsible for ensuring the request_id matches a pending request.
+    pub async fn send_raw_control_response(
+        &mut self,
+        request_id: &str,
+        ctrl_response: ControlResponse,
+    ) -> Result<(), SessionError> {
+        // Verify this is the pending request
+        match &self.pending_permission {
+            Some(perm) if perm.request_id == request_id => {}
+            _ => {
+                return Err(SessionError::InvalidPermissionResponse(
+                    request_id.to_string(),
+                ));
+            }
+        }
+
+        if let Some(ref mut client) = self.client {
+            client
+                .send_control_response(ctrl_response)
+                .await
+                .map_err(SessionError::ClaudeError)?;
+        }
+
+        self.pending_permission = None;
+        self.state = SessionState::Running;
+
+        Ok(())
+    }
+
     /// Gracefully stop the session
     pub async fn stop(&mut self) -> Result<(), SessionError> {
         if let Some(client) = self.client.take() {
