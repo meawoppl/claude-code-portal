@@ -118,6 +118,11 @@ impl Backoff {
         }
     }
 
+    /// Reset backoff to initial value unconditionally
+    pub fn reset(&mut self) {
+        self.current = self.initial;
+    }
+
     /// Get a sleep duration
     pub fn sleep_duration(&self) -> Duration {
         Duration::from_secs(self.current)
@@ -138,6 +143,8 @@ pub enum ConnectionResult {
     Disconnected(Duration),
     /// Session not found error - need to restart with fresh session
     SessionNotFound,
+    /// Server is shutting down gracefully, includes suggested reconnect delay
+    ServerShutdown(Duration),
 }
 
 /// Result from the connection loop
@@ -266,6 +273,21 @@ pub async fn run_connection_loop(
 
                 tokio::time::sleep(session.backoff.sleep_duration()).await;
                 session.backoff.advance();
+            }
+            ConnectionResult::ServerShutdown(delay) => {
+                // Graceful shutdown - reset backoff and use server's suggested delay
+                session.backoff.reset();
+                session.persist_buffer().await;
+
+                let pending = session.pending_count().await;
+                let delay_secs = delay.as_secs().max(1);
+                ui::print_disconnected_with_pending(delay_secs, pending);
+                info!(
+                    "Server shutting down, {} pending messages, reconnecting in {}s",
+                    pending, delay_secs
+                );
+
+                tokio::time::sleep(delay).await;
             }
         }
     }
@@ -451,6 +473,21 @@ pub struct WiggumState {
     pub iteration: u32,
 }
 
+/// Signal for graceful server shutdown with recommended reconnect delay
+pub struct GracefulShutdown {
+    pub reconnect_delay_ms: u64,
+}
+
+/// Result from handling a WebSocket text message
+enum WsMessageResult {
+    /// Continue processing messages
+    Continue,
+    /// Disconnect (error or other reason)
+    Disconnect,
+    /// Server requested graceful shutdown with specified delay in ms
+    GracefulShutdown(u64),
+}
+
 /// State for the main message loop, reducing parameter count
 /// Contains channels and state that are specific to a single connection attempt.
 /// Note: input_rx is passed separately as it persists across reconnections.
@@ -465,6 +502,8 @@ pub struct ConnectionState {
     pub ws_write: SharedWsWrite,
     /// Receiver to detect WebSocket disconnection
     pub disconnect_rx: tokio::sync::oneshot::Receiver<()>,
+    /// Receiver for graceful server shutdown signal
+    pub graceful_shutdown_rx: mpsc::UnboundedReceiver<GracefulShutdown>,
     /// When the connection was established
     pub connection_start: Instant,
     /// Buffer for pending outputs
@@ -499,6 +538,10 @@ async fn run_message_loop(
     // Channel for wiggum mode activation
     let (wiggum_tx, wiggum_rx) = mpsc::unbounded_channel::<String>();
 
+    // Channel for graceful server shutdown signals
+    let (graceful_shutdown_tx, graceful_shutdown_rx) =
+        mpsc::unbounded_channel::<GracefulShutdown>();
+
     // Wrap ws_write for sharing
     let ws_write = std::sync::Arc::new(tokio::sync::Mutex::new(ws_write));
 
@@ -527,6 +570,7 @@ async fn run_message_loop(
         ws_write.clone(),
         disconnect_tx,
         wiggum_tx,
+        graceful_shutdown_tx,
     );
 
     // Create connection state (per-connection channels and timing)
@@ -536,6 +580,7 @@ async fn run_message_loop(
         output_tx,
         ws_write: ws_write.clone(),
         disconnect_rx,
+        graceful_shutdown_rx,
         connection_start,
         output_buffer: session.output_buffer.clone(),
         wiggum_rx,
@@ -931,6 +976,7 @@ fn format_duration(ms: u64) -> String {
 }
 
 /// Spawn the WebSocket reader task
+#[allow(clippy::too_many_arguments)] // TODO: refactor to event enum (issue #271)
 fn spawn_ws_reader(
     mut ws_read: WsRead,
     input_tx: mpsc::UnboundedSender<String>,
@@ -939,17 +985,25 @@ fn spawn_ws_reader(
     ws_write: SharedWsWrite,
     disconnect_tx: tokio::sync::oneshot::Sender<()>,
     wiggum_tx: mpsc::UnboundedSender<String>,
+    graceful_shutdown_tx: mpsc::UnboundedSender<GracefulShutdown>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(msg) = ws_read.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
-                    if !handle_ws_text_message(
+                    match handle_ws_text_message(
                         &text, &input_tx, &perm_tx, &ack_tx, &ws_write, &wiggum_tx,
                     )
                     .await
                     {
-                        break;
+                        WsMessageResult::Continue => {}
+                        WsMessageResult::Disconnect => break,
+                        WsMessageResult::GracefulShutdown(delay_ms) => {
+                            let _ = graceful_shutdown_tx.send(GracefulShutdown {
+                                reconnect_delay_ms: delay_ms,
+                            });
+                            break;
+                        }
                     }
                 }
                 Ok(Message::Close(_)) => {
@@ -976,12 +1030,12 @@ async fn handle_ws_text_message(
     ack_tx: &mpsc::UnboundedSender<u64>,
     ws_write: &SharedWsWrite,
     wiggum_tx: &mpsc::UnboundedSender<String>,
-) -> bool {
+) -> WsMessageResult {
     debug!("ws recv: {}", truncate(text, 200));
 
     let proxy_msg = match serde_json::from_str::<ProxyMessage>(text) {
         Ok(msg) => msg,
-        Err(_) => return true, // Continue on parse error
+        Err(_) => return WsMessageResult::Continue, // Continue on parse error
     };
 
     match proxy_msg {
@@ -997,7 +1051,7 @@ async fn handle_ws_text_message(
                 // Signal wiggum mode activation with the original prompt
                 if wiggum_tx.send(user_text.clone()).is_err() {
                     error!("Failed to send wiggum activation");
-                    return false;
+                    return WsMessageResult::Disconnect;
                 }
                 // Send the modified prompt to Claude
                 let wiggum_prompt = format!(
@@ -1006,13 +1060,13 @@ async fn handle_ws_text_message(
                 );
                 if input_tx.send(wiggum_prompt).is_err() {
                     error!("Failed to send input to channel");
-                    return false;
+                    return WsMessageResult::Disconnect;
                 }
             } else {
                 debug!("→ [input] {}", truncate(&user_text, 80));
                 if input_tx.send(user_text).is_err() {
                     error!("Failed to send input to channel");
-                    return false;
+                    return WsMessageResult::Disconnect;
                 }
             }
         }
@@ -1028,7 +1082,7 @@ async fn handle_ws_text_message(
             debug!("→ [seq_input] seq={} {}", seq, truncate(&text, 80));
             if input_tx.send(text).is_err() {
                 error!("Failed to send input to channel");
-                return false;
+                return WsMessageResult::Disconnect;
             }
             // Send InputAck back to backend
             let ack = ProxyMessage::InputAck {
@@ -1067,7 +1121,7 @@ async fn handle_ws_text_message(
                 .is_err()
             {
                 error!("Failed to send permission response to channel");
-                return false;
+                return WsMessageResult::Disconnect;
             }
         }
         ProxyMessage::OutputAck {
@@ -1077,7 +1131,7 @@ async fn handle_ws_text_message(
             debug!("→ [output_ack] seq={}", ack_seq);
             if ack_tx.send(ack_seq).is_err() {
                 error!("Failed to send output ack to channel");
-                return false;
+                return WsMessageResult::Disconnect;
             }
         }
         ProxyMessage::Heartbeat => {
@@ -1095,15 +1149,14 @@ async fn handle_ws_text_message(
                 "Server shutting down: {} (reconnecting in {}ms)",
                 reason, reconnect_delay_ms
             );
-            // Returning false will trigger the reconnect cycle
-            return false;
+            return WsMessageResult::GracefulShutdown(reconnect_delay_ms);
         }
         _ => {
             debug!("ws msg: {:?}", proxy_msg);
         }
     }
 
-    true
+    WsMessageResult::Continue
 }
 
 /// Run the main select loop
@@ -1119,6 +1172,11 @@ async fn run_main_loop(
             _ = &mut state.disconnect_rx => {
                 info!("WebSocket disconnected");
                 return ConnectionResult::Disconnected(state.connection_start.elapsed());
+            }
+
+            Some(shutdown) = state.graceful_shutdown_rx.recv() => {
+                info!("Server graceful shutdown, will reconnect in {}ms", shutdown.reconnect_delay_ms);
+                return ConnectionResult::ServerShutdown(Duration::from_millis(shutdown.reconnect_delay_ms));
             }
 
             Some(text) = input_rx.recv() => {
