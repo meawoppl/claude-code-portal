@@ -495,7 +495,7 @@ async fn shutdown_signal(app_state: Arc<AppState>) {
         .session_manager
         .broadcast_to_all(shared::ProxyMessage::ServerShutdown {
             reason: "Server is restarting".to_string(),
-            reconnect_delay_ms: 5000,
+            reconnect_delay_ms: 1000,
         });
 
     // Give clients a moment to receive the message
