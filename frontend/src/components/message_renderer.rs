@@ -1012,14 +1012,14 @@ fn render_glob_tool(input: &Value) -> Html {
                 <span class="tool-icon">{ "🔍" }</span>
                 <span class="tool-name">{ "Glob" }</span>
                 <code class="glob-pattern-inline">{ pattern }</code>
-            </div>
-            {
-                if let Some(p) = path {
-                    html! { <div class="glob-path">{ format!("in {}", p) }</div> }
-                } else {
-                    html! {}
+                {
+                    if let Some(p) = path {
+                        html! { <span class="tool-meta">{ format!("in {}", p) }</span> }
+                    } else {
+                        html! {}
+                    }
                 }
-            }
+            </div>
         </div>
     }
 }
@@ -1031,6 +1031,8 @@ fn render_grep_tool(input: &Value) -> Html {
     let glob = input.get("glob").and_then(|v| v.as_str());
     let file_type = input.get("type").and_then(|v| v.as_str());
     let case_insensitive = input.get("-i").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    let has_options = glob.is_some() || file_type.is_some();
 
     html! {
         <div class="tool-use grep-tool">
@@ -1045,30 +1047,38 @@ fn render_grep_tool(input: &Value) -> Html {
                         html! {}
                     }
                 }
-            </div>
-            <div class="grep-options">
-                {
-                    if let Some(g) = glob {
-                        html! { <span class="grep-option">{ format!("--glob={}", g) }</span> }
-                    } else {
-                        html! {}
-                    }
-                }
-                {
-                    if let Some(t) = file_type {
-                        html! { <span class="grep-option">{ format!("--type={}", t) }</span> }
-                    } else {
-                        html! {}
-                    }
-                }
                 {
                     if let Some(p) = path {
-                        html! { <span class="grep-option">{ format!("in {}", p) }</span> }
+                        html! { <span class="tool-meta">{ format!("in {}", p) }</span> }
                     } else {
                         html! {}
                     }
                 }
             </div>
+            {
+                if has_options {
+                    html! {
+                        <div class="grep-options">
+                            {
+                                if let Some(g) = glob {
+                                    html! { <span class="grep-option">{ format!("--glob={}", g) }</span> }
+                                } else {
+                                    html! {}
+                                }
+                            }
+                            {
+                                if let Some(t) = file_type {
+                                    html! { <span class="grep-option">{ format!("--type={}", t) }</span> }
+                                } else {
+                                    html! {}
+                                }
+                            }
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
         </div>
     }
 }
