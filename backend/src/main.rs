@@ -1,4 +1,5 @@
 mod db;
+mod embedded_assets;
 mod handlers;
 mod jwt;
 mod models;
@@ -15,10 +16,7 @@ use clap::Parser;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use std::{env, sync::Arc};
 use tower_cookies::{CookieManagerLayer, Key};
-use tower_http::{
-    cors::{Any, CorsLayer},
-    services::{ServeDir, ServeFile},
-};
+use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use handlers::websocket::SessionManager;
@@ -30,10 +28,6 @@ struct Args {
     /// Enable development mode (bypasses OAuth, creates test user)
     #[arg(long)]
     dev_mode: bool,
-
-    /// Path to frontend dist directory to serve
-    #[arg(long, default_value = "frontend/dist")]
-    frontend_dist: String,
 }
 
 #[derive(Clone)]
@@ -292,7 +286,7 @@ async fn main() -> anyhow::Result<()> {
         .allow_headers(Any);
 
     // Build our application with routes
-    let mut app = Router::new()
+    let app = Router::new()
         // Health check endpoint
         .route("/api/health", get(|| async { "OK" }))
         // App configuration (public, no auth required)
@@ -403,18 +397,11 @@ async fn main() -> anyhow::Result<()> {
             get(handlers::admin::get_raw_message).delete(handlers::admin::delete_raw_message),
         )
         // Add single unified state
-        .with_state(app_state.clone());
+        .with_state(app_state.clone())
+        // Serve embedded frontend assets with SPA fallback
+        .fallback(axum::routing::get(embedded_assets::serve_embedded_frontend));
 
-    // Serve frontend static files at root with SPA fallback
-    if std::path::Path::new(&args.frontend_dist).exists() {
-        tracing::info!("Serving frontend from: {}", args.frontend_dist);
-        let index_path = format!("{}/index.html", args.frontend_dist);
-        app = app.fallback_service(
-            ServeDir::new(&args.frontend_dist).fallback(ServeFile::new(&index_path)),
-        );
-    } else {
-        tracing::warn!("Frontend dist not found at: {}", args.frontend_dist);
-    }
+    tracing::info!("Serving embedded frontend assets");
 
     // Add CORS and cookie management
     let app = app.layer(CookieManagerLayer::new()).layer(cors);

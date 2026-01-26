@@ -37,17 +37,16 @@ jobs:
       - name: Install trunk
         run: cargo install trunk --locked
 
-      - name: Build backend
-        run: cargo build --release -p backend
-
       - name: Build frontend
         run: cd frontend && trunk build
+
+      - name: Build backend (embeds frontend assets)
+        run: cargo build --release -p backend
 
       - name: Prepare build artifacts
         run: |
           mkdir -p build-output
           cp target/release/backend build-output/
-          cp -r frontend/dist build-output/frontend-dist
 
       - name: Log in to Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
