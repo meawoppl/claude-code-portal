@@ -67,11 +67,18 @@ jobs:
         uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: clippy
+          targets: wasm32-unknown-unknown
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "clippy"
+
+      - name: Install trunk
+        run: cargo install trunk --locked
+
+      - name: Build frontend (required for backend embed)
+        run: cd frontend && trunk build
 
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets
@@ -87,11 +94,19 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "backend"
+
+      - name: Install trunk
+        run: cargo install trunk --locked
+
+      - name: Build frontend (required for backend embed)
+        run: cd frontend && trunk build
 
       - name: Build backend
         run: cargo build -p backend -p claude-portal -p shared
@@ -129,11 +144,19 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "test"
+
+      - name: Install trunk
+        run: cargo install trunk --locked
+
+      - name: Build frontend (required for backend embed)
+        run: cd frontend && trunk build
 
       - name: Run tests
         run: cargo test --workspace

@@ -16,11 +16,8 @@ RUN apt-get update && \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pre-built backend binary from CI
+# Copy pre-built backend binary from CI (frontend assets are embedded)
 COPY build-output/backend /app/backend
-
-# Copy pre-built frontend dist from CI
-COPY build-output/frontend-dist /app/frontend/dist
 
 # Create non-root user
 RUN useradd -m -u 1001 -s /bin/bash appuser && \
