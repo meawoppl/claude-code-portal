@@ -340,9 +340,9 @@ fn render_ask_user_question(props: &PermissionDialogProps, parsed: &AskUserQuest
                 >
                     { button_text }
                 </button>
-            </div>
-            <div class="question-hint">
-                { "Click options to answer each question, then submit" }
+                <div class="question-hint">
+                    { "Click options to answer each question, then submit" }
+                </div>
             </div>
         </div>
     }
