@@ -4,7 +4,9 @@ use chrono::Utc;
 use claude_codes::io::{ControlResponse, PermissionResult};
 use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
 use std::path::Path;
+use std::sync::Arc;
 use tokio::process::Command;
+use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
 
 use crate::buffer::OutputBuffer;
@@ -127,21 +129,46 @@ enum SessionState {
     },
 }
 
+/// Internal message from the stdout drain task
+enum DrainMessage {
+    Output(Box<ClaudeOutput>),
+    Error(SessionError),
+    Exited { code: i32 },
+}
+
 /// A managed Claude Code session
+///
+/// Internally spawns a dedicated task to continuously drain stdout from the Claude
+/// process, preventing buffer overflow when the main select! loop is busy with
+/// other operations. Events are buffered in an unbounded channel.
 pub struct Session {
     id: Uuid,
     config: SessionConfig,
-    client: Option<AsyncClient>,
+    /// Shared client for sending input (writes only)
+    client: Option<Arc<Mutex<AsyncClient>>>,
     buffer: OutputBuffer,
     state: SessionState,
     pending_permission: Option<PendingPermission>,
+    /// Receiver for events from the stdout drain task
+    event_rx: Option<mpsc::UnboundedReceiver<DrainMessage>>,
 }
 
 impl Session {
     /// Create a new session (spawns Claude process)
+    ///
+    /// Spawns a dedicated background task to continuously drain stdout from Claude,
+    /// preventing buffer overflow when the caller's select! loop is busy.
     pub async fn new(config: SessionConfig) -> Result<Self, SessionError> {
         let buffer = OutputBuffer::new(config.session_id);
         let client = Self::spawn_claude(&config).await?;
+        let client = Arc::new(Mutex::new(client));
+
+        // Spawn the stdout drain task
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let drain_client = client.clone();
+        tokio::spawn(async move {
+            Self::drain_stdout_task(drain_client, event_tx).await;
+        });
 
         Ok(Self {
             id: config.session_id,
@@ -150,7 +177,49 @@ impl Session {
             buffer,
             state: SessionState::Running,
             pending_permission: None,
+            event_rx: Some(event_rx),
         })
+    }
+
+    /// Background task that continuously drains stdout from Claude into a channel.
+    ///
+    /// This ensures stdout is drained regardless of how busy the main event loop is,
+    /// preventing the OS pipe buffer from filling up and truncating messages.
+    async fn drain_stdout_task(
+        client: Arc<Mutex<AsyncClient>>,
+        event_tx: mpsc::UnboundedSender<DrainMessage>,
+    ) {
+        loop {
+            let result = {
+                let mut client = client.lock().await;
+                client.receive().await
+            };
+
+            match result {
+                Ok(output) => {
+                    if event_tx
+                        .send(DrainMessage::Output(Box::new(output)))
+                        .is_err()
+                    {
+                        // Receiver dropped, session ended
+                        break;
+                    }
+                }
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if err_str.contains("exit") || err_str.contains("terminated") {
+                        let _ = event_tx.send(DrainMessage::Exited { code: 1 });
+                        break;
+                    }
+                    if event_tx
+                        .send(DrainMessage::Error(SessionError::ClaudeError(e)))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     /// Restore a session from a snapshot
@@ -164,10 +233,20 @@ impl Session {
         let mut config = snapshot.config;
         config.resume = true;
 
-        let client = if snapshot.was_running {
-            Some(Self::spawn_claude(&config).await?)
+        let (client, event_rx) = if snapshot.was_running {
+            let client = Self::spawn_claude(&config).await?;
+            let client = Arc::new(Mutex::new(client));
+
+            // Spawn the stdout drain task
+            let (event_tx, event_rx) = mpsc::unbounded_channel();
+            let drain_client = client.clone();
+            tokio::spawn(async move {
+                Self::drain_stdout_task(drain_client, event_tx).await;
+            });
+
+            (Some(client), Some(event_rx))
         } else {
-            None
+            (None, None)
         };
 
         let state = if client.is_some() {
@@ -183,6 +262,7 @@ impl Session {
             buffer,
             state,
             pending_permission: snapshot.pending_permission,
+            event_rx,
         })
     }
 
@@ -215,14 +295,19 @@ impl Session {
     ///
     /// Returns `None` if the session has exited and no more events are available.
     /// Use this in a loop with other async operations via `tokio::select!`.
+    ///
+    /// Events are delivered from a dedicated background task that continuously
+    /// drains stdout, so this method will not block other select! branches from
+    /// being processed, and stdout will not overflow.
     pub async fn next_event(&mut self) -> Option<SessionEvent> {
         // Loop to skip internal messages (ControlResponse)
         loop {
-            // Poll Claude for output
-            let client = self.client.as_mut()?;
+            let event_rx = self.event_rx.as_mut()?;
 
-            match client.receive().await {
-                Ok(output) => {
+            match event_rx.recv().await {
+                Some(DrainMessage::Output(boxed_output)) => {
+                    let output = *boxed_output;
+
                     // Buffer the output
                     let output_value = serde_json::to_value(&output).unwrap_or_default();
                     self.buffer.push(output_value);
@@ -237,6 +322,7 @@ impl Session {
                         {
                             self.state = SessionState::Exited { code: 1 };
                             self.client = None;
+                            self.event_rx = None;
                             return Some(SessionEvent::SessionNotFound);
                         }
                     }
@@ -275,15 +361,21 @@ impl Session {
 
                     return Some(SessionEvent::Output(output));
                 }
-                Err(e) => {
-                    // Check if process exited
-                    let err_str = e.to_string();
-                    if err_str.contains("exit") || err_str.contains("terminated") {
-                        self.state = SessionState::Exited { code: 1 };
-                        self.client = None;
-                        return Some(SessionEvent::Exited { code: 1 });
-                    }
-                    return Some(SessionEvent::Error(SessionError::ClaudeError(e)));
+                Some(DrainMessage::Exited { code }) => {
+                    self.state = SessionState::Exited { code };
+                    self.client = None;
+                    self.event_rx = None;
+                    return Some(SessionEvent::Exited { code });
+                }
+                Some(DrainMessage::Error(e)) => {
+                    return Some(SessionEvent::Error(e));
+                }
+                None => {
+                    // Channel closed, drain task ended
+                    self.state = SessionState::Exited { code: 0 };
+                    self.client = None;
+                    self.event_rx = None;
+                    return None;
                 }
             }
         }
@@ -298,13 +390,14 @@ impl Session {
             return Err(SessionError::AlreadyExited(code));
         }
 
-        if let Some(ref mut client) = self.client {
+        if let Some(ref client) = self.client {
             // Extract string content or serialize to string
             let text = match &content {
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
             let input = ClaudeInput::user_message(text, self.id);
+            let mut client = client.lock().await;
             client
                 .send(&input)
                 .await
@@ -332,7 +425,7 @@ impl Session {
             }
         }
 
-        if let Some(ref mut client) = self.client {
+        if let Some(ref client) = self.client {
             let input_value = response
                 .input
                 .unwrap_or(serde_json::Value::Object(Default::default()));
@@ -357,6 +450,7 @@ impl Session {
                 ControlResponse::from_result(request_id, PermissionResult::deny(reason))
             };
 
+            let mut client = client.lock().await;
             client
                 .send_control_response(ctrl_response)
                 .await
