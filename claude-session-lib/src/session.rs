@@ -4,9 +4,8 @@ use chrono::Utc;
 use claude_codes::io::{ControlResponse, PermissionResult};
 use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
 use std::path::Path;
-use std::sync::Arc;
 use tokio::process::Command;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::buffer::OutputBuffer;
@@ -129,8 +128,16 @@ enum SessionState {
     },
 }
 
-/// Internal message from the stdout drain task
-enum DrainMessage {
+/// Commands sent to the Claude I/O task
+enum IoCommand {
+    /// Send user input to Claude
+    SendInput(ClaudeInput),
+    /// Send a permission response to Claude
+    SendPermissionResponse(ControlResponse),
+}
+
+/// Events received from the Claude I/O task
+enum IoEvent {
     Output(Box<ClaudeOutput>),
     Error(SessionError),
     Exited { code: i32 },
@@ -138,42 +145,41 @@ enum DrainMessage {
 
 /// A managed Claude Code session
 ///
-/// Internally spawns a dedicated task to continuously drain stdout from the Claude
-/// process, preventing buffer overflow when the main select! loop is busy with
-/// other operations. Events are buffered in an unbounded channel.
+/// Internally spawns a dedicated I/O task that owns the Claude process and handles
+/// both reading stdout and writing stdin. This prevents buffer overflow and avoids
+/// deadlocks that would occur if we tried to share the client between tasks with a mutex.
 pub struct Session {
     id: Uuid,
     config: SessionConfig,
-    /// Shared client for sending input (writes only)
-    client: Option<Arc<Mutex<AsyncClient>>>,
+    /// Channel to send commands (input, permission responses) to the I/O task
+    command_tx: Option<mpsc::UnboundedSender<IoCommand>>,
     buffer: OutputBuffer,
     state: SessionState,
     pending_permission: Option<PendingPermission>,
-    /// Receiver for events from the stdout drain task
-    event_rx: Option<mpsc::UnboundedReceiver<DrainMessage>>,
+    /// Receiver for events from the I/O task
+    event_rx: Option<mpsc::UnboundedReceiver<IoEvent>>,
 }
 
 impl Session {
     /// Create a new session (spawns Claude process)
     ///
-    /// Spawns a dedicated background task to continuously drain stdout from Claude,
-    /// preventing buffer overflow when the caller's select! loop is busy.
+    /// Spawns a dedicated I/O task that owns the Claude process and handles both
+    /// reading stdout and writing stdin, preventing deadlocks and buffer overflow.
     pub async fn new(config: SessionConfig) -> Result<Self, SessionError> {
         let buffer = OutputBuffer::new(config.session_id);
         let client = Self::spawn_claude(&config).await?;
-        let client = Arc::new(Mutex::new(client));
 
-        // Spawn the stdout drain task
+        // Spawn the I/O task that owns the client
         let (event_tx, event_rx) = mpsc::unbounded_channel();
-        let drain_client = client.clone();
+        let (command_tx, command_rx) = mpsc::unbounded_channel();
         tokio::spawn(async move {
-            Self::drain_stdout_task(drain_client, event_tx).await;
+            Self::claude_io_task(client, command_rx, event_tx).await;
         });
 
         Ok(Self {
             id: config.session_id,
             config,
-            client: Some(client),
+            command_tx: Some(command_tx),
             buffer,
             state: SessionState::Running,
             pending_permission: None,
@@ -181,41 +187,53 @@ impl Session {
         })
     }
 
-    /// Background task that continuously drains stdout from Claude into a channel.
+    /// Background task that owns the Claude process and handles all I/O.
     ///
-    /// This ensures stdout is drained regardless of how busy the main event loop is,
-    /// preventing the OS pipe buffer from filling up and truncating messages.
-    async fn drain_stdout_task(
-        client: Arc<Mutex<AsyncClient>>,
-        event_tx: mpsc::UnboundedSender<DrainMessage>,
+    /// This task:
+    /// - Continuously reads stdout to prevent OS pipe buffer overflow
+    /// - Processes commands from the command channel to send input to Claude
+    ///
+    /// By owning the client exclusively, we avoid deadlocks that would occur
+    /// if we tried to share it between tasks with a mutex.
+    async fn claude_io_task(
+        mut client: AsyncClient,
+        mut command_rx: mpsc::UnboundedReceiver<IoCommand>,
+        event_tx: mpsc::UnboundedSender<IoEvent>,
     ) {
         loop {
-            let result = {
-                let mut client = client.lock().await;
-                client.receive().await
-            };
-
-            match result {
-                Ok(output) => {
-                    if event_tx
-                        .send(DrainMessage::Output(Box::new(output)))
-                        .is_err()
-                    {
-                        // Receiver dropped, session ended
-                        break;
+            tokio::select! {
+                // Handle incoming commands (input to send to Claude)
+                Some(cmd) = command_rx.recv() => {
+                    let result = match cmd {
+                        IoCommand::SendInput(input) => client.send(&input).await,
+                        IoCommand::SendPermissionResponse(response) => {
+                            client.send_control_response(response).await
+                        }
+                    };
+                    if let Err(e) = result {
+                        let _ = event_tx.send(IoEvent::Error(SessionError::ClaudeError(e)));
                     }
                 }
-                Err(e) => {
-                    let err_str = e.to_string();
-                    if err_str.contains("exit") || err_str.contains("terminated") {
-                        let _ = event_tx.send(DrainMessage::Exited { code: 1 });
-                        break;
-                    }
-                    if event_tx
-                        .send(DrainMessage::Error(SessionError::ClaudeError(e)))
-                        .is_err()
-                    {
-                        break;
+
+                // Read output from Claude
+                result = client.receive() => {
+                    match result {
+                        Ok(output) => {
+                            if event_tx.send(IoEvent::Output(Box::new(output))).is_err() {
+                                // Receiver dropped, session ended
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            let err_str = e.to_string();
+                            if err_str.contains("exit") || err_str.contains("terminated") {
+                                let _ = event_tx.send(IoEvent::Exited { code: 1 });
+                                break;
+                            }
+                            if event_tx.send(IoEvent::Error(SessionError::ClaudeError(e))).is_err() {
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -233,23 +251,22 @@ impl Session {
         let mut config = snapshot.config;
         config.resume = true;
 
-        let (client, event_rx) = if snapshot.was_running {
+        let (command_tx, event_rx) = if snapshot.was_running {
             let client = Self::spawn_claude(&config).await?;
-            let client = Arc::new(Mutex::new(client));
 
-            // Spawn the stdout drain task
+            // Spawn the I/O task that owns the client
             let (event_tx, event_rx) = mpsc::unbounded_channel();
-            let drain_client = client.clone();
+            let (command_tx, command_rx) = mpsc::unbounded_channel();
             tokio::spawn(async move {
-                Self::drain_stdout_task(drain_client, event_tx).await;
+                Self::claude_io_task(client, command_rx, event_tx).await;
             });
 
-            (Some(client), Some(event_rx))
+            (Some(command_tx), Some(event_rx))
         } else {
             (None, None)
         };
 
-        let state = if client.is_some() {
+        let state = if command_tx.is_some() {
             SessionState::Running
         } else {
             SessionState::Exited { code: 0 }
@@ -258,7 +275,7 @@ impl Session {
         Ok(Self {
             id: snapshot.id,
             config,
-            client,
+            command_tx,
             buffer,
             state,
             pending_permission: snapshot.pending_permission,
@@ -296,16 +313,16 @@ impl Session {
     /// Returns `None` if the session has exited and no more events are available.
     /// Use this in a loop with other async operations via `tokio::select!`.
     ///
-    /// Events are delivered from a dedicated background task that continuously
-    /// drains stdout, so this method will not block other select! branches from
-    /// being processed, and stdout will not overflow.
+    /// Events are delivered from a dedicated I/O task that continuously reads
+    /// stdout, so this method will not block other select! branches from being
+    /// processed, and stdout will not overflow.
     pub async fn next_event(&mut self) -> Option<SessionEvent> {
         // Loop to skip internal messages (ControlResponse)
         loop {
             let event_rx = self.event_rx.as_mut()?;
 
             match event_rx.recv().await {
-                Some(DrainMessage::Output(boxed_output)) => {
+                Some(IoEvent::Output(boxed_output)) => {
                     let output = *boxed_output;
 
                     // Buffer the output
@@ -321,7 +338,7 @@ impl Session {
                                 .any(|e| e.contains("No conversation found"))
                         {
                             self.state = SessionState::Exited { code: 1 };
-                            self.client = None;
+                            self.command_tx = None;
                             self.event_rx = None;
                             return Some(SessionEvent::SessionNotFound);
                         }
@@ -361,19 +378,19 @@ impl Session {
 
                     return Some(SessionEvent::Output(output));
                 }
-                Some(DrainMessage::Exited { code }) => {
+                Some(IoEvent::Exited { code }) => {
                     self.state = SessionState::Exited { code };
-                    self.client = None;
+                    self.command_tx = None;
                     self.event_rx = None;
                     return Some(SessionEvent::Exited { code });
                 }
-                Some(DrainMessage::Error(e)) => {
+                Some(IoEvent::Error(e)) => {
                     return Some(SessionEvent::Error(e));
                 }
                 None => {
-                    // Channel closed, drain task ended
+                    // Channel closed, I/O task ended
                     self.state = SessionState::Exited { code: 0 };
-                    self.client = None;
+                    self.command_tx = None;
                     self.event_rx = None;
                     return None;
                 }
@@ -390,18 +407,16 @@ impl Session {
             return Err(SessionError::AlreadyExited(code));
         }
 
-        if let Some(ref client) = self.client {
+        if let Some(ref command_tx) = self.command_tx {
             // Extract string content or serialize to string
             let text = match &content {
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
             let input = ClaudeInput::user_message(text, self.id);
-            let mut client = client.lock().await;
-            client
-                .send(&input)
-                .await
-                .map_err(SessionError::ClaudeError)?;
+            command_tx
+                .send(IoCommand::SendInput(input))
+                .map_err(|_| SessionError::CommunicationError("I/O task closed".to_string()))?;
         }
 
         Ok(())
@@ -425,7 +440,7 @@ impl Session {
             }
         }
 
-        if let Some(ref client) = self.client {
+        if let Some(ref command_tx) = self.command_tx {
             let input_value = response
                 .input
                 .unwrap_or(serde_json::Value::Object(Default::default()));
@@ -450,11 +465,9 @@ impl Session {
                 ControlResponse::from_result(request_id, PermissionResult::deny(reason))
             };
 
-            let mut client = client.lock().await;
-            client
-                .send_control_response(ctrl_response)
-                .await
-                .map_err(SessionError::ClaudeError)?;
+            command_tx
+                .send(IoCommand::SendPermissionResponse(ctrl_response))
+                .map_err(|_| SessionError::CommunicationError("I/O task closed".to_string()))?;
         }
 
         self.pending_permission = None;
@@ -465,9 +478,10 @@ impl Session {
 
     /// Gracefully stop the session
     pub async fn stop(&mut self) -> Result<(), SessionError> {
-        if let Some(client) = self.client.take() {
-            drop(client); // This should terminate the process
-        }
+        // Dropping the command_tx will cause the I/O task to exit,
+        // which in turn will drop the client and terminate the process
+        self.command_tx = None;
+        self.event_rx = None;
         self.state = SessionState::Exited { code: 0 };
         Ok(())
     }
