@@ -23,6 +23,9 @@ use crate::{
 
 const SESSION_COOKIE_NAME: &str = "cc_session";
 
+/// Time in seconds before a device authorization code expires
+const DEVICE_CODE_EXPIRES_SECS: u64 = 300;
+
 /// Error response for device flow endpoints
 #[derive(Debug, Serialize)]
 pub struct DeviceFlowError {
@@ -184,7 +187,7 @@ pub async fn device_code(
     let device_code = generate_device_code();
     let user_code = generate_user_code();
 
-    let expires_in = 300; // 5 minutes
+    let expires_in = DEVICE_CODE_EXPIRES_SECS;
     let expires_at = std::time::SystemTime::now() + std::time::Duration::from_secs(expires_in);
 
     let state = DeviceFlowState {

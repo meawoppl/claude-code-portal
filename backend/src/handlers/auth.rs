@@ -175,7 +175,7 @@ pub async fn callback(
         .first::<User>(&mut conn)
         .optional()
         .map_err(|e| {
-            error!("Database error: {}", e);
+            error!("Failed to look up user by google_id: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 

@@ -153,17 +153,6 @@ pub fn print_connection_restored() {
     println!();
 }
 
-/// Print disconnection message with backoff
-#[allow(dead_code)]
-pub fn print_disconnected(backoff_secs: u64) {
-    println!();
-    println!(
-        "  {} WebSocket disconnected. Reconnecting in {}s...",
-        "⚠".bright_yellow(),
-        backoff_secs
-    );
-}
-
 /// Print disconnection message with backoff and pending message count
 pub fn print_disconnected_with_pending(backoff_secs: u64, pending_count: usize) {
     println!();

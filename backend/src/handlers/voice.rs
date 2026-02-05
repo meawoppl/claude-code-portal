@@ -49,7 +49,10 @@ fn extract_user_id_from_cookies(app_state: &AppState, cookies: &Cookies) -> Opti
 fn check_voice_enabled(app_state: &AppState, user_id: Uuid) -> bool {
     let mut conn = match app_state.db_pool.get() {
         Ok(c) => c,
-        Err(_) => return false,
+        Err(e) => {
+            error!("Failed to get database connection for voice check: {}", e);
+            return false;
+        }
     };
 
     use crate::schema::users;
@@ -64,7 +67,13 @@ fn check_voice_enabled(app_state: &AppState, user_id: Uuid) -> bool {
 fn verify_session_access(app_state: &AppState, session_id: Uuid, user_id: Uuid) -> bool {
     let mut conn = match app_state.db_pool.get() {
         Ok(c) => c,
-        Err(_) => return false,
+        Err(e) => {
+            error!(
+                "Failed to get database connection for voice session access: {}",
+                e
+            );
+            return false;
+        }
     };
 
     use crate::schema::{session_members, sessions};
