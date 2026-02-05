@@ -336,3 +336,189 @@ pub struct AppConfig {
     /// Defaults to "Claude Code Sessions" if not configured
     pub app_title: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sequenced_output_roundtrip() {
+        let msg = ProxyMessage::SequencedOutput {
+            seq: 42,
+            content: serde_json::json!({"type": "assistant", "text": "hello"}),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: ProxyMessage = serde_json::from_str(&json).unwrap();
+
+        match parsed {
+            ProxyMessage::SequencedOutput { seq, content } => {
+                assert_eq!(seq, 42);
+                assert_eq!(content["type"], "assistant");
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn output_ack_roundtrip() {
+        let session_id = Uuid::new_v4();
+        let msg = ProxyMessage::OutputAck {
+            session_id,
+            ack_seq: 99,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: ProxyMessage = serde_json::from_str(&json).unwrap();
+
+        match parsed {
+            ProxyMessage::OutputAck {
+                session_id: sid,
+                ack_seq,
+            } => {
+                assert_eq!(sid, session_id);
+                assert_eq!(ack_seq, 99);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn sequenced_input_roundtrip() {
+        let session_id = Uuid::new_v4();
+        let msg = ProxyMessage::SequencedInput {
+            session_id,
+            seq: 5,
+            content: serde_json::json!({"type": "human", "message": "test"}),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: ProxyMessage = serde_json::from_str(&json).unwrap();
+
+        match parsed {
+            ProxyMessage::SequencedInput {
+                session_id: sid,
+                seq,
+                content,
+            } => {
+                assert_eq!(sid, session_id);
+                assert_eq!(seq, 5);
+                assert_eq!(content["type"], "human");
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn input_ack_roundtrip() {
+        let session_id = Uuid::new_v4();
+        let msg = ProxyMessage::InputAck {
+            session_id,
+            ack_seq: 10,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: ProxyMessage = serde_json::from_str(&json).unwrap();
+
+        match parsed {
+            ProxyMessage::InputAck {
+                session_id: sid,
+                ack_seq,
+            } => {
+                assert_eq!(sid, session_id);
+                assert_eq!(ack_seq, 10);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn permission_request_roundtrip() {
+        let msg = ProxyMessage::PermissionRequest {
+            request_id: "req-123".to_string(),
+            tool_name: "Bash".to_string(),
+            input: serde_json::json!({"command": "ls"}),
+            permission_suggestions: vec![],
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: ProxyMessage = serde_json::from_str(&json).unwrap();
+
+        match parsed {
+            ProxyMessage::PermissionRequest {
+                request_id,
+                tool_name,
+                ..
+            } => {
+                assert_eq!(request_id, "req-123");
+                assert_eq!(tool_name, "Bash");
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn claude_input_with_send_mode() {
+        let msg = ProxyMessage::ClaudeInput {
+            content: serde_json::json!({"text": "hello"}),
+            send_mode: Some(SendMode::Wiggum),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: ProxyMessage = serde_json::from_str(&json).unwrap();
+
+        match parsed {
+            ProxyMessage::ClaudeInput { send_mode, .. } => {
+                assert_eq!(send_mode, Some(SendMode::Wiggum));
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn claude_input_default_send_mode() {
+        // When send_mode is absent, it should default to None
+        let json = r#"{"type":"ClaudeInput","content":{"text":"hi"}}"#;
+        let parsed: ProxyMessage = serde_json::from_str(json).unwrap();
+
+        match parsed {
+            ProxyMessage::ClaudeInput { send_mode, .. } => {
+                assert_eq!(send_mode, None);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn register_with_defaults() {
+        // Fields with #[serde(default)] should work when absent
+        let json = r#"{
+            "type": "Register",
+            "session_id": "550e8400-e29b-41d4-a716-446655440000",
+            "session_name": "test",
+            "auth_token": null,
+            "working_directory": "/tmp"
+        }"#;
+        let parsed: ProxyMessage = serde_json::from_str(json).unwrap();
+
+        match parsed {
+            ProxyMessage::Register {
+                resuming,
+                git_branch,
+                replay_after,
+                client_version,
+                ..
+            } => {
+                assert!(!resuming);
+                assert!(git_branch.is_none());
+                assert!(replay_after.is_none());
+                assert!(client_version.is_none());
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn session_status_serialization() {
+        assert_eq!(SessionStatus::Active.as_str(), "active");
+        assert_eq!(SessionStatus::Inactive.as_str(), "inactive");
+        assert_eq!(SessionStatus::Disconnected.as_str(), "disconnected");
+
+        let json = serde_json::to_string(&SessionStatus::Active).unwrap();
+        assert_eq!(json, "\"active\"");
+    }
+}
