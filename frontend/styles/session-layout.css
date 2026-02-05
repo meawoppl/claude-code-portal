@@ -1,0 +1,139 @@
+/* ==========================================================================
+   Focus Flow Layout - Main dashboard with horizontal session carousel
+   ========================================================================== */
+
+.focus-flow-container {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh; /* Dynamic viewport height - adjusts for mobile keyboard, falls back to 100vh */
+    background: var(--bg-dark);
+    outline: none;
+}
+
+/* Fallback for browsers that don't support dvh */
+@supports not (height: 100dvh) {
+    .focus-flow-container {
+        height: 100vh;
+    }
+}
+
+.focus-flow-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1.5rem;
+    background: var(--bg-darker);
+    border-bottom: 1px solid var(--border);
+}
+
+.focus-flow-header h1 {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.focus-flow-header .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.total-spend-badge {
+    background: rgba(158, 206, 106, 0.2);
+    color: var(--success);
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    font-family: monospace;
+}
+
+.waiting-badge {
+    background: rgba(247, 118, 142, 0.2);
+    color: var(--error);
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    animation: pulse 2s infinite;
+}
+
+/* Reconnection banner */
+.reconnection-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: rgba(247, 118, 142, 0.15);
+    border-bottom: 1px solid rgba(247, 118, 142, 0.3);
+}
+
+.reconnection-banner .reconnection-spinner {
+    color: var(--error);
+    font-size: 1rem;
+    animation: spin 1s linear infinite;
+}
+
+.reconnection-banner .reconnection-text {
+    color: var(--error);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Server shutdown banner */
+.server-shutdown-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 158, 100, 0.15);
+    border-bottom: 1px solid rgba(255, 158, 100, 0.4);
+    animation: pulse 2s infinite;
+}
+
+.server-shutdown-banner .shutdown-icon {
+    font-size: 1.1rem;
+}
+
+.server-shutdown-banner .shutdown-text {
+    color: var(--warning, #ff9e64);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.focus-flow-header .new-session-button {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+    background: rgba(122, 162, 247, 0.1);
+    color: var(--accent);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.focus-flow-header .new-session-button:hover {
+    border-color: var(--accent-hover);
+    background: var(--accent);
+    color: var(--bg-dark);
+}
+
+.focus-flow-header .new-session-button:active {
+    transform: scale(0.98);
+}
+
+.focus-flow-header .new-session-button.active {
+    background: var(--text-secondary);
+    border-color: var(--text-secondary);
+    color: var(--bg-dark);
+}

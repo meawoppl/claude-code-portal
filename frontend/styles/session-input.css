@@ -1,0 +1,266 @@
+/* ==========================================================================
+   Session Input Area
+   ========================================================================== */
+
+.session-view-input {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    background: var(--bg-darker);
+    border-top: 1px solid var(--border);
+    position: relative;
+}
+
+.session-view-input .input-prompt {
+    color: var(--accent);
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.session-view-input .message-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+    resize: none;
+    min-height: 1.4em;
+    max-height: 10em;
+    overflow-y: auto;
+    line-height: 1.4;
+    field-sizing: content;
+}
+
+.session-view-input .message-input:focus {
+    border-color: var(--accent);
+}
+
+.session-view-input .message-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.session-view-input .send-button {
+    padding: 0.75rem 1.5rem;
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: var(--bg-dark);
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.session-view-input .send-button:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.session-view-input .send-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Send button container with dropdown */
+.send-button-container {
+    position: relative;
+    display: flex;
+}
+
+.send-button-container .send-button {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    padding: 0.75rem 1rem;
+}
+
+.send-button-container .send-button.wiggum-mode {
+    background: linear-gradient(135deg, var(--accent) 0%, #bb9af7 100%);
+}
+
+.send-mode-toggle {
+    padding: 0.75rem 0.5rem;
+    background: var(--accent);
+    border: none;
+    border-left: 1px solid rgba(0, 0, 0, 0.2);
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+    color: var(--bg-dark);
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.send-mode-toggle:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.send-mode-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.send-mode-dropdown {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 4px;
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    min-width: 140px;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+}
+
+.send-mode-dropdown.open {
+    display: flex;
+}
+
+.dropdown-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0.6rem 0.8rem;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.dropdown-option:hover {
+    background: rgba(122, 162, 247, 0.15);
+}
+
+.dropdown-option.selected {
+    background: rgba(122, 162, 247, 0.25);
+}
+
+.dropdown-option.wiggum {
+    color: #bb9af7;
+}
+
+.wiggum-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.wiggum-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+}
+
+.dropdown-option .option-hint {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-top: 0.1rem;
+}
+
+/* ==========================================================================
+   Voice Input
+   ========================================================================== */
+
+.voice-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.voice-button:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.voice-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.voice-button.recording {
+    /* Background gradient is set via inline style for real-time volume feedback */
+    border-color: var(--error);
+    color: var(--error);
+}
+
+.voice-button svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+.voice-button .voice-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+/* Voice button unsupported state (browser doesn't have AudioWorklet) */
+.voice-button.unsupported {
+    opacity: 0.3;
+    cursor: not-allowed;
+    border-style: dashed;
+}
+
+.voice-button.unsupported:hover {
+    border-color: var(--border);
+    color: var(--text-secondary);
+}
+
+/* Interim transcription display during voice recording */
+.interim-transcription {
+    position: absolute;
+    left: 48px;
+    right: 100px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.9rem;
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 1;
+}
+
+.message-input.has-interim {
+    color: transparent;
+}
+
+.message-input.has-interim::placeholder {
+    color: transparent;
+}
+
+/* Nav mode: dim the input area to indicate it's not active */
+.session-views-container.nav-mode .session-view-input {
+    opacity: 0.5;
+    pointer-events: none;
+    border-top: 1px dashed var(--accent);
+}
+
+.session-views-container.nav-mode .session-view-input .message-input {
+    border-color: var(--accent);
+    background: rgba(122, 162, 247, 0.05);
+}
