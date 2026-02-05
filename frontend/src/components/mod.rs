@@ -1,8 +1,10 @@
 mod copy_command;
+mod diff;
 mod markdown;
-mod message_renderer;
+pub mod message_renderer;
 mod proxy_token_setup;
 mod share_dialog;
+mod tool_renderers;
 mod voice_input;
 
 pub use copy_command::CopyCommand;

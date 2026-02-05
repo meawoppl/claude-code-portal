@@ -1,0 +1,186 @@
+use serde_json::Value;
+use yew::prelude::*;
+
+pub fn render_todowrite_tool(input: &Value) -> Html {
+    let todos = input
+        .get("todos")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    html! {
+        <div class="tool-use todowrite-tool">
+            <div class="tool-use-header">
+                <span class="tool-icon">{ "📋" }</span>
+                <span class="tool-name">{ "TodoWrite" }</span>
+                <span class="tool-meta">{ format!("({} items)", todos.len()) }</span>
+            </div>
+            <div class="todo-list">
+                {
+                    todos.iter().map(|todo| {
+                        let status = todo.get("status").and_then(|s| s.as_str()).unwrap_or("pending");
+                        let content = todo.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                        let (icon, class) = match status {
+                            "completed" => ("✓", "completed"),
+                            "in_progress" => ("→", "in-progress"),
+                            _ => ("○", "pending"),
+                        };
+                        html! {
+                            <div class={format!("todo-item {}", class)}>
+                                <span class="todo-status">{ icon }</span>
+                                <span class="todo-content">{ content }</span>
+                            </div>
+                        }
+                    }).collect::<Html>()
+                }
+            </div>
+        </div>
+    }
+}
+
+pub fn render_askuserquestion_tool(input: &Value) -> Html {
+    let questions = input
+        .get("questions")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let answers = input.get("answers").and_then(|v| v.as_object());
+
+    html! {
+        <div class="tool-use askuserquestion-tool">
+            <div class="tool-use-header">
+                <span class="tool-icon">{ "❓" }</span>
+                <span class="tool-name">{ "AskUserQuestion" }</span>
+                <span class="tool-meta">{ format!("({} question{})", questions.len(), if questions.len() == 1 { "" } else { "s" }) }</span>
+            </div>
+            <div class="question-list">
+                {
+                    questions.iter().map(|q| {
+                        let header = q.get("header").and_then(|h| h.as_str()).unwrap_or("");
+                        let question = q.get("question").and_then(|q| q.as_str()).unwrap_or("");
+                        let multi_select = q.get("multiSelect").and_then(|m| m.as_bool()).unwrap_or(false);
+                        let options = q.get("options").and_then(|o| o.as_array()).cloned().unwrap_or_default();
+
+                        let answer = answers.and_then(|a| a.get(question)).and_then(|v| v.as_str());
+
+                        html! {
+                            <div class="question-card">
+                                <div class="question-header">
+                                    {
+                                        if !header.is_empty() {
+                                            html! { <span class="question-badge">{ header }</span> }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                    {
+                                        if multi_select {
+                                            html! { <span class="multi-select-badge">{ "multi-select" }</span> }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                </div>
+                                <div class="question-text">{ question }</div>
+                                <div class="question-options">
+                                    {
+                                        options.iter().map(|opt| {
+                                            let label = opt.get("label").and_then(|l| l.as_str()).unwrap_or("");
+                                            let description = opt.get("description").and_then(|d| d.as_str()).unwrap_or("");
+
+                                            let is_selected = answer.map(|a| {
+                                                a.split(',').map(|s| s.trim()).any(|s| s == label)
+                                            }).unwrap_or(false);
+
+                                            let option_class = if is_selected { "option-item selected" } else { "option-item" };
+                                            let icon = if is_selected {
+                                                if multi_select { "☑" } else { "●" }
+                                            } else if multi_select {
+                                                "☐"
+                                            } else {
+                                                "○"
+                                            };
+
+                                            html! {
+                                                <div class={option_class}>
+                                                    <span class="option-icon">{ icon }</span>
+                                                    <div class="option-content">
+                                                        <span class="option-label">{ label }</span>
+                                                        {
+                                                            if !description.is_empty() {
+                                                                html! { <span class="option-description">{ description }</span> }
+                                                            } else {
+                                                                html! {}
+                                                            }
+                                                        }
+                                                    </div>
+                                                </div>
+                                            }
+                                        }).collect::<Html>()
+                                    }
+                                </div>
+                                {
+                                    if let Some(ans) = answer {
+                                        html! {
+                                            <div class="question-answer">
+                                                <span class="answer-label">{ "Answer: " }</span>
+                                                <span class="answer-value">{ ans }</span>
+                                            </div>
+                                        }
+                                    } else {
+                                        html! {}
+                                    }
+                                }
+                            </div>
+                        }
+                    }).collect::<Html>()
+                }
+            </div>
+        </div>
+    }
+}
+
+pub fn render_exitplanmode_tool(input: &Value) -> Html {
+    let allowed_prompts = input
+        .get("allowedPrompts")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    html! {
+        <div class="tool-use exitplanmode-tool">
+            <div class="tool-use-header">
+                <span class="tool-icon">{ "📋" }</span>
+                <span class="tool-name">{ "Plan Complete" }</span>
+            </div>
+            {
+                if !allowed_prompts.is_empty() {
+                    html! {
+                        <div class="permissions-section">
+                            <div class="permissions-header">{ "Requested Permissions:" }</div>
+                            <div class="permissions-list">
+                                {
+                                    allowed_prompts.iter().map(|p| {
+                                        let tool = p.get("tool").and_then(|t| t.as_str()).unwrap_or("Unknown");
+                                        let prompt = p.get("prompt").and_then(|p| p.as_str()).unwrap_or("");
+                                        html! {
+                                            <div class="permission-item">
+                                                <span class="permission-bullet">{ "•" }</span>
+                                                <span class="permission-tool">{ tool }</span>
+                                                <span class="permission-separator">{ ": " }</span>
+                                                <span class="permission-prompt">{ prompt }</span>
+                                            </div>
+                                        }
+                                    }).collect::<Html>()
+                                }
+                            </div>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+        </div>
+    }
+}
