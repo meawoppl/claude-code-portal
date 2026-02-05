@@ -211,7 +211,31 @@ impl SessionManager {
     }
 }
 
-// Public handler functions
+pub async fn handle_session_websocket(
+    ws: WebSocketUpgrade,
+    State(app_state): State<Arc<AppState>>,
+) -> Response {
+    ws.on_upgrade(|socket| proxy_socket::handle_session_socket(socket, app_state))
+}
+
+pub async fn handle_web_client_websocket(
+    ws: WebSocketUpgrade,
+    State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
+) -> Response {
+    let user_id = match auth::extract_user_id_from_cookies(&app_state, &cookies) {
+        Some(id) => id,
+        None => {
+            warn!("Unauthenticated WebSocket connection attempt to /ws/client");
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+    };
+
+    info!("Authenticated WebSocket upgrade for user: {}", user_id);
+    ws.on_upgrade(move |socket| {
+        web_client_socket::handle_web_client_socket(socket, app_state, user_id)
+    })
+}
 
 #[cfg(test)]
 mod tests {
@@ -468,32 +492,4 @@ mod tests {
         assert!(ids.contains(&id1));
         assert!(ids.contains(&id2));
     }
-}
-
-// Public handler functions
-
-pub async fn handle_session_websocket(
-    ws: WebSocketUpgrade,
-    State(app_state): State<Arc<AppState>>,
-) -> Response {
-    ws.on_upgrade(|socket| proxy_socket::handle_session_socket(socket, app_state))
-}
-
-pub async fn handle_web_client_websocket(
-    ws: WebSocketUpgrade,
-    State(app_state): State<Arc<AppState>>,
-    cookies: Cookies,
-) -> Response {
-    let user_id = match auth::extract_user_id_from_cookies(&app_state, &cookies) {
-        Some(id) => id,
-        None => {
-            warn!("Unauthenticated WebSocket connection attempt to /ws/client");
-            return StatusCode::UNAUTHORIZED.into_response();
-        }
-    };
-
-    info!("Authenticated WebSocket upgrade for user: {}", user_id);
-    ws.on_upgrade(move |socket| {
-        web_client_socket::handle_web_client_socket(socket, app_state, user_id)
-    })
 }
