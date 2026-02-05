@@ -209,8 +209,6 @@ impl SessionManager {
     }
 }
 
-// Public handler functions
-
 pub async fn handle_session_websocket(
     ws: WebSocketUpgrade,
     State(app_state): State<Arc<AppState>>,
@@ -235,4 +233,261 @@ pub async fn handle_web_client_websocket(
     ws.on_upgrade(move |socket| {
         web_client_socket::handle_web_client_socket(socket, app_state, user_id)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_heartbeat() -> ProxyMessage {
+        ProxyMessage::Heartbeat
+    }
+
+    fn make_output(n: u32) -> ProxyMessage {
+        ProxyMessage::ClaudeOutput {
+            content: serde_json::json!({"n": n}),
+        }
+    }
+
+    #[test]
+    fn session_register_and_send() {
+        let mgr = SessionManager::new();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+
+        mgr.register_session("s1".into(), tx);
+
+        // Sending to a registered session should succeed
+        assert!(mgr.send_to_session(&"s1".into(), make_heartbeat()));
+
+        // Message should be receivable
+        let msg = rx.try_recv().unwrap();
+        assert!(matches!(msg, ProxyMessage::Heartbeat));
+    }
+
+    #[test]
+    fn send_to_unregistered_queues_pending() {
+        let mgr = SessionManager::new();
+
+        // No session registered, message should be queued
+        assert!(mgr.send_to_session(&"s1".into(), make_output(1)));
+        assert!(mgr.send_to_session(&"s1".into(), make_output(2)));
+
+        // Now register - pending messages should replay
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        mgr.register_session("s1".into(), tx);
+
+        let msg1 = rx.try_recv().unwrap();
+        let msg2 = rx.try_recv().unwrap();
+        assert!(matches!(msg1, ProxyMessage::ClaudeOutput { .. }));
+        assert!(matches!(msg2, ProxyMessage::ClaudeOutput { .. }));
+
+        // Queue should be drained
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn pending_queue_overflow_drops_oldest() {
+        let mgr = SessionManager::new();
+
+        // Fill the queue beyond MAX_PENDING_MESSAGES_PER_SESSION
+        for i in 0..(MAX_PENDING_MESSAGES_PER_SESSION + 10) as u32 {
+            mgr.send_to_session(&"s1".into(), make_output(i));
+        }
+
+        // Register and collect all replayed messages
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        mgr.register_session("s1".into(), tx);
+
+        let mut received = vec![];
+        while let Ok(msg) = rx.try_recv() {
+            received.push(msg);
+        }
+
+        assert_eq!(received.len(), MAX_PENDING_MESSAGES_PER_SESSION);
+
+        // First received should be the 11th message (first 10 were dropped)
+        if let ProxyMessage::ClaudeOutput { content } = &received[0] {
+            assert_eq!(content["n"], 10);
+        } else {
+            panic!("Expected ClaudeOutput");
+        }
+    }
+
+    #[test]
+    fn unregister_removes_session() {
+        let mgr = SessionManager::new();
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        mgr.register_session("s1".into(), tx);
+        assert!(mgr.sessions.contains_key("s1"));
+
+        mgr.unregister_session(&"s1".into());
+        assert!(!mgr.sessions.contains_key("s1"));
+    }
+
+    #[test]
+    fn broadcast_to_web_clients() {
+        let mgr = SessionManager::new();
+        let (tx1, mut rx1) = mpsc::unbounded_channel();
+        let (tx2, mut rx2) = mpsc::unbounded_channel();
+
+        mgr.add_web_client("s1".into(), tx1);
+        mgr.add_web_client("s1".into(), tx2);
+
+        mgr.broadcast_to_web_clients(&"s1".into(), make_heartbeat());
+
+        assert!(matches!(rx1.try_recv().unwrap(), ProxyMessage::Heartbeat));
+        assert!(matches!(rx2.try_recv().unwrap(), ProxyMessage::Heartbeat));
+    }
+
+    #[test]
+    fn broadcast_removes_closed_clients() {
+        let mgr = SessionManager::new();
+        let (tx1, rx1) = mpsc::unbounded_channel();
+        let (tx2, mut rx2) = mpsc::unbounded_channel();
+
+        mgr.add_web_client("s1".into(), tx1);
+        mgr.add_web_client("s1".into(), tx2);
+
+        // Drop rx1 to simulate a disconnected client
+        drop(rx1);
+
+        mgr.broadcast_to_web_clients(&"s1".into(), make_heartbeat());
+
+        // tx2's client should still receive
+        assert!(matches!(rx2.try_recv().unwrap(), ProxyMessage::Heartbeat));
+
+        // The dead client (tx1) should have been removed
+        let clients = mgr.web_clients.get("s1").unwrap();
+        assert_eq!(clients.len(), 1);
+    }
+
+    #[test]
+    fn broadcast_to_user() {
+        let mgr = SessionManager::new();
+        let user_id = Uuid::new_v4();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+
+        mgr.add_user_client(user_id, tx);
+        mgr.broadcast_to_user(&user_id, make_heartbeat());
+
+        assert!(matches!(rx.try_recv().unwrap(), ProxyMessage::Heartbeat));
+    }
+
+    #[test]
+    fn broadcast_to_all() {
+        let mgr = SessionManager::new();
+        let (session_tx, mut session_rx) = mpsc::unbounded_channel();
+        let (web_tx, mut web_rx) = mpsc::unbounded_channel();
+        let (user_tx, mut user_rx) = mpsc::unbounded_channel();
+
+        mgr.register_session("s1".into(), session_tx);
+        mgr.add_web_client("s1".into(), web_tx);
+        mgr.add_user_client(Uuid::new_v4(), user_tx);
+
+        mgr.broadcast_to_all(make_heartbeat());
+
+        assert!(matches!(
+            session_rx.try_recv().unwrap(),
+            ProxyMessage::Heartbeat
+        ));
+        assert!(matches!(
+            web_rx.try_recv().unwrap(),
+            ProxyMessage::Heartbeat
+        ));
+        assert!(matches!(
+            user_rx.try_recv().unwrap(),
+            ProxyMessage::Heartbeat
+        ));
+    }
+
+    #[test]
+    fn truncation_queue_and_drain() {
+        let mgr = SessionManager::new();
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        mgr.queue_truncation(id1);
+        mgr.queue_truncation(id2);
+        mgr.queue_truncation(id1); // duplicate should be idempotent
+
+        let drained = mgr.drain_pending_truncations();
+        assert_eq!(drained.len(), 2);
+        assert!(drained.contains(&id1));
+        assert!(drained.contains(&id2));
+
+        // After draining, should be empty
+        let drained2 = mgr.drain_pending_truncations();
+        assert!(drained2.is_empty());
+    }
+
+    #[test]
+    fn last_ack_seq_tracking() {
+        let mgr = SessionManager::new();
+        let session_id = Uuid::new_v4();
+
+        // Initially no ack tracked
+        assert!(mgr.last_ack_seq.get(&session_id).is_none());
+
+        // Insert and verify
+        mgr.last_ack_seq.insert(session_id, 5);
+        assert_eq!(*mgr.last_ack_seq.get(&session_id).unwrap(), 5);
+
+        // Update with higher value
+        mgr.last_ack_seq.entry(session_id).and_modify(|v| {
+            if 10 > *v {
+                *v = 10;
+            }
+        });
+        assert_eq!(*mgr.last_ack_seq.get(&session_id).unwrap(), 10);
+
+        // Should not regress with lower value
+        mgr.last_ack_seq.entry(session_id).and_modify(|v| {
+            if 3 > *v {
+                *v = 3;
+            }
+        });
+        assert_eq!(*mgr.last_ack_seq.get(&session_id).unwrap(), 10);
+    }
+
+    #[test]
+    fn send_to_disconnected_session_queues_and_replays() {
+        let mgr = SessionManager::new();
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        // Register then unregister to simulate disconnect
+        mgr.register_session("s1".into(), tx);
+        mgr.unregister_session(&"s1".into());
+
+        // Send while disconnected
+        mgr.send_to_session(&"s1".into(), make_output(1));
+        mgr.send_to_session(&"s1".into(), make_output(2));
+
+        // Reconnect
+        let (tx2, mut rx2) = mpsc::unbounded_channel();
+        mgr.register_session("s1".into(), tx2);
+
+        // Should receive the queued messages
+        let msg1 = rx2.try_recv().unwrap();
+        let msg2 = rx2.try_recv().unwrap();
+        assert!(matches!(msg1, ProxyMessage::ClaudeOutput { .. }));
+        assert!(matches!(msg2, ProxyMessage::ClaudeOutput { .. }));
+    }
+
+    #[test]
+    fn get_all_user_ids() {
+        let mgr = SessionManager::new();
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        let (tx1, _rx1) = mpsc::unbounded_channel();
+        let (tx2, _rx2) = mpsc::unbounded_channel();
+
+        mgr.add_user_client(id1, tx1);
+        mgr.add_user_client(id2, tx2);
+
+        let ids = mgr.get_all_user_ids();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&id1));
+        assert!(ids.contains(&id2));
+    }
 }
