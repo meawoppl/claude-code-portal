@@ -227,12 +227,15 @@
     margin: 0.5rem 0;
     font-family: var(--font-mono);
     font-size: 0.85rem;
+    overflow: hidden;
 }
 
 .tool-use-header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .tool-icon {
