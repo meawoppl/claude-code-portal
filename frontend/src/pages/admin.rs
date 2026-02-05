@@ -38,10 +38,6 @@ struct AdminStats {
     total_spend_usd: f64,
     total_input_tokens: i64,
     total_output_tokens: i64,
-    #[allow(dead_code)]
-    total_cache_creation_tokens: i64,
-    #[allow(dead_code)]
-    total_cache_read_tokens: i64,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -49,8 +45,6 @@ struct AdminUserInfo {
     id: Uuid,
     email: String,
     name: Option<String>,
-    #[allow(dead_code)]
-    avatar_url: Option<String>,
     is_admin: bool,
     disabled: bool,
     voice_enabled: bool,
@@ -67,16 +61,12 @@ struct AdminUsersResponse {
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 struct AdminSessionInfo {
     id: Uuid,
-    #[allow(dead_code)]
-    user_id: Uuid,
     user_email: String,
     session_name: String,
     working_directory: String,
     git_branch: Option<String>,
     status: String,
     total_cost_usd: f64,
-    #[allow(dead_code)]
-    created_at: String,
     last_activity: String,
     is_connected: bool,
 }
@@ -90,8 +80,6 @@ struct AdminSessionsResponse {
 struct RawMessageLogInfo {
     id: Uuid,
     session_id: Option<Uuid>,
-    #[allow(dead_code)]
-    user_id: Option<Uuid>,
     message_content: serde_json::Value,
     message_source: String,
     render_reason: Option<String>,
