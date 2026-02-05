@@ -1,0 +1,288 @@
+/* ==========================================================================
+   Mobile Responsiveness
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    /* Ensure dashboard fills exactly the viewport on mobile */
+    .focus-flow-container {
+        overflow: hidden;
+    }
+
+    /* Header - make more compact */
+    .focus-flow-header {
+        padding: 0.5rem 0.75rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .focus-flow-header h1 {
+        font-size: 0.95rem;
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .focus-flow-header .header-actions {
+        gap: 0.5rem;
+    }
+
+    .total-spend-badge,
+    .waiting-badge {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.5rem;
+    }
+
+    .focus-flow-header .new-session-button {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.8rem;
+    }
+
+    /* Session rail - horizontal scroll with smaller pills */
+    .session-rail {
+        padding: 0.5rem;
+        gap: 0.4rem;
+    }
+
+    .session-pill {
+        padding: 0.4rem 0.6rem;
+        gap: 0.35rem;
+        border-radius: 16px;
+    }
+
+    .pill-name {
+        max-width: 120px;
+    }
+
+    .pill-folder {
+        font-size: 0.8rem;
+    }
+
+    .pill-hostname {
+        font-size: 0.65rem;
+    }
+
+    .pill-branch {
+        font-size: 0.6rem;
+    }
+
+    .pill-cost {
+        font-size: 0.65rem;
+        padding: 0.05rem 0.25rem;
+    }
+
+    .pill-status {
+        font-size: 0.5rem;
+    }
+
+    .pill-pause,
+    .pill-leave,
+    .pill-delete {
+        width: 20px;
+        height: 20px;
+        font-size: 10px;
+    }
+
+    .pill-role-badge {
+        font-size: 0.55rem;
+        padding: 0.1rem 0.3rem;
+    }
+
+    .pill-paused-badge {
+        font-size: 0.6rem;
+    }
+
+    /* Session view header - stack on mobile */
+    .session-view-header {
+        padding: 0.5rem 0.75rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .session-view-header .session-name {
+        font-size: 0.9rem;
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .session-view-header .session-hostname {
+        display: none;
+    }
+
+    .session-view-header .session-path {
+        display: none;
+    }
+
+    .session-view-header .status {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.5rem;
+    }
+
+    .session-view-header .session-cost {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.4rem;
+    }
+
+    /* Messages area - ensure scrolling and input stays visible */
+    .session-view-messages {
+        padding: 0.75rem;
+        flex: 1;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Input area - full width at bottom */
+    .session-view-input {
+        padding: 0.75rem;
+        gap: 0.5rem;
+        flex-shrink: 0; /* Prevent input from shrinking */
+        align-items: flex-end;
+    }
+
+    .session-view-input .input-prompt {
+        font-size: 1rem;
+    }
+
+    .session-view-input .message-input {
+        flex: 1;
+        min-width: 0;
+        padding: 0.6rem 0.75rem;
+        font-size: 16px; /* Prevents iOS zoom on focus */
+    }
+
+    .session-view-input .send-button {
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
+    }
+
+    .voice-button {
+        width: 36px;
+        height: 36px;
+    }
+
+    .voice-button svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    /* Permission prompts */
+    .permission-prompt {
+        margin: 0.5rem 0.75rem;
+        padding: 0.75rem;
+    }
+
+    .permission-title {
+        font-size: 0.85rem;
+    }
+
+    .permission-input {
+        padding: 0.5rem;
+        max-height: 100px;
+    }
+
+    .permission-input pre {
+        font-size: 0.75rem;
+    }
+
+    .permission-options {
+        font-size: 0.85rem;
+    }
+
+    /* AskUserQuestion - more compact */
+    .ask-user-question .question-text {
+        font-size: 0.9rem;
+    }
+
+    .ask-user-question .question-option {
+        padding: 0.4rem 0.5rem;
+    }
+
+    .ask-user-question .option-label {
+        font-size: 0.85rem;
+    }
+
+    .ask-user-question .option-description {
+        font-size: 0.75rem;
+    }
+
+    /* Reconnection banner */
+    .reconnection-banner {
+        padding: 0.4rem 0.75rem;
+    }
+
+    .reconnection-banner .reconnection-text {
+        font-size: 0.8rem;
+    }
+
+    /* Server shutdown banner */
+    .server-shutdown-banner {
+        padding: 0.5rem 0.75rem;
+    }
+
+    .server-shutdown-banner .shutdown-text {
+        font-size: 0.8rem;
+    }
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+    .focus-flow-header h1 {
+        font-size: 0.85rem;
+    }
+
+    /* Hide some elements to save space */
+    .total-spend-badge {
+        display: none;
+    }
+
+    .session-pill {
+        padding: 0.35rem 0.5rem;
+    }
+
+    .pill-name {
+        max-width: 90px;
+    }
+
+    .pill-folder {
+        font-size: 0.75rem;
+    }
+
+    .pill-cost {
+        display: none;
+    }
+
+    .session-view-header .session-cost {
+        font-size: 0.7rem;
+    }
+
+    .session-view-input {
+        padding: 0.5rem;
+    }
+
+    .session-view-input .input-prompt {
+        display: none;
+    }
+}
+
+/* Share dialog mobile */
+@media (max-width: 480px) {
+    .share-dialog {
+        max-width: 100%;
+        max-height: 90vh;
+        border-radius: 8px;
+    }
+
+    .share-dialog-add {
+        flex-direction: column;
+    }
+
+    .share-dialog-add input,
+    .share-dialog-add select,
+    .share-dialog-add button {
+        width: 100%;
+    }
+}

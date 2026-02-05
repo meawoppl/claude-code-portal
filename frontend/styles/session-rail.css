@@ -1,0 +1,400 @@
+/* ==========================================================================
+   Session Rail - Horizontal Carousel
+   ========================================================================== */
+
+.session-rail {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-darker);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.session-rail::-webkit-scrollbar {
+    height: 4px;
+}
+
+.session-rail::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.session-rail::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+/* Divider between active and inactive sessions */
+.session-rail-divider {
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    gap: 0.25rem;
+    padding: 0 0.25rem;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.session-rail-divider .divider-line {
+    width: 1px;
+    align-self: stretch;
+    margin: 0.35rem 0;
+    background: var(--border);
+}
+
+.session-rail-divider .divider-toggle {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    padding: 0.15rem 0.35rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+}
+
+.session-rail-divider .divider-toggle:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
+}
+
+.session-rail-divider.collapsed .divider-toggle {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.session-pill {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.session-pill:hover {
+    border-color: var(--accent);
+    background: rgba(122, 162, 247, 0.1);
+}
+
+.session-pill.focused {
+    border-color: var(--accent);
+    background: rgba(122, 162, 247, 0.2);
+    box-shadow: 0 0 0 2px rgba(122, 162, 247, 0.3);
+}
+
+.session-pill.awaiting {
+    border-color: var(--error);
+    animation: awaitingPulse 2s ease-in-out infinite;
+}
+
+@keyframes awaitingPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(247, 118, 142, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 4px rgba(247, 118, 142, 0.2);
+    }
+}
+
+.session-pill.focused.awaiting {
+    border-color: var(--error);
+    background: rgba(247, 118, 142, 0.15);
+}
+
+.pill-indicator {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+.session-pill.awaiting .pill-indicator {
+    color: var(--error);
+}
+
+.pill-name {
+    display: flex;
+    flex-direction: column;
+    max-width: 200px;
+    overflow: hidden;
+}
+
+.pill-folder {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pill-hostname {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pill-branch {
+    font-size: 0.7rem;
+    color: var(--accent);
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+    direction: rtl;
+    text-align: left;
+}
+
+.session-pill.status-disconnected .pill-branch {
+    color: var(--text-secondary);
+}
+
+.pill-status {
+    font-size: 0.6rem;
+    line-height: 1;
+}
+
+.pill-status.connected {
+    color: var(--success);
+}
+
+.pill-status.disconnected {
+    color: var(--text-secondary);
+}
+
+.pill-cost {
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: var(--success);
+    padding: 0.1rem 0.3rem;
+    background: rgba(158, 206, 106, 0.15);
+    border-radius: 3px;
+}
+
+.pill-delete {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    background: rgba(247, 118, 142, 0.1);
+    color: var(--error);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pill-delete:hover {
+    background: var(--error);
+    border-color: var(--error);
+    color: white;
+}
+
+/* Disconnected session (DB status) styling */
+.session-pill.status-disconnected {
+    opacity: 0.6;
+    background: rgba(127, 132, 156, 0.1);
+    border-color: var(--text-secondary);
+}
+
+.session-pill.status-disconnected:hover {
+    opacity: 0.8;
+    background: rgba(127, 132, 156, 0.15);
+}
+
+.session-pill.status-disconnected.focused {
+    opacity: 0.85;
+    border-color: var(--text-secondary);
+    box-shadow: 0 0 0 2px rgba(127, 132, 156, 0.3);
+}
+
+.session-pill.status-disconnected .pill-folder,
+.session-pill.status-disconnected .pill-hostname,
+.session-pill.status-disconnected .pill-name {
+    color: var(--text-secondary);
+}
+
+/* Paused session styling - more greyed out, no awaiting highlight */
+.session-pill.paused {
+    opacity: 0.35;
+    border-style: dashed;
+    filter: grayscale(50%);
+}
+
+.session-pill.paused:hover {
+    opacity: 0.55;
+    filter: grayscale(30%);
+}
+
+.session-pill.paused.focused {
+    opacity: 0.5;
+    filter: grayscale(40%);
+}
+
+/* Paused sessions should NOT show awaiting (red) highlighting */
+.session-pill.paused.awaiting {
+    border-color: var(--border);
+    animation: none;
+    box-shadow: none;
+}
+
+.session-pill.paused.focused.awaiting {
+    border-color: var(--text-secondary);
+    background: rgba(127, 132, 156, 0.15);
+}
+
+.pill-paused-badge {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.pill-pause {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    background: rgba(122, 162, 247, 0.1);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pill-pause:hover {
+    background: rgba(122, 162, 247, 0.3);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.pill-pause.active {
+    background: rgba(122, 162, 247, 0.2);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.pill-pause.active:hover {
+    background: rgba(158, 206, 106, 0.2);
+    border-color: var(--success);
+    color: var(--success);
+}
+
+/* Number annotation for nav mode (1-9 keys) */
+.pill-number {
+    display: none;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--bg-primary);
+    background: var(--accent);
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    font-family: monospace;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.session-pill.nav-mode .pill-number {
+    display: flex;
+}
+
+/* Nav mode selection highlight */
+.session-pill.nav-mode.focused {
+    border-color: var(--accent);
+    background: rgba(122, 162, 247, 0.25);
+    box-shadow: 0 0 0 3px rgba(122, 162, 247, 0.4);
+}
+
+/* ==========================================================================
+   Role Badge (for shared sessions)
+   ========================================================================== */
+
+.pill-role-badge {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.pill-role-badge.role-editor {
+    background: rgba(224, 175, 104, 0.3);
+    color: #e0af68;
+}
+
+.pill-role-badge.role-viewer {
+    background: rgba(127, 132, 156, 0.3);
+    color: var(--text-secondary);
+}
+
+/* ==========================================================================
+   Share / Leave Buttons
+   ========================================================================== */
+
+.pill-share {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.pill-share:hover {
+    background: rgba(122, 162, 247, 0.2);
+    color: var(--accent);
+}
+
+.pill-share:active {
+    background: rgba(122, 162, 247, 0.3);
+}
+
+.pill-leave {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.pill-leave:hover {
+    background: rgba(224, 175, 104, 0.2);
+    color: #e0af68;
+}
+
+.pill-leave:active {
+    background: rgba(224, 175, 104, 0.3);
+}
