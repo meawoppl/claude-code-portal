@@ -185,8 +185,15 @@ fn replay_history(
     session_id: Uuid,
     replay_after: Option<String>,
 ) {
-    let Ok(mut conn) = db_pool.get() else {
-        return;
+    let mut conn = match db_pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!(
+                "Failed to get database connection for history replay: {}",
+                e
+            );
+            return;
+        }
     };
 
     use crate::schema::messages;

@@ -60,11 +60,19 @@ pub async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) 
 
     // Cleanup - mark session as disconnected in DB
     if let Some(session_id) = db_session_id {
-        if let Ok(mut conn) = db_pool.get() {
-            use crate::schema::sessions;
-            let _ = diesel::update(sessions::table.find(session_id))
-                .set(sessions::status.eq("disconnected"))
-                .execute(&mut conn);
+        match db_pool.get() {
+            Ok(mut conn) => {
+                use crate::schema::sessions;
+                let _ = diesel::update(sessions::table.find(session_id))
+                    .set(sessions::status.eq("disconnected"))
+                    .execute(&mut conn);
+            }
+            Err(e) => {
+                error!(
+                    "Failed to get database connection for session disconnect cleanup: {}",
+                    e
+                );
+            }
         }
     }
 
@@ -208,8 +216,15 @@ fn handle_session_update(
     let Some(current_session_id) = db_session_id else {
         return;
     };
-    let Ok(mut conn) = db_pool.get() else {
-        return;
+    let mut conn = match db_pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!(
+                "Failed to get database connection for session update: {}",
+                e
+            );
+            return;
+        }
     };
 
     if current_session_id != update_session_id {
@@ -262,8 +277,12 @@ fn handle_input_ack(
         return;
     }
 
-    let Ok(mut conn) = db_pool.get() else {
-        return;
+    let mut conn = match db_pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to get database connection for input ack: {}", e);
+            return;
+        }
     };
 
     use crate::schema::pending_inputs;

@@ -2,7 +2,7 @@ use super::{ClientSender, SessionId, SessionManager};
 use crate::db::DbPool;
 use diesel::prelude::*;
 use shared::ProxyMessage;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// Store a permission request in the database and forward it to web clients.
@@ -18,37 +18,47 @@ pub fn handle_permission_request(
     permission_suggestions: Vec<shared::PermissionSuggestion>,
 ) {
     // Store in database for replay on reconnect
-    if let (Some(session_id), Ok(mut conn)) = (db_session_id, db_pool.get()) {
-        use crate::schema::pending_permission_requests;
+    if let Some(session_id) = db_session_id {
+        match db_pool.get() {
+            Ok(mut conn) => {
+                use crate::schema::pending_permission_requests;
 
-        let suggestions_json = if permission_suggestions.is_empty() {
-            None
-        } else {
-            Some(serde_json::to_value(&permission_suggestions).unwrap_or_default())
-        };
+                let suggestions_json = if permission_suggestions.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::to_value(&permission_suggestions).unwrap_or_default())
+                };
 
-        let new_request = crate::models::NewPendingPermissionRequest {
-            session_id,
-            request_id: request_id.clone(),
-            tool_name: tool_name.clone(),
-            input: input.clone(),
-            permission_suggestions: suggestions_json.clone(),
-        };
+                let new_request = crate::models::NewPendingPermissionRequest {
+                    session_id,
+                    request_id: request_id.clone(),
+                    tool_name: tool_name.clone(),
+                    input: input.clone(),
+                    permission_suggestions: suggestions_json.clone(),
+                };
 
-        if let Err(e) = diesel::insert_into(pending_permission_requests::table)
-            .values(&new_request)
-            .on_conflict(pending_permission_requests::session_id)
-            .do_update()
-            .set((
-                pending_permission_requests::request_id.eq(&request_id),
-                pending_permission_requests::tool_name.eq(&tool_name),
-                pending_permission_requests::input.eq(&input),
-                pending_permission_requests::permission_suggestions.eq(suggestions_json),
-                pending_permission_requests::created_at.eq(diesel::dsl::now),
-            ))
-            .execute(&mut conn)
-        {
-            error!("Failed to store pending permission request: {}", e);
+                if let Err(e) = diesel::insert_into(pending_permission_requests::table)
+                    .values(&new_request)
+                    .on_conflict(pending_permission_requests::session_id)
+                    .do_update()
+                    .set((
+                        pending_permission_requests::request_id.eq(&request_id),
+                        pending_permission_requests::tool_name.eq(&tool_name),
+                        pending_permission_requests::input.eq(&input),
+                        pending_permission_requests::permission_suggestions.eq(suggestions_json),
+                        pending_permission_requests::created_at.eq(diesel::dsl::now),
+                    ))
+                    .execute(&mut conn)
+                {
+                    error!("Failed to store pending permission request: {}", e);
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Failed to get database connection for storing permission request: {}",
+                    e
+                );
+            }
         }
     }
 
@@ -94,15 +104,23 @@ pub fn handle_permission_response(
     );
 
     // Clear pending permission request from database
-    if let Ok(mut conn) = db_pool.get() {
-        use crate::schema::pending_permission_requests;
-        if let Err(e) = diesel::delete(
-            pending_permission_requests::table
-                .filter(pending_permission_requests::session_id.eq(session_id)),
-        )
-        .execute(&mut conn)
-        {
-            error!("Failed to clear pending permission request: {}", e);
+    match db_pool.get() {
+        Ok(mut conn) => {
+            use crate::schema::pending_permission_requests;
+            if let Err(e) = diesel::delete(
+                pending_permission_requests::table
+                    .filter(pending_permission_requests::session_id.eq(session_id)),
+            )
+            .execute(&mut conn)
+            {
+                error!("Failed to clear pending permission request: {}", e);
+            }
+        }
+        Err(e) => {
+            error!(
+                "Failed to get database connection for clearing permission request: {}",
+                e
+            );
         }
     }
 
@@ -116,7 +134,7 @@ pub fn handle_permission_response(
             reason,
         },
     ) {
-        tracing::warn!(
+        warn!(
             "Failed to send PermissionResponse to session '{}', session not connected",
             session_key
         );
@@ -125,8 +143,15 @@ pub fn handle_permission_response(
 
 /// Replay a pending permission request from the database to a newly connected web client.
 pub fn replay_pending_permission(db_pool: &DbPool, session_id: Uuid, tx: &ClientSender) {
-    let Ok(mut conn) = db_pool.get() else {
-        return;
+    let mut conn = match db_pool.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            warn!(
+                "Failed to get database connection for replaying permission request: {}",
+                e
+            );
+            return;
+        }
     };
 
     use crate::schema::pending_permission_requests;

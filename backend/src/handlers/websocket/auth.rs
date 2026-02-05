@@ -1,6 +1,7 @@
 use crate::AppState;
 use diesel::prelude::*;
 use tower_cookies::Cookies;
+use tracing::{error, warn};
 use uuid::Uuid;
 
 const SESSION_COOKIE_NAME: &str = "cc_session";
@@ -29,7 +30,12 @@ pub fn verify_session_access(
     session_id: Uuid,
     user_id: Uuid,
 ) -> Result<crate::models::Session, ()> {
-    let mut conn = app_state.db_pool.get().map_err(|_| ())?;
+    let mut conn = app_state.db_pool.get().map_err(|e| {
+        error!(
+            "Failed to get database connection for session access check: {}",
+            e
+        );
+    })?;
     use crate::schema::{session_members, sessions};
     sessions::table
         .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
@@ -37,5 +43,10 @@ pub fn verify_session_access(
         .filter(session_members::user_id.eq(user_id))
         .select(crate::models::Session::as_select())
         .first::<crate::models::Session>(&mut conn)
-        .map_err(|_| ())
+        .map_err(|e| {
+            warn!(
+                "Session access check failed for user {} on session {}: {}",
+                user_id, session_id, e
+            );
+        })
 }
