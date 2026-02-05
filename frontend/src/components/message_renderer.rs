@@ -931,12 +931,41 @@ fn shorten_model_name(model: &str) -> Option<String> {
         return None;
     }
 
+    // Extract version from model strings like:
+    // - "claude-opus-4-5-20251101" -> "4.5"
+    // - "claude-sonnet-4-5-20250929" -> "4.5"
+    // - "claude-3-5-sonnet-20241022" -> "3.5"
+    let extract_version = |model: &str| -> Option<String> {
+        let parts: Vec<&str> = model.split('-').collect();
+        // Look for two consecutive numeric parts
+        for i in 0..parts.len().saturating_sub(1) {
+            if let (Ok(major), Ok(minor)) = (parts[i].parse::<u32>(), parts[i + 1].parse::<u32>()) {
+                // Check if there's a following part (either model name or date)
+                if i + 2 < parts.len() {
+                    return Some(format!("{}.{}", major, minor));
+                }
+            }
+        }
+        None
+    };
+
+    let version = extract_version(model);
+
     Some(if model.contains("opus") {
-        "Opus".to_string()
+        match version {
+            Some(v) => format!("Opus {}", v),
+            None => "Opus".to_string(),
+        }
     } else if model.contains("sonnet") {
-        "Sonnet".to_string()
+        match version {
+            Some(v) => format!("Sonnet {}", v),
+            None => "Sonnet".to_string(),
+        }
     } else if model.contains("haiku") {
-        "Haiku".to_string()
+        match version {
+            Some(v) => format!("Haiku {}", v),
+            None => "Haiku".to_string(),
+        }
     } else {
         model.split('-').next().unwrap_or(model).to_string()
     })
@@ -1006,5 +1035,38 @@ mod tests {
         assert!(!msg.is_overload());
         assert_eq!(msg.display_message(), "Unknown error");
         assert_eq!(msg.error_type(), None);
+    }
+
+    #[test]
+    fn test_shorten_model_name() {
+        // Standard model names with version
+        assert_eq!(
+            shorten_model_name("claude-opus-4-5-20251101"),
+            Some("Opus 4.5".to_string())
+        );
+        assert_eq!(
+            shorten_model_name("claude-sonnet-4-5-20250929"),
+            Some("Sonnet 4.5".to_string())
+        );
+        assert_eq!(
+            shorten_model_name("claude-haiku-4-5-20251001"),
+            Some("Haiku 4.5".to_string())
+        );
+
+        // Older model format
+        assert_eq!(
+            shorten_model_name("claude-3-5-sonnet-20241022"),
+            Some("Sonnet 3.5".to_string())
+        );
+
+        // No version found - fallback
+        assert_eq!(shorten_model_name("claude-opus"), Some("Opus".to_string()));
+
+        // Empty or invalid
+        assert_eq!(shorten_model_name(""), None);
+        assert_eq!(shorten_model_name("<unknown>"), None);
+
+        // Unknown model
+        assert_eq!(shorten_model_name("gpt-4-turbo"), Some("gpt".to_string()));
     }
 }
