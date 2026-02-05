@@ -7,6 +7,11 @@
     color: var(--text-muted);
     font-size: 0.75rem;
     margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex-shrink: 1;
 }
 
 .tool-badge {
@@ -271,13 +276,15 @@
 }
 
 .bash-tool .tool-use-header {
-    flex-wrap: nowrap;
+    min-width: 0;
 }
 
-.bash-command-inline {
+/* Inline code snippets in tool headers (commands, patterns, etc.) */
+.bash-command-inline,
+.glob-pattern-inline,
+.grep-pattern-inline {
     flex: 0 1 auto;
     min-width: 0;
-    max-width: 70%;
     padding: 0.15rem 0.4rem;
     background: rgba(0, 0, 0, 0.25);
     border-radius: 3px;
@@ -286,6 +293,10 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.bash-command-inline {
+    max-width: 70%;
 }
 
 .tool-header-spacer {
@@ -335,14 +346,6 @@
     border-left-color: var(--accent);
 }
 
-.glob-pattern-inline {
-    padding: 0.15rem 0.4rem;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: 3px;
-    color: var(--text-primary);
-    font-size: 0.85rem;
-}
-
 .glob-pattern {
     color: var(--text-primary);
     font-size: 0.9rem;
@@ -359,14 +362,6 @@
 .grep-tool {
     background: rgba(122, 162, 247, 0.08);
     border-left-color: var(--accent);
-}
-
-.grep-pattern-inline {
-    padding: 0.15rem 0.4rem;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: 3px;
-    color: var(--text-primary);
-    font-size: 0.85rem;
 }
 
 .grep-pattern {
