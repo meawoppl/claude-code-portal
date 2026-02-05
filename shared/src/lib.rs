@@ -5,6 +5,9 @@ use uuid::Uuid;
 pub mod proxy_tokens;
 pub use proxy_tokens::*;
 
+// Protocol constants shared between backend and proxy
+pub mod protocol;
+
 // API client types and trait
 pub mod api;
 pub use api::{ApiClientConfig, ApiError, CcProxyApi};

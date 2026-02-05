@@ -23,7 +23,7 @@ use tower_cookies::Cookies;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-const SESSION_COOKIE_NAME: &str = "cc_session";
+use shared::protocol::SESSION_COOKIE_NAME;
 
 /// Extract user_id from signed session cookie
 fn extract_user_id_from_cookies(app_state: &AppState, cookies: &Cookies) -> Option<Uuid> {

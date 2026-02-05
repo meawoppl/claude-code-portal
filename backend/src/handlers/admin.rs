@@ -21,7 +21,7 @@ use crate::{
     schema, AppState,
 };
 
-const SESSION_COOKIE_NAME: &str = "cc_session";
+use shared::protocol::SESSION_COOKIE_NAME;
 
 // ============================================================================
 // Admin Guard - extracts and validates admin user from cookies

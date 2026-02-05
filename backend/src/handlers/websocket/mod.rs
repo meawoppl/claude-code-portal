@@ -21,12 +21,10 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::AppState;
+use shared::protocol::{MAX_PENDING_MESSAGES_PER_SESSION, MAX_PENDING_MESSAGE_AGE_SECS};
 
-/// Maximum number of messages to queue per session when proxy is disconnected
-const MAX_PENDING_MESSAGES_PER_SESSION: usize = 100;
-
-/// Maximum age of pending messages before they're dropped (5 minutes)
-const MAX_PENDING_MESSAGE_AGE: Duration = Duration::from_secs(300);
+/// Maximum age of pending messages before they're dropped
+const MAX_PENDING_MESSAGE_AGE: Duration = Duration::from_secs(MAX_PENDING_MESSAGE_AGE_SECS);
 
 /// A message queued for a disconnected proxy
 #[derive(Clone)]

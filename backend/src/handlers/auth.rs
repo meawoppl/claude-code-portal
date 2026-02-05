@@ -17,7 +17,7 @@ use crate::{
     AppState,
 };
 
-const SESSION_COOKIE_NAME: &str = "cc_session";
+use shared::protocol::SESSION_COOKIE_NAME;
 
 /// Regular web login - redirects to Google OAuth
 pub async fn login(State(app_state): State<Arc<AppState>>) -> impl IntoResponse {

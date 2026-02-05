@@ -21,10 +21,7 @@ use crate::{
     AppState,
 };
 
-const SESSION_COOKIE_NAME: &str = "cc_session";
-
-/// Time in seconds before a device authorization code expires
-const DEVICE_CODE_EXPIRES_SECS: u64 = 300;
+use shared::protocol::{DEVICE_CODE_EXPIRES_SECS, SESSION_COOKIE_NAME};
 
 /// Error response for device flow endpoints
 #[derive(Debug, Serialize)]
