@@ -286,7 +286,7 @@ async fn get_user_id_from_session(
     // Get signed session cookie
     let session_cookie = cookies
         .signed(&app_state.cookie_key)
-        .get("cc_session")
+        .get(shared::protocol::SESSION_COOKIE_NAME)
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     // Parse user_id from cookie value

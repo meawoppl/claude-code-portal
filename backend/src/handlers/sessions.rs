@@ -15,7 +15,7 @@ use crate::{
     AppState,
 };
 
-const SESSION_COOKIE_NAME: &str = "cc_session";
+use shared::protocol::SESSION_COOKIE_NAME;
 
 /// Session with the current user's role included
 #[derive(Debug, Serialize)]
