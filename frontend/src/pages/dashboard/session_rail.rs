@@ -51,7 +51,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             if let Some(rail) = rail_ref.cast::<HtmlElement>() {
                 e.prevent_default();
                 let delta = e.delta_y();
-                rail.set_scroll_left(rail.scroll_left() + delta as i32);
+                rail.set_scroll_left(rail.scroll_left() + (delta * 3.0) as i32);
             }
         })
     };
@@ -142,7 +142,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     <span class="pill-hostname">{ hostname }</span>
                     {
                         if let Some(ref branch) = session.git_branch {
-                            html! { <span class="pill-branch">{ branch }</span> }
+                            html! { <span class="pill-branch" title={branch.clone()}>{ branch }</span> }
                         } else {
                             html! {}
                         }
