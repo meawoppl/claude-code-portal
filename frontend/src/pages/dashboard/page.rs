@@ -36,6 +36,10 @@ pub fn dashboard_page() -> Html {
     let total_user_spend = ws_hook.total_spend;
     let server_shutdown_reason = ws_hook.shutdown_reason.clone();
 
+    // Track spend tier for timed animations
+    let prev_spend_tier = use_state(|| 0u8);
+    let spend_animating = use_state(|| false);
+
     // UI state
     let show_new_session = use_state(|| false);
     let focused_index = use_state(|| 0usize);
@@ -49,6 +53,47 @@ pub fn dashboard_page() -> Html {
     let app_title = use_state(|| "Claude Code Sessions".to_string());
     let activated_sessions = use_state(HashSet::<Uuid>::new);
     let initial_focus_set = use_state(|| false);
+
+    // Detect spend tier changes and trigger timed animation
+    {
+        let spend_animating = spend_animating.clone();
+        let prev_spend_tier = prev_spend_tier.clone();
+        let current_tier = if total_user_spend >= 10000.0 {
+            5u8
+        } else if total_user_spend >= 1000.0 {
+            4
+        } else if total_user_spend >= 100.0 {
+            3
+        } else if total_user_spend >= 10.0 {
+            2
+        } else if total_user_spend >= 1.0 {
+            1
+        } else {
+            0
+        };
+        use_effect_with(current_tier, move |tier| {
+            let tier = *tier;
+            if tier > *prev_spend_tier {
+                spend_animating.set(true);
+                let duration_ms = match tier {
+                    1 => 500,
+                    2 => 2000,
+                    3 => 5000,
+                    4 => 10000,
+                    _ => 20000,
+                };
+                let spend_animating = spend_animating.clone();
+                let handle = gloo::timers::callback::Timeout::new(duration_ms, move || {
+                    spend_animating.set(false);
+                });
+                prev_spend_tier.set(tier);
+                handle.forget();
+            } else if tier != *prev_spend_tier {
+                prev_spend_tier.set(tier);
+            }
+            || ()
+        });
+    }
 
     // Fetch current user info (to check admin status and voice_enabled)
     {
@@ -398,19 +443,24 @@ pub fn dashboard_page() -> Html {
                 <div class="header-actions">
                     {
                         if total_user_spend > 0.0 {
-                            let spend_class = if total_user_spend >= 10000.0 {
-                                "total-spend-badge spend-10000"
+                            let tier_class = if total_user_spend >= 10000.0 {
+                                "spend-10000"
                             } else if total_user_spend >= 1000.0 {
-                                "total-spend-badge spend-1000"
+                                "spend-1000"
                             } else if total_user_spend >= 100.0 {
-                                "total-spend-badge spend-100"
+                                "spend-100"
                             } else if total_user_spend >= 10.0 {
-                                "total-spend-badge spend-10"
+                                "spend-10"
                             } else if total_user_spend >= 1.0 {
-                                "total-spend-badge spend-1"
+                                "spend-1"
                             } else {
-                                "total-spend-badge"
+                                ""
                             };
+                            let spend_class = classes!(
+                                "total-spend-badge",
+                                tier_class,
+                                if *spend_animating { Some("spend-animating") } else { None },
+                            );
                             html! {
                                 <span class={spend_class} title="Total spend across all sessions">
                                     { format!("${:.2}", total_user_spend) }
