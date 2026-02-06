@@ -398,8 +398,21 @@ pub fn dashboard_page() -> Html {
                 <div class="header-actions">
                     {
                         if total_user_spend > 0.0 {
+                            let spend_class = if total_user_spend >= 10000.0 {
+                                "total-spend-badge spend-10000"
+                            } else if total_user_spend >= 1000.0 {
+                                "total-spend-badge spend-1000"
+                            } else if total_user_spend >= 100.0 {
+                                "total-spend-badge spend-100"
+                            } else if total_user_spend >= 10.0 {
+                                "total-spend-badge spend-10"
+                            } else if total_user_spend >= 1.0 {
+                                "total-spend-badge spend-1"
+                            } else {
+                                "total-spend-badge"
+                            };
                             html! {
-                                <span class="total-spend-badge" title="Total spend across all sessions">
+                                <span class={spend_class} title="Total spend across all sessions">
                                     { format!("${:.2}", total_user_spend) }
                                 </span>
                             }

@@ -47,6 +47,90 @@
     font-size: 0.8rem;
     font-weight: 600;
     font-family: monospace;
+    transition: all 0.3s ease;
+}
+
+/* $1+ : gentle pulse */
+.total-spend-badge.spend-1 {
+    animation: spend-nudge 3s ease-in-out infinite;
+}
+
+/* $10+ : noticeable wobble */
+.total-spend-badge.spend-10 {
+    background: rgba(224, 175, 104, 0.25);
+    color: #e0af68;
+    animation: spend-wobble 2s ease-in-out infinite;
+}
+
+/* $100+ : shaking, warning colors */
+.total-spend-badge.spend-100 {
+    background: rgba(247, 118, 142, 0.25);
+    color: var(--error);
+    font-size: 0.85rem;
+    animation: spend-shake 0.8s ease-in-out infinite;
+}
+
+/* $1000+ : violent vibration, large */
+.total-spend-badge.spend-1000 {
+    background: rgba(247, 118, 142, 0.4);
+    color: #f46;
+    font-size: 0.95rem;
+    font-weight: 700;
+    animation: spend-vibrate 0.3s linear infinite;
+    box-shadow: 0 0 12px rgba(247, 118, 142, 0.5);
+}
+
+/* $10000+ : full chaos */
+.total-spend-badge.spend-10000 {
+    background: rgba(247, 50, 80, 0.6);
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 800;
+    animation: spend-chaos 0.15s linear infinite;
+    box-shadow: 0 0 20px rgba(247, 50, 80, 0.7), 0 0 40px rgba(247, 50, 80, 0.3);
+    text-shadow: 0 0 8px rgba(255, 0, 0, 0.8);
+    border: 2px solid #f46;
+}
+
+@keyframes spend-nudge {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.03); }
+}
+
+@keyframes spend-wobble {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(2deg); }
+    75% { transform: rotate(-2deg); }
+}
+
+@keyframes spend-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-2px) rotate(-1deg); }
+    40% { transform: translateX(2px) rotate(1deg); }
+    60% { transform: translateX(-1px) rotate(-0.5deg); }
+    80% { transform: translateX(1px) rotate(0.5deg); }
+}
+
+@keyframes spend-vibrate {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    25% { transform: translate(-2px, 1px) rotate(-2deg); }
+    50% { transform: translate(2px, -1px) rotate(2deg); }
+    75% { transform: translate(-1px, 2px) rotate(-1deg); }
+    100% { transform: translate(1px, -1px) rotate(1deg); }
+}
+
+@keyframes spend-chaos {
+    0% { transform: translate(0, 0) rotate(0deg) scale(1); }
+    10% { transform: translate(-3px, 2px) rotate(-5deg) scale(1.05); }
+    20% { transform: translate(4px, -1px) rotate(4deg) scale(0.95); }
+    30% { transform: translate(-2px, -3px) rotate(-3deg) scale(1.08); }
+    40% { transform: translate(3px, 2px) rotate(6deg) scale(0.92); }
+    50% { transform: translate(-4px, 1px) rotate(-6deg) scale(1.1); }
+    60% { transform: translate(2px, -2px) rotate(3deg) scale(0.95); }
+    70% { transform: translate(-3px, 3px) rotate(-4deg) scale(1.05); }
+    80% { transform: translate(4px, -2px) rotate(5deg) scale(0.93); }
+    90% { transform: translate(-2px, 1px) rotate(-2deg) scale(1.07); }
+    100% { transform: translate(3px, -1px) rotate(3deg) scale(1); }
 }
 
 .waiting-badge {
