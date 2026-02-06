@@ -937,13 +937,14 @@ fn shorten_model_name(model: &str) -> Option<String> {
     // - "claude-3-5-sonnet-20241022" -> "3.5"
     let extract_version = |model: &str| -> Option<String> {
         let parts: Vec<&str> = model.split('-').collect();
-        // Look for two consecutive numeric parts
+        // Look for two consecutive numeric parts (e.g. "4-6" in "claude-opus-4-6")
         for i in 0..parts.len().saturating_sub(1) {
             if let (Ok(major), Ok(minor)) = (parts[i].parse::<u32>(), parts[i + 1].parse::<u32>()) {
-                // Check if there's a following part (either model name or date)
-                if i + 2 < parts.len() {
-                    return Some(format!("{}.{}", major, minor));
+                // Skip if minor looks like a date (8+ digits)
+                if parts[i + 1].len() >= 8 {
+                    continue;
                 }
+                return Some(format!("{}.{}", major, minor));
             }
         }
         None
@@ -1057,6 +1058,16 @@ mod tests {
         assert_eq!(
             shorten_model_name("claude-3-5-sonnet-20241022"),
             Some("Sonnet 3.5".to_string())
+        );
+
+        // Model IDs without date suffix
+        assert_eq!(
+            shorten_model_name("claude-opus-4-6"),
+            Some("Opus 4.6".to_string())
+        );
+        assert_eq!(
+            shorten_model_name("claude-sonnet-4-5"),
+            Some("Sonnet 4.5".to_string())
         );
 
         // No version found - fallback
