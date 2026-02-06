@@ -299,6 +299,7 @@ fn handle_web_input(
                 session_id,
                 seq,
                 content,
+                send_mode,
             },
         ) {
             warn!(

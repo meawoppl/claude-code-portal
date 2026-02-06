@@ -54,6 +54,7 @@ pub fn replay_pending_inputs_from_db(
             session_id,
             seq: input.seq_num,
             content,
+            send_mode: None,
         };
 
         if sender.send(msg).is_ok() {

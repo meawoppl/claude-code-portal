@@ -1048,21 +1048,11 @@ async fn handle_ws_text_message(
                 other => other.to_string(),
             };
 
-            // Check for wiggum mode
             if send_mode == Some(SendMode::Wiggum) {
                 debug!("→ [input/wiggum] {}", truncate(&user_text, 80));
-                // Signal wiggum mode activation with the original prompt
-                if wiggum_tx.send(user_text.clone()).is_err() {
+                // Only send to wiggum_tx — the select loop sets state and sends prompt atomically
+                if wiggum_tx.send(user_text).is_err() {
                     error!("Failed to send wiggum activation");
-                    return WsMessageResult::Disconnect;
-                }
-                // Send the modified prompt to Claude
-                let wiggum_prompt = format!(
-                    "{}\n\nTake action on the directions above until fully complete. If complete, respond only with DONE.",
-                    user_text
-                );
-                if input_tx.send(wiggum_prompt).is_err() {
-                    error!("Failed to send input to channel");
                     return WsMessageResult::Disconnect;
                 }
             } else {
@@ -1077,16 +1067,32 @@ async fn handle_ws_text_message(
             session_id,
             seq,
             content,
+            send_mode,
         } => {
-            let text = match &content {
+            let user_text = match &content {
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
             };
-            debug!("→ [seq_input] seq={} {}", seq, truncate(&text, 80));
-            if input_tx.send(text).is_err() {
-                error!("Failed to send input to channel");
-                return WsMessageResult::Disconnect;
+
+            if send_mode == Some(SendMode::Wiggum) {
+                debug!(
+                    "→ [seq_input/wiggum] seq={} {}",
+                    seq,
+                    truncate(&user_text, 80)
+                );
+                // Only send to wiggum_tx — the select loop sets state and sends prompt atomically
+                if wiggum_tx.send(user_text).is_err() {
+                    error!("Failed to send wiggum activation");
+                    return WsMessageResult::Disconnect;
+                }
+            } else {
+                debug!("→ [seq_input] seq={} {}", seq, truncate(&user_text, 80));
+                if input_tx.send(user_text).is_err() {
+                    error!("Failed to send input to channel");
+                    return WsMessageResult::Disconnect;
+                }
             }
+
             // Send InputAck back to backend
             let ack = ProxyMessage::InputAck {
                 session_id,
@@ -1195,13 +1201,21 @@ async fn run_main_loop(
                 }
             }
 
-            // Wiggum mode activation
+            // Wiggum mode activation — set state and send prompt atomically
             Some(original_prompt) = state.wiggum_rx.recv() => {
                 info!("Wiggum mode activated with prompt: {}", truncate(&original_prompt, 60));
+                let wiggum_prompt = format!(
+                    "{}\n\nTake action on the directions above until fully complete. If complete, respond only with DONE.",
+                    original_prompt
+                );
                 state.wiggum_state = Some(WiggumState {
                     original_prompt,
                     iteration: 1,
                 });
+                if let Err(e) = claude_session.send_input(serde_json::Value::String(wiggum_prompt)).await {
+                    error!("Failed to send wiggum prompt to Claude: {}", e);
+                    return ConnectionResult::ClaudeExited;
+                }
             }
 
             Some(perm_response) = state.perm_rx.recv() => {
