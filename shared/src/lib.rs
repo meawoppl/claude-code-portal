@@ -163,6 +163,9 @@ pub enum ProxyMessage {
         seq: i64,
         /// The actual input content
         content: serde_json::Value,
+        /// Send mode (normal or wiggum loop)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        send_mode: Option<SendMode>,
     },
 
     /// Acknowledge receipt of input messages (proxy -> backend)
@@ -399,6 +402,7 @@ mod tests {
             session_id,
             seq: 5,
             content: serde_json::json!({"type": "human", "message": "test"}),
+            send_mode: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: ProxyMessage = serde_json::from_str(&json).unwrap();
@@ -408,10 +412,12 @@ mod tests {
                 session_id: sid,
                 seq,
                 content,
+                send_mode,
             } => {
                 assert_eq!(sid, session_id);
                 assert_eq!(seq, 5);
                 assert_eq!(content["type"], "human");
+                assert!(send_mode.is_none());
             }
             _ => panic!("Wrong variant"),
         }
