@@ -48,6 +48,10 @@ pub enum ProxyMessage {
         /// Client version (e.g., "1.0.0") - helps track client versions in use
         #[serde(default)]
         client_version: Option<String>,
+        /// If this session replaces a previous one (e.g. after SessionNotFound),
+        /// the old session ID so the backend can mark it as replaced.
+        #[serde(default)]
+        replaces_session_id: Option<Uuid>,
     },
 
     /// Output from Claude Code to be displayed
@@ -504,12 +508,14 @@ mod tests {
                 git_branch,
                 replay_after,
                 client_version,
+                replaces_session_id,
                 ..
             } => {
                 assert!(!resuming);
                 assert!(git_branch.is_none());
                 assert!(replay_after.is_none());
                 assert!(client_version.is_none());
+                assert!(replaces_session_id.is_none());
             }
             _ => panic!("Wrong variant"),
         }

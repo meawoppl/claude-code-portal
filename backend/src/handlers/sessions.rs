@@ -48,6 +48,7 @@ pub async fn list_sessions(
     let results: Vec<(Session, String)> = sessions::table
         .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
         .filter(session_members::user_id.eq(current_user_id))
+        .filter(sessions::status.ne("replaced"))
         .select((Session::as_select(), session_members::role))
         .order(sessions::last_activity.desc())
         .load(&mut conn)

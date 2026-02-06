@@ -44,6 +44,7 @@ pub fn connect_websocket(
                     git_branch: None,
                     replay_after,
                     client_version: None,
+                    replaces_session_id: None,
                 };
 
                 if let Ok(json) = serde_json::to_string(&register_msg) {

@@ -327,6 +327,7 @@ async fn main() -> Result<()> {
         resume: resuming,
         git_branch,
         claude_args: args.claude_args.clone(),
+        replaces_session_id: None,
     };
 
     // Start Claude and run session
@@ -473,12 +474,13 @@ async fn run_proxy_session(mut config: ProxySessionConfig) -> Result<()> {
         }
 
         // Create a new session and update config
+        let old_session_id = config.session_id;
         let new_session_id = Uuid::new_v4();
         info!(
             "Previous session {} not found locally, starting fresh session {}",
-            config.session_id, new_session_id
+            old_session_id, new_session_id
         );
-        ui::print_session_not_found(&config.session_id.to_string());
+        ui::print_session_not_found(&old_session_id.to_string());
 
         // Update the directory_sessions config with the new session ID
         let (mut proxy_config, lock) = ProxyConfig::load_locked()
@@ -492,6 +494,7 @@ async fn run_proxy_session(mut config: ProxySessionConfig) -> Result<()> {
         // Update the session config for retry
         config.session_id = new_session_id;
         config.resume = false;
+        config.replaces_session_id = Some(old_session_id);
 
         info!("Retrying with new session ID: {}", new_session_id);
         // Loop will continue and start fresh session
