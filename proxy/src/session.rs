@@ -75,6 +75,8 @@ pub struct ProxySessionConfig {
     pub git_branch: Option<String>,
     /// Extra arguments to pass through to the claude CLI
     pub claude_args: Vec<String>,
+    /// If this session replaces a previous one (after SessionNotFound), the old session ID
+    pub replaces_session_id: Option<Uuid>,
 }
 
 /// Exponential backoff helper
@@ -390,6 +392,7 @@ async fn register_session(
         git_branch: config.git_branch.clone(),
         replay_after: None, // Proxy doesn't need history replay
         client_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        replaces_session_id: config.replaces_session_id,
     };
 
     if let Err(e) = conn.send(&register_msg).await {

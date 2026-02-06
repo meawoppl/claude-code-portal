@@ -21,6 +21,7 @@ pub struct RegistrationParams<'a> {
     pub git_branch: &'a Option<String>,
     pub client_version: &'a Option<String>,
     pub session_key: &'a str,
+    pub replaces_session_id: Option<Uuid>,
 }
 
 /// Register or update a session in the database.
@@ -42,6 +43,25 @@ pub fn register_or_update_session(
     };
 
     use crate::schema::sessions;
+
+    // If this session replaces a previous one, mark the old session
+    if let Some(old_id) = params.replaces_session_id {
+        match diesel::update(sessions::table.find(old_id))
+            .set(sessions::status.eq("replaced"))
+            .execute(&mut conn)
+        {
+            Ok(n) if n > 0 => {
+                info!(
+                    "Marked old session {} as replaced (superseded by {})",
+                    old_id, params.claude_session_id
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                warn!("Failed to mark old session {} as replaced: {}", old_id, e);
+            }
+        }
+    }
 
     let existing: Option<crate::models::Session> = sessions::table
         .find(params.claude_session_id)

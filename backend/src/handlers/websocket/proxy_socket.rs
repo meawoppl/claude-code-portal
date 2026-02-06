@@ -103,6 +103,7 @@ fn handle_proxy_message(
             git_branch,
             replay_after: _,
             client_version,
+            replaces_session_id,
         } => {
             let key = claude_session_id.to_string();
             *session_key = Some(key.clone());
@@ -118,6 +119,7 @@ fn handle_proxy_message(
                 git_branch: &git_branch,
                 client_version: &client_version,
                 session_key: &key,
+                replaces_session_id,
             };
             let result = register_or_update_session(app_state, &params);
 
