@@ -357,3 +357,56 @@
     color: var(--text-muted);
     font-family: var(--font-mono);
 }
+
+/* ==========================================================================
+   ExitPlanMode Permission Dialog
+   ========================================================================== */
+
+.permission-prompt.exitplanmode-permission {
+    background: linear-gradient(135deg, rgba(158, 206, 106, 0.15) 0%, rgba(122, 162, 247, 0.15) 100%);
+    border-color: rgba(158, 206, 106, 0.4);
+}
+
+.exitplanmode-permission .permission-title {
+    color: var(--success);
+}
+
+.exitplan-permissions {
+    padding: 0.5rem 0.75rem;
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+}
+
+.exitplan-permissions-header {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    margin-bottom: 0.4rem;
+}
+
+.exitplan-permission-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    font-family: var(--font-mono);
+    padding: 0.15rem 0;
+}
+
+.exitplan-permission-item .permission-tool-name {
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.exitplan-permission-item .permission-separator {
+    color: var(--text-muted);
+}
+
+.exitplan-permission-item .permission-description {
+    color: var(--text-primary);
+}
+
+.exitplan-no-permissions {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-style: italic;
+}
