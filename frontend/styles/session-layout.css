@@ -47,12 +47,11 @@
     font-size: 0.8rem;
     font-weight: 600;
     font-family: monospace;
-    transition: all 0.3s ease;
 }
 
-/* $1+ : gentle pulse */
+/* $1+ : gentle pulse (0.5s timer) */
 .total-spend-badge.spend-1.spend-animating {
-    animation: spend-nudge 3s ease-in-out infinite;
+    animation: spend-nudge 0.25s ease-in-out infinite;
 }
 
 /* $10+ : noticeable wobble */
@@ -62,7 +61,7 @@
 }
 
 .total-spend-badge.spend-10.spend-animating {
-    animation: spend-wobble 2s ease-in-out infinite;
+    animation: spend-wobble 0.5s ease-in-out infinite;
 }
 
 /* $100+ : shaking, warning colors */
