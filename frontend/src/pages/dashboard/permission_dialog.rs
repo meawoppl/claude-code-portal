@@ -56,6 +56,11 @@ pub fn permission_dialog(props: &PermissionDialogProps) -> Html {
         }
     }
 
+    // Check if this is ExitPlanMode
+    if perm.tool_name == "ExitPlanMode" {
+        return render_exitplanmode_permission(props);
+    }
+
     // Regular permission dialog
     render_standard_permission(props)
 }
@@ -343,6 +348,110 @@ fn render_ask_user_question(props: &PermissionDialogProps, parsed: &AskUserQuest
                 <div class="question-hint">
                     { "Click options to answer each question, then submit" }
                 </div>
+            </div>
+        </div>
+    }
+}
+
+/// Render the ExitPlanMode permission dialog
+fn render_exitplanmode_permission(props: &PermissionDialogProps) -> Html {
+    let perm = &props.permission;
+
+    let on_select_up = props.on_select_up.clone();
+    let on_select_down = props.on_select_down.clone();
+    let on_confirm = props.on_confirm.clone();
+
+    let onkeydown = Callback::from(move |e: KeyboardEvent| match e.key().as_str() {
+        "ArrowUp" | "k" => {
+            e.prevent_default();
+            on_select_up.emit(());
+        }
+        "ArrowDown" | "j" => {
+            e.prevent_default();
+            on_select_down.emit(());
+        }
+        "Enter" | " " => {
+            e.prevent_default();
+            on_confirm.emit(());
+        }
+        _ => {}
+    });
+
+    let allowed_prompts = perm
+        .input
+        .get("allowedPrompts")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let options: Vec<(&str, &str)> = vec![("allow", "Allow"), ("deny", "Deny")];
+
+    html! {
+        <div
+            class="permission-prompt exitplanmode-permission"
+            ref={props.dialog_ref.clone()}
+            tabindex="0"
+            {onkeydown}
+        >
+            <div class="permission-header">
+                <span class="permission-icon">{ "📋" }</span>
+                <span class="permission-title">{ "Plan Ready" }</span>
+            </div>
+            <div class="permission-body">
+                {
+                    if !allowed_prompts.is_empty() {
+                        html! {
+                            <div class="exitplan-permissions">
+                                <div class="exitplan-permissions-header">{ "Requested permissions:" }</div>
+                                {
+                                    allowed_prompts.iter().map(|p| {
+                                        let tool = p.get("tool").and_then(|t| t.as_str()).unwrap_or("Unknown");
+                                        let prompt = p.get("prompt").and_then(|p| p.as_str()).unwrap_or("");
+                                        html! {
+                                            <div class="exitplan-permission-item">
+                                                <span class="permission-tool-name">{ tool }</span>
+                                                <span class="permission-separator">{ ": " }</span>
+                                                <span class="permission-description">{ prompt }</span>
+                                            </div>
+                                        }
+                                    }).collect::<Html>()
+                                }
+                            </div>
+                        }
+                    } else {
+                        html! {
+                            <div class="exitplan-no-permissions">
+                                { "No additional permissions requested." }
+                            </div>
+                        }
+                    }
+                }
+            </div>
+            <div class="permission-options">
+                {
+                    options.iter().enumerate().map(|(i, (class, label))| {
+                        let is_selected = i == props.selected;
+                        let cursor = if is_selected { ">" } else { " " };
+                        let item_class = if is_selected {
+                            format!("permission-option selected {}", class)
+                        } else {
+                            format!("permission-option {}", class)
+                        };
+                        let on_select_and_confirm = props.on_select_and_confirm.clone();
+                        let onclick = Callback::from(move |_| {
+                            on_select_and_confirm.emit(i);
+                        });
+                        html! {
+                            <div class={item_class} {onclick}>
+                                <span class="option-cursor">{ cursor }</span>
+                                <span class="option-label">{ *label }</span>
+                            </div>
+                        }
+                    }).collect::<Html>()
+                }
+            </div>
+            <div class="permission-hint">
+                { "↑↓ or tap to select" }
             </div>
         </div>
     }
