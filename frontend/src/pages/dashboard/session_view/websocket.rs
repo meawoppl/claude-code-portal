@@ -17,6 +17,7 @@ pub enum WsEvent {
     Connected(WsSender),
     Error(String),
     Output(String),
+    HistoryBatch(Vec<String>),
     Permission(PendingPermission),
     BranchChanged(Option<String>),
 }
@@ -86,6 +87,10 @@ fn handle_proxy_message(msg: ProxyMessage, on_event: &Callback<WsEvent>) {
     match msg {
         ProxyMessage::ClaudeOutput { content } => {
             on_event.emit(WsEvent::Output(content.to_string()));
+        }
+        ProxyMessage::HistoryBatch { messages } => {
+            let strings: Vec<String> = messages.into_iter().map(|v| v.to_string()).collect();
+            on_event.emit(WsEvent::HistoryBatch(strings));
         }
         ProxyMessage::PermissionRequest {
             request_id,

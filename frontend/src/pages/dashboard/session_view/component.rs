@@ -513,6 +513,21 @@ impl SessionView {
                 ctx.link().send_message(SessionViewMsg::CheckAwaiting);
                 false
             }
+            WsEvent::HistoryBatch(messages) => {
+                self.messages.extend(messages);
+                if self.messages.len() > MAX_MESSAGES_PER_SESSION {
+                    let excess = self.messages.len() - MAX_MESSAGES_PER_SESSION;
+                    self.messages.drain(0..excess);
+                }
+                self.last_message_timestamp = Some(
+                    js_sys::Date::new_0()
+                        .to_iso_string()
+                        .as_string()
+                        .unwrap_or_default(),
+                );
+                ctx.link().send_message(SessionViewMsg::CheckAwaiting);
+                true
+            }
             WsEvent::Permission(perm) => {
                 ctx.link()
                     .send_message(SessionViewMsg::PermissionRequest(perm));

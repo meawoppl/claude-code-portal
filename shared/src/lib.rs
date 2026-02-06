@@ -132,6 +132,10 @@ pub enum ProxyMessage {
         session_costs: Vec<SessionCost>,
     },
 
+    /// Batch of historical messages sent during replay (backend -> web client).
+    /// Sent as a single message to avoid per-message rendering overhead.
+    HistoryBatch { messages: Vec<serde_json::Value> },
+
     /// Sequenced output from Claude Code (proxy -> backend)
     /// Messages are held in proxy buffer until acknowledged
     SequencedOutput {

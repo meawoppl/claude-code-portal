@@ -225,19 +225,23 @@ fn replay_history(
         replay_after
     );
 
-    for msg in history {
-        let content = match serde_json::from_str::<serde_json::Value>(&msg.content) {
-            Ok(json) => json,
-            Err(_) => {
+    if history.is_empty() {
+        return;
+    }
+
+    let messages: Vec<serde_json::Value> = history
+        .into_iter()
+        .map(|msg| {
+            serde_json::from_str::<serde_json::Value>(&msg.content).unwrap_or_else(|_| {
                 serde_json::json!({
                     "type": msg.role,
                     "content": msg.content
                 })
-            }
-        };
+            })
+        })
+        .collect();
 
-        let _ = tx.send(ProxyMessage::ClaudeOutput { content });
-    }
+    let _ = tx.send(ProxyMessage::HistoryBatch { messages });
 }
 
 fn handle_web_input(
