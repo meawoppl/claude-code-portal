@@ -89,33 +89,30 @@ pub fn dashboard_page() -> Html {
         });
     }
 
-    // Get all sessions sorted by status (active first), then repo name, then hostname
+    // Get active sessions sorted by repo name, then hostname
+    // Disconnected sessions are completely hidden from the UI
     let active_sessions: Vec<SessionInfo> = {
-        let mut sorted = sessions.to_vec();
+        let mut sorted: Vec<SessionInfo> = sessions
+            .iter()
+            .filter(|s| s.status.as_str() == "active")
+            .cloned()
+            .collect();
         sorted.sort_by(|a, b| {
-            let a_is_active = a.status.as_str() == "active";
-            let b_is_active = b.status.as_str() == "active";
-            match (a_is_active, b_is_active) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => {
-                    let folder_a = utils::extract_folder(&a.working_directory);
-                    let folder_b = utils::extract_folder(&b.working_directory);
-                    match folder_a.to_lowercase().cmp(&folder_b.to_lowercase()) {
-                        std::cmp::Ordering::Equal => {
-                            let hostname_a = utils::extract_hostname(&a.session_name);
-                            let hostname_b = utils::extract_hostname(&b.session_name);
-                            hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
-                        }
-                        other => other,
-                    }
+            let folder_a = utils::extract_folder(&a.working_directory);
+            let folder_b = utils::extract_folder(&b.working_directory);
+            match folder_a.to_lowercase().cmp(&folder_b.to_lowercase()) {
+                std::cmp::Ordering::Equal => {
+                    let hostname_a = utils::extract_hostname(&a.session_name);
+                    let hostname_b = utils::extract_hostname(&b.session_name);
+                    hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
                 }
+                other => other,
             }
         });
         sorted
     };
 
-    // Set initial focus to first non-paused session (once sessions are loaded)
+    // On initial load, focus first non-paused session and activate all non-paused sessions
     {
         let active_sessions = active_sessions.clone();
         let paused_sessions = paused_sessions.clone();
@@ -134,11 +131,14 @@ pub fn dashboard_page() -> Html {
 
                     focused_index.set(first_non_paused_idx);
 
-                    if let Some(session) = active_sessions.get(first_non_paused_idx) {
-                        let mut activated = (*activated_sessions).clone();
-                        activated.insert(session.id);
-                        activated_sessions.set(activated);
+                    // Activate all non-paused sessions so they load in background
+                    let mut activated = (*activated_sessions).clone();
+                    for s in &active_sessions {
+                        if !paused_sessions.contains(&s.id) {
+                            activated.insert(s.id);
+                        }
                     }
+                    activated_sessions.set(activated);
 
                     initial_focus_set.set(true);
                 }
@@ -356,15 +356,6 @@ pub fn dashboard_page() -> Html {
         .filter(|id| !paused_sessions.contains(id))
         .count();
 
-    let disconnected_count = active_sessions
-        .iter()
-        .filter(|s| {
-            activated_sessions.contains(&s.id)
-                && !paused_sessions.contains(&s.id)
-                && !connected_sessions.contains(&s.id)
-        })
-        .count();
-
     // Update browser tab title
     {
         let app_title = app_title.clone();
@@ -461,20 +452,6 @@ pub fn dashboard_page() -> Html {
                     <div class="modal-content" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                         <ProxyTokenSetup />
                     </div>
-                </div>
-            }
-
-            // Reconnection banner
-            if disconnected_count > 0 && !loading {
-                <div class="reconnection-banner">
-                    <span class="reconnection-spinner">{ "↻" }</span>
-                    <span class="reconnection-text">
-                        { if disconnected_count == 1 {
-                            "Reconnecting...".to_string()
-                        } else {
-                            format!("{} sessions reconnecting...", disconnected_count)
-                        }}
-                    </span>
                 </div>
             }
 
