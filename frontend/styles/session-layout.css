@@ -73,7 +73,7 @@
 /* $1000+ : violent vibration, large */
 .total-spend-badge.spend-1000 {
     background: rgba(247, 118, 142, 0.4);
-    color: #ff4466;
+    color: #f46;
     font-size: 0.95rem;
     font-weight: 700;
     animation: spend-vibrate 0.3s linear infinite;
@@ -89,7 +89,7 @@
     animation: spend-chaos 0.15s linear infinite;
     box-shadow: 0 0 20px rgba(247, 50, 80, 0.7), 0 0 40px rgba(247, 50, 80, 0.3);
     text-shadow: 0 0 8px rgba(255, 0, 0, 0.8);
-    border: 2px solid #ff4466;
+    border: 2px solid #f46;
 }
 
 @keyframes spend-nudge {
