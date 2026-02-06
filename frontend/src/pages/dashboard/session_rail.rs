@@ -2,7 +2,7 @@
 
 use crate::utils;
 use shared::SessionInfo;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use uuid::Uuid;
 use web_sys::{Element, HtmlElement, WheelEvent};
 use yew::prelude::*;
@@ -15,7 +15,6 @@ pub struct SessionRailProps {
     pub awaiting_sessions: HashSet<Uuid>,
     pub paused_sessions: HashSet<Uuid>,
     pub inactive_hidden: bool,
-    pub session_costs: HashMap<Uuid, f64>,
     pub connected_sessions: HashSet<Uuid>,
     pub nav_mode: bool,
     pub on_select: Callback<usize>,
@@ -67,7 +66,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         let is_awaiting = props.awaiting_sessions.contains(&session.id);
         let is_paused = props.paused_sessions.contains(&session.id);
         let is_connected = props.connected_sessions.contains(&session.id);
-        let cost = props.session_costs.get(&session.id).copied().unwrap_or(0.0);
 
         let on_click = {
             let on_select = props.on_select.clone();
@@ -148,13 +146,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                         }
                     }
                 </span>
-                {
-                    if cost > 0.0 {
-                        html! { <span class="pill-cost">{ format!("${:.2}", cost) }</span> }
-                    } else {
-                        html! {}
-                    }
-                }
                 {
                     if is_paused {
                         html! { <span class="pill-paused-badge">{ "ᴾ" }</span> }

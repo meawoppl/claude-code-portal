@@ -3,9 +3,7 @@
 use crate::utils;
 use futures_util::StreamExt;
 use gloo_net::websocket::{futures::WebSocket, Message};
-use shared::{ProxyMessage, SessionCost};
-use std::collections::HashMap;
-use uuid::Uuid;
+use shared::ProxyMessage;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 
@@ -13,8 +11,6 @@ use yew::prelude::*;
 pub struct UseClientWebSocket {
     /// Total user spend across all sessions
     pub total_spend: f64,
-    /// Per-session costs (session_id -> cost)
-    pub session_costs: HashMap<Uuid, f64>,
     /// Server shutdown reason (if server is shutting down)
     pub shutdown_reason: Option<String>,
 }
@@ -48,17 +44,14 @@ fn calculate_backoff(attempt: u32) -> u32 {
 #[hook]
 pub fn use_client_websocket() -> UseClientWebSocket {
     let total_spend = use_state(|| 0.0f64);
-    let session_costs = use_state(HashMap::<Uuid, f64>::new);
     let shutdown_reason = use_state(|| None::<String>);
 
     {
         let total_spend = total_spend.clone();
-        let session_costs = session_costs.clone();
         let shutdown_reason = shutdown_reason.clone();
 
         use_effect_with((), move |_| {
             let total_spend = total_spend.clone();
-            let session_costs = session_costs.clone();
             let shutdown_reason = shutdown_reason.clone();
 
             spawn_local(async move {
@@ -82,18 +75,9 @@ pub fn use_client_websocket() -> UseClientWebSocket {
                                             match proxy_msg {
                                                 ProxyMessage::UserSpendUpdate {
                                                     total_spend_usd,
-                                                    session_costs: costs,
+                                                    session_costs: _,
                                                 } => {
                                                     total_spend.set(total_spend_usd);
-                                                    let mut map = (*session_costs).clone();
-                                                    for SessionCost {
-                                                        session_id,
-                                                        total_cost_usd,
-                                                    } in costs
-                                                    {
-                                                        map.insert(session_id, total_cost_usd);
-                                                    }
-                                                    session_costs.set(map);
                                                 }
                                                 ProxyMessage::ServerShutdown {
                                                     reason,
@@ -144,7 +128,6 @@ pub fn use_client_websocket() -> UseClientWebSocket {
 
     UseClientWebSocket {
         total_spend: *total_spend,
-        session_costs: (*session_costs).clone(),
         shutdown_reason: (*shutdown_reason).clone(),
     }
 }
