@@ -51,7 +51,7 @@
 }
 
 /* $1+ : gentle pulse */
-.total-spend-badge.spend-1 {
+.total-spend-badge.spend-1.spend-animating {
     animation: spend-nudge 3s ease-in-out infinite;
 }
 
@@ -59,6 +59,9 @@
 .total-spend-badge.spend-10 {
     background: rgba(224, 175, 104, 0.25);
     color: #e0af68;
+}
+
+.total-spend-badge.spend-10.spend-animating {
     animation: spend-wobble 2s ease-in-out infinite;
 }
 
@@ -67,6 +70,9 @@
     background: rgba(247, 118, 142, 0.25);
     color: var(--error);
     font-size: 0.85rem;
+}
+
+.total-spend-badge.spend-100.spend-animating {
     animation: spend-shake 0.8s ease-in-out infinite;
 }
 
@@ -76,6 +82,9 @@
     color: #f46;
     font-size: 0.95rem;
     font-weight: 700;
+}
+
+.total-spend-badge.spend-1000.spend-animating {
     animation: spend-vibrate 0.3s linear infinite;
     box-shadow: 0 0 12px rgba(247, 118, 142, 0.5);
 }
@@ -86,6 +95,9 @@
     color: #fff;
     font-size: 1.1rem;
     font-weight: 800;
+}
+
+.total-spend-badge.spend-10000.spend-animating {
     animation: spend-chaos 0.15s linear infinite;
     box-shadow: 0 0 20px rgba(247, 50, 80, 0.7), 0 0 40px rgba(247, 50, 80, 0.3);
     text-shadow: 0 0 8px rgba(255, 0, 0, 0.8);
