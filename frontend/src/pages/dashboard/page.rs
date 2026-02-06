@@ -34,7 +34,6 @@ pub fn dashboard_page() -> Html {
     // Use the client websocket hook for spend updates
     let ws_hook = use_client_websocket();
     let total_user_spend = ws_hook.total_spend;
-    let session_costs = ws_hook.session_costs.clone();
     let server_shutdown_reason = ws_hook.shutdown_reason.clone();
 
     // UI state
@@ -489,7 +488,6 @@ pub fn dashboard_page() -> Html {
                         awaiting_sessions={(*awaiting_sessions).clone()}
                         paused_sessions={(*paused_sessions).clone()}
                         inactive_hidden={*inactive_hidden}
-                        session_costs={session_costs.clone()}
                         connected_sessions={(*connected_sessions).clone()}
                         nav_mode={keyboard_nav.nav_mode}
                         on_select={on_select_session.clone()}

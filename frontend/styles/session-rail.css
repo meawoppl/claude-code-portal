@@ -123,7 +123,7 @@
 .pill-name {
     display: flex;
     flex-direction: column;
-    max-width: 200px;
+    width: 150px;
     overflow: hidden;
 }
 
@@ -171,15 +171,6 @@
 
 .pill-status.disconnected {
     color: var(--text-secondary);
-}
-
-.pill-cost {
-    font-size: 0.7rem;
-    font-family: monospace;
-    color: var(--success);
-    padding: 0.1rem 0.3rem;
-    background: rgba(158, 206, 106, 0.15);
-    border-radius: 3px;
 }
 
 .pill-delete {
