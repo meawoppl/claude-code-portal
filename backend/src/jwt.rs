@@ -39,6 +39,7 @@ pub fn create_proxy_token(
         email: email.to_string(),
         iat: now.timestamp(),
         exp: exp.timestamp(),
+        token_type: "proxy".to_string(),
     };
 
     let token = encode(

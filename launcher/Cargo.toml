@@ -1,0 +1,46 @@
+[package]
+name = "claude-portal-launcher"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "claude-portal-launcher"
+path = "src/main.rs"
+
+[dependencies]
+# Shared types
+shared = { path = "../shared" }
+
+# Async runtime
+tokio = { workspace = true, features = ["full"] }
+
+# WebSocket client
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util = "0.3"
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# CLI argument parsing
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Hostname
+hostname = "0.4"
+
+# Time
+chrono = { workspace = true, features = ["std", "clock"] }
+
+# URL parsing
+url = "2.5"
