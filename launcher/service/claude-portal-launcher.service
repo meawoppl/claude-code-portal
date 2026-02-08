@@ -1,0 +1,21 @@
+[Unit]
+Description=Claude Portal Launcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.cargo/bin/claude-portal-launcher --foreground
+Restart=on-failure
+RestartSec=5
+Environment=LAUNCHER_AUTH_TOKEN=
+Environment=LAUNCHER_BACKEND_URL=
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.config/claude-code-portal
+
+[Install]
+WantedBy=default.target

@@ -1,4 +1,5 @@
 mod auth;
+pub mod launcher_socket;
 mod message_handlers;
 mod permissions;
 mod proxy_socket;
@@ -36,6 +37,15 @@ struct PendingMessage {
 pub type SessionId = String;
 pub type ClientSender = mpsc::UnboundedSender<ProxyMessage>;
 
+/// A connected launcher daemon
+pub struct LauncherConnection {
+    pub sender: ClientSender,
+    pub launcher_name: String,
+    pub hostname: String,
+    pub user_id: Uuid,
+    pub running_sessions: Vec<Uuid>,
+}
+
 #[derive(Clone)]
 pub struct SessionManager {
     pub sessions: Arc<DashMap<SessionId, ClientSender>>,
@@ -44,6 +54,7 @@ pub struct SessionManager {
     pub last_ack_seq: Arc<DashMap<Uuid, u64>>,
     pending_messages: Arc<DashMap<SessionId, VecDeque<PendingMessage>>>,
     pub pending_truncations: Arc<DashSet<Uuid>>,
+    pub launchers: Arc<DashMap<Uuid, LauncherConnection>>,
 }
 
 impl Default for SessionManager {
@@ -55,6 +66,7 @@ impl Default for SessionManager {
             last_ack_seq: Arc::new(DashMap::new()),
             pending_messages: Arc::new(DashMap::new()),
             pending_truncations: Arc::new(DashSet::new()),
+            launchers: Arc::new(DashMap::new()),
         }
     }
 }
@@ -207,6 +219,41 @@ impl SessionManager {
         }
         ids
     }
+
+    pub fn register_launcher(&self, launcher_id: Uuid, connection: LauncherConnection) {
+        info!(
+            "Registering launcher: {} ({})",
+            connection.launcher_name, launcher_id
+        );
+        self.launchers.insert(launcher_id, connection);
+    }
+
+    pub fn unregister_launcher(&self, launcher_id: &Uuid) {
+        info!("Unregistering launcher: {}", launcher_id);
+        self.launchers.remove(launcher_id);
+    }
+
+    pub fn get_launchers_for_user(&self, user_id: &Uuid) -> Vec<shared::LauncherInfo> {
+        self.launchers
+            .iter()
+            .filter(|entry| entry.value().user_id == *user_id)
+            .map(|entry| shared::LauncherInfo {
+                launcher_id: *entry.key(),
+                launcher_name: entry.value().launcher_name.clone(),
+                hostname: entry.value().hostname.clone(),
+                connected: true,
+                running_sessions: entry.value().running_sessions.len() as u32,
+            })
+            .collect()
+    }
+
+    pub fn send_to_launcher(&self, launcher_id: &Uuid, msg: ProxyMessage) -> bool {
+        if let Some(launcher) = self.launchers.get(launcher_id) {
+            launcher.sender.send(msg).is_ok()
+        } else {
+            false
+        }
+    }
 }
 
 pub async fn handle_session_websocket(
@@ -214,6 +261,13 @@ pub async fn handle_session_websocket(
     State(app_state): State<Arc<AppState>>,
 ) -> Response {
     ws.on_upgrade(|socket| proxy_socket::handle_session_socket(socket, app_state))
+}
+
+pub async fn handle_launcher_websocket(
+    ws: WebSocketUpgrade,
+    State(app_state): State<Arc<AppState>>,
+) -> Response {
+    ws.on_upgrade(|socket| launcher_socket::handle_launcher_socket(socket, app_state))
 }
 
 pub async fn handle_web_client_websocket(

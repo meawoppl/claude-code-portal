@@ -686,6 +686,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "claude-portal-launcher"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "futures-util",
+ "hostname",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "claude-session-lib"
 version = "0.1.0"
 dependencies = [

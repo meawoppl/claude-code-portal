@@ -324,3 +324,128 @@
     margin: 0;
 }
 
+/* ==========================================================================
+   Launch Dialog Component
+   ========================================================================== */
+
+.launch-dialog-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.launch-dialog {
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2rem;
+    max-width: 480px;
+    width: 90%;
+    animation: scaleIn 0.2s ease-out;
+}
+
+.launch-dialog h3 {
+    margin: 0 0 1rem;
+    font-size: 1.3rem;
+    color: var(--text-primary);
+}
+
+.launch-no-launchers {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.launch-no-launchers code {
+    background: var(--bg-dark);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+}
+
+.launch-info {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 0 0 1.25rem;
+}
+
+.launch-field {
+    margin-bottom: 1rem;
+}
+
+.launch-field label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-bottom: 0.4rem;
+}
+
+.launch-field input {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-family: 'Courier New', Consolas, monospace;
+    box-sizing: border-box;
+}
+
+.launch-field input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.launch-field input::placeholder {
+    color: var(--text-muted);
+}
+
+.launch-error {
+    color: var(--error);
+    font-size: 0.9rem;
+    margin: 0.75rem 0;
+}
+
+.launch-success {
+    color: var(--success);
+    font-size: 0.9rem;
+    margin: 0.75rem 0;
+}
+
+.launch-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 1.5rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    margin-top: 0.5rem;
+}
+
+.launch-button:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+
+.launch-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+

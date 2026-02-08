@@ -365,6 +365,13 @@ async fn main() -> anyhow::Result<()> {
             "/ws/voice/:session_id",
             get(handlers::voice::handle_voice_websocket),
         )
+        .route(
+            "/ws/launcher",
+            get(handlers::websocket::handle_launcher_websocket),
+        )
+        // Launcher API routes
+        .route("/api/launchers", get(handlers::launchers::list_launchers))
+        .route("/api/launch", post(handlers::launchers::launch_session))
         // Download routes for proxy binary and install script
         .route(
             "/api/download/install.sh",

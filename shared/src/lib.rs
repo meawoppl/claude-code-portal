@@ -230,6 +230,61 @@ pub enum ProxyMessage {
         /// Suggested delay before reconnecting (milliseconds)
         reconnect_delay_ms: u64,
     },
+
+    // =========================================================================
+    // Launcher Messages (launcher <-> backend)
+    // =========================================================================
+    /// Register a launcher daemon with the backend
+    LauncherRegister {
+        launcher_id: Uuid,
+        launcher_name: String,
+        auth_token: Option<String>,
+        hostname: String,
+        #[serde(default)]
+        version: Option<String>,
+    },
+
+    /// Backend acknowledges launcher registration
+    LauncherRegisterAck {
+        success: bool,
+        launcher_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+
+    /// Request to launch a new proxy instance (backend -> launcher)
+    LaunchSession {
+        request_id: Uuid,
+        user_id: Uuid,
+        auth_token: String,
+        working_directory: String,
+        #[serde(default)]
+        session_name: Option<String>,
+        #[serde(default)]
+        claude_args: Vec<String>,
+    },
+
+    /// Response from launcher about a launch request (launcher -> backend)
+    LaunchSessionResult {
+        request_id: Uuid,
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        session_id: Option<Uuid>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pid: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+
+    /// Request to stop a running session (backend -> launcher)
+    StopSession { session_id: Uuid },
+
+    /// Launcher heartbeat with summary of running processes
+    LauncherHeartbeat {
+        launcher_id: Uuid,
+        running_sessions: Vec<Uuid>,
+        uptime_secs: u64,
+    },
 }
 
 fn default_language_code() -> String {
@@ -271,6 +326,16 @@ pub enum SendMode {
     /// Wiggum mode - iterative autonomous loop until completion
     /// Proxy will re-send the prompt after each result until Claude responds with "DONE"
     Wiggum,
+}
+
+/// Info about a connected launcher daemon
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LauncherInfo {
+    pub launcher_id: Uuid,
+    pub launcher_name: String,
+    pub hostname: String,
+    pub connected: bool,
+    pub running_sessions: u32,
 }
 
 /// API types for HTTP endpoints

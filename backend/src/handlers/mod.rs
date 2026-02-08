@@ -4,6 +4,7 @@ pub mod config;
 pub mod device_flow;
 pub mod downloads;
 pub mod helpers;
+pub mod launchers;
 pub mod messages;
 pub mod proxy_tokens;
 pub mod retention;
