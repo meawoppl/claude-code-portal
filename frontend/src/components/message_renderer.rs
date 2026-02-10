@@ -171,6 +171,8 @@ pub struct MessageContent {
 pub enum ContentBlock {
     #[serde(rename = "text")]
     Text { text: String },
+    #[serde(rename = "image")]
+    Image { source: ImageSource },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -188,6 +190,14 @@ pub enum ContentBlock {
     Thinking { thinking: String },
     #[serde(other)]
     Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageSource {
+    #[serde(rename = "type")]
+    pub source_type: String,
+    pub media_type: String,
+    pub data: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -618,27 +628,31 @@ fn render_content_blocks(blocks: &[ContentBlock]) -> Html {
                         }
                         ContentBlock::ToolResult { tool_use_id: _, content, is_error } => {
                             let class = if *is_error { "tool-result error" } else { "tool-result" };
-                            let text = match content {
-                                Some(ToolResultContent::Text(s)) => s.clone(),
-                                Some(ToolResultContent::Structured(blocks)) => {
-                                    blocks
-                                        .iter()
-                                        .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-                                        .collect::<Vec<_>>()
-                                        .join("\n")
+                            match content {
+                                Some(ToolResultContent::Text(s)) => {
+                                    let display = if s.len() > 500 {
+                                        format!("{}...", truncate_str(s, 500))
+                                    } else {
+                                        s.clone()
+                                    };
+                                    html! {
+                                        <div class={class}>
+                                            <pre class="tool-result-content">{ display }</pre>
+                                        </div>
+                                    }
                                 }
-                                None => String::new(),
-                            };
-                            let display = if text.len() > 500 {
-                                format!("{}...", truncate_str(&text, 500))
-                            } else {
-                                text
-                            };
-                            html! {
-                                <div class={class}>
-                                    <pre class="tool-result-content">{ display }</pre>
-                                </div>
+                                Some(ToolResultContent::Structured(blocks)) => {
+                                    html! {
+                                        <div class={class}>
+                                            { for blocks.iter().map(render_structured_block) }
+                                        </div>
+                                    }
+                                }
+                                None => html! { <div class={class}></div> },
                             }
+                        }
+                        ContentBlock::Image { source } => {
+                            render_image_source(source)
                         }
                         ContentBlock::Thinking { thinking } => {
                             html! {
@@ -653,6 +667,78 @@ fn render_content_blocks(blocks: &[ContentBlock]) -> Html {
                 }).collect::<Html>()
             }
         </>
+    }
+}
+
+const ALLOWED_IMAGE_MEDIA_TYPES: &[&str] = &[
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/svg+xml",
+];
+
+/// 2 MB limit on base64 data we'll render as an inline image.
+/// Base64 encodes at ~1.33x, so 2MB base64 ≈ 1.5MB raw image.
+const MAX_IMAGE_BASE64_BYTES: usize = 2 * 1024 * 1024;
+
+fn render_image_source(source: &ImageSource) -> Html {
+    if !ALLOWED_IMAGE_MEDIA_TYPES.contains(&source.media_type.as_str()) {
+        return html! {
+            <pre class="tool-result-content">
+                { format!("[unsupported image type: {}]", source.media_type) }
+            </pre>
+        };
+    }
+    if source.data.len() > MAX_IMAGE_BASE64_BYTES {
+        let size_mb = source.data.len() as f64 / (1024.0 * 1024.0);
+        return html! {
+            <pre class="tool-result-content">
+                { format!("[image too large: {:.1} MB, limit is 2 MB]", size_mb) }
+            </pre>
+        };
+    }
+    let src = format!("data:{};base64,{}", source.media_type, source.data);
+    html! {
+        <div class="tool-result-image">
+            <img src={src} alt="Tool result image" />
+        </div>
+    }
+}
+
+fn render_structured_block(block: &Value) -> Html {
+    let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+    match block_type {
+        "image" => {
+            let source_val = block.get("source");
+            let media_type = source_val
+                .and_then(|s| s.get("media_type"))
+                .and_then(|m| m.as_str())
+                .unwrap_or("image/png");
+            let data = source_val
+                .and_then(|s| s.get("data"))
+                .and_then(|d| d.as_str())
+                .unwrap_or("");
+            let source = ImageSource {
+                source_type: "base64".to_string(),
+                media_type: media_type.to_string(),
+                data: data.to_string(),
+            };
+            render_image_source(&source)
+        }
+        "text" => {
+            let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
+            let display = if text.len() > 500 {
+                format!("{}...", truncate_str(text, 500))
+            } else {
+                text.to_string()
+            };
+            html! { <pre class="tool-result-content">{ display }</pre> }
+        }
+        _ => {
+            let json = serde_json::to_string_pretty(block).unwrap_or_default();
+            html! { <pre class="tool-result-content">{ json }</pre> }
+        }
     }
 }
 

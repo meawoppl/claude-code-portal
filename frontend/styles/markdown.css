@@ -292,6 +292,21 @@
     overflow-y: auto;
 }
 
+.tool-result-image {
+    margin: 0.5rem 0;
+    max-width: 100%;
+    overflow: hidden;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+}
+
+.tool-result-image img {
+    max-width: 100%;
+    max-height: 600px;
+    object-fit: contain;
+    display: block;
+}
+
 .tool-result-message {
     padding: 0;
 }
