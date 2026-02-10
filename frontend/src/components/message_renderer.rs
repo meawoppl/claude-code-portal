@@ -618,26 +618,27 @@ fn render_content_blocks(blocks: &[ContentBlock]) -> Html {
                         }
                         ContentBlock::ToolResult { tool_use_id: _, content, is_error } => {
                             let class = if *is_error { "tool-result error" } else { "tool-result" };
-                            let text = match content {
-                                Some(ToolResultContent::Text(s)) => s.clone(),
-                                Some(ToolResultContent::Structured(blocks)) => {
-                                    blocks
-                                        .iter()
-                                        .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-                                        .collect::<Vec<_>>()
-                                        .join("\n")
+                            match content {
+                                Some(ToolResultContent::Text(s)) => {
+                                    let display = if s.len() > 500 {
+                                        format!("{}...", truncate_str(s, 500))
+                                    } else {
+                                        s.clone()
+                                    };
+                                    html! {
+                                        <div class={class}>
+                                            <pre class="tool-result-content">{ display }</pre>
+                                        </div>
+                                    }
                                 }
-                                None => String::new(),
-                            };
-                            let display = if text.len() > 500 {
-                                format!("{}...", truncate_str(&text, 500))
-                            } else {
-                                text
-                            };
-                            html! {
-                                <div class={class}>
-                                    <pre class="tool-result-content">{ display }</pre>
-                                </div>
+                                Some(ToolResultContent::Structured(blocks)) => {
+                                    html! {
+                                        <div class={class}>
+                                            { for blocks.iter().map(render_structured_block) }
+                                        </div>
+                                    }
+                                }
+                                None => html! { <div class={class}></div> },
                             }
                         }
                         ContentBlock::Thinking { thinking } => {
@@ -653,6 +654,57 @@ fn render_content_blocks(blocks: &[ContentBlock]) -> Html {
                 }).collect::<Html>()
             }
         </>
+    }
+}
+
+const ALLOWED_IMAGE_MEDIA_TYPES: &[&str] = &[
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/svg+xml",
+];
+
+fn render_structured_block(block: &Value) -> Html {
+    let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+    match block_type {
+        "image" => {
+            let source = block.get("source");
+            let media_type = source
+                .and_then(|s| s.get("media_type"))
+                .and_then(|m| m.as_str())
+                .unwrap_or("image/png");
+            if !ALLOWED_IMAGE_MEDIA_TYPES.contains(&media_type) {
+                return html! {
+                    <pre class="tool-result-content">
+                        { format!("[unsupported image type: {}]", media_type) }
+                    </pre>
+                };
+            }
+            let data = source
+                .and_then(|s| s.get("data"))
+                .and_then(|d| d.as_str())
+                .unwrap_or("");
+            let src = format!("data:{};base64,{}", media_type, data);
+            html! {
+                <div class="tool-result-image">
+                    <img src={src} alt="Tool result image" />
+                </div>
+            }
+        }
+        "text" => {
+            let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
+            let display = if text.len() > 500 {
+                format!("{}...", truncate_str(text, 500))
+            } else {
+                text.to_string()
+            };
+            html! { <pre class="tool-result-content">{ display }</pre> }
+        }
+        _ => {
+            let json = serde_json::to_string_pretty(block).unwrap_or_default();
+            html! { <pre class="tool-result-content">{ json }</pre> }
+        }
     }
 }
 
