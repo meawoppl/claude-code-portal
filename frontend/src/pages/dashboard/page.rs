@@ -5,7 +5,7 @@ use super::session_view::SessionView;
 use super::types::{
     load_inactive_hidden, load_paused_sessions, save_inactive_hidden, save_paused_sessions,
 };
-use crate::components::ProxyTokenSetup;
+use crate::components::{LaunchDialog, ProxyTokenSetup};
 use crate::hooks::{use_client_websocket, use_keyboard_nav, use_sessions, KeyboardNavConfig};
 use crate::utils;
 use crate::Route;
@@ -42,6 +42,7 @@ pub fn dashboard_page() -> Html {
 
     // UI state
     let show_new_session = use_state(|| false);
+    let show_launch_dialog = use_state(|| false);
     let focused_index = use_state(|| 0usize);
     let awaiting_sessions = use_state(HashSet::<Uuid>::new);
     let paused_sessions = use_state(load_paused_sessions);
@@ -316,6 +317,20 @@ pub fn dashboard_page() -> Html {
         })
     };
 
+    let toggle_launch_dialog = {
+        let show_launch_dialog = show_launch_dialog.clone();
+        Callback::from(move |_: MouseEvent| {
+            show_launch_dialog.set(!*show_launch_dialog);
+        })
+    };
+
+    let on_launch_close = {
+        let show_launch_dialog = show_launch_dialog.clone();
+        Callback::from(move |_| {
+            show_launch_dialog.set(false);
+        })
+    };
+
     // Session state callbacks
     let on_awaiting_change = {
         let awaiting_sessions = awaiting_sessions.clone();
@@ -488,6 +503,13 @@ pub fn dashboard_page() -> Html {
                     >
                         { if *show_new_session { "Close" } else { "+ New Session" } }
                     </button>
+                    <button
+                        class="header-button launch-button"
+                        onclick={toggle_launch_dialog.clone()}
+                        title="Launch a new session via launcher"
+                    >
+                        { "Launch" }
+                    </button>
                     {
                         if *is_admin {
                             html! {
@@ -515,6 +537,11 @@ pub fn dashboard_page() -> Html {
                         <ProxyTokenSetup />
                     </div>
                 </div>
+            }
+
+            // Launch session dialog
+            if *show_launch_dialog {
+                <LaunchDialog on_close={on_launch_close.clone()} />
             }
 
             if loading {

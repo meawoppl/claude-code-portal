@@ -20,6 +20,13 @@ pub struct ProxyTokenClaims {
     pub iat: i64,
     /// Expires at (Unix timestamp)
     pub exp: i64,
+    /// Token type: "proxy" or "launcher"
+    #[serde(default = "default_token_type")]
+    pub token_type: String,
+}
+
+fn default_token_type() -> String {
+    "proxy".to_string()
 }
 
 /// Configuration encoded in the init URL
