@@ -702,7 +702,7 @@ async fn check_and_send_branch_update(
     }
 }
 
-/// Default 2 MB limit on SVG file size for portal messages.
+/// Default 2 MB limit on image file size for portal messages.
 /// Override with PORTAL_MAX_IMAGE_MB environment variable.
 const DEFAULT_MAX_IMAGE_MB: usize = 2;
 
@@ -715,9 +715,27 @@ fn max_image_bytes() -> usize {
         * 1024
 }
 
-/// Track Read tool calls on SVG files from assistant messages.
+/// Return the MIME type for a supported image extension, or None.
+fn image_mime_type(path: &str) -> Option<&'static str> {
+    let lower = path.to_lowercase();
+    if lower.ends_with(".svg") {
+        Some("image/svg+xml")
+    } else if lower.ends_with(".png") {
+        Some("image/png")
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        Some("image/jpeg")
+    } else if lower.ends_with(".gif") {
+        Some("image/gif")
+    } else if lower.ends_with(".webp") {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
+/// Track Read tool calls on image files from assistant messages.
 /// Stores tool_use_id → file_path for later correlation with tool results.
-fn track_svg_reads(output: &ClaudeOutput, svg_read_map: &mut HashMap<String, String>) {
+fn track_image_reads(output: &ClaudeOutput, image_read_map: &mut HashMap<String, String>) {
     let blocks = match output {
         ClaudeOutput::Assistant(asst) => &asst.message.content,
         _ => return,
@@ -726,23 +744,23 @@ fn track_svg_reads(output: &ClaudeOutput, svg_read_map: &mut HashMap<String, Str
     for block in blocks {
         if let ContentBlock::ToolUse(tu) = block {
             if let Some(claude_codes::tool_inputs::ToolInput::Read(read_input)) = tu.typed_input() {
-                if read_input.file_path.to_lowercase().ends_with(".svg") {
+                if image_mime_type(&read_input.file_path).is_some() {
                     debug!(
-                        "Tracking SVG Read: tool_use_id={} path={}",
+                        "Tracking image Read: tool_use_id={} path={}",
                         tu.id, read_input.file_path
                     );
-                    svg_read_map.insert(tu.id.clone(), read_input.file_path.clone());
+                    image_read_map.insert(tu.id.clone(), read_input.file_path.clone());
                 }
             }
         }
     }
 }
 
-/// Check user messages for tool results that correspond to tracked SVG reads.
-/// For each match, reads the SVG from disk, base64-encodes it, and returns a PortalMessage.
-fn extract_svg_portal_messages(
+/// Check user messages for tool results that correspond to tracked image reads.
+/// For each match, reads the file from disk, base64-encodes it, and returns a PortalMessage.
+fn extract_image_portal_messages(
     output: &ClaudeOutput,
-    svg_read_map: &mut HashMap<String, String>,
+    image_read_map: &mut HashMap<String, String>,
 ) -> Vec<shared::PortalMessage> {
     let blocks = match output {
         ClaudeOutput::User(user) => &user.message.content,
@@ -753,10 +771,12 @@ fn extract_svg_portal_messages(
 
     for block in blocks {
         if let ContentBlock::ToolResult(tr) = block {
-            if let Some(file_path) = svg_read_map.remove(&tr.tool_use_id) {
+            if let Some(file_path) = image_read_map.remove(&tr.tool_use_id) {
                 if tr.is_error.unwrap_or(false) {
                     continue;
                 }
+
+                let mime = image_mime_type(&file_path).unwrap_or("image/png");
 
                 match std::fs::read(&file_path) {
                     Ok(data) => {
@@ -765,19 +785,19 @@ fn extract_svg_portal_messages(
                             let size_mb = data.len() as f64 / (1024.0 * 1024.0);
                             let limit_mb = max_bytes as f64 / (1024.0 * 1024.0);
                             portal_messages.push(shared::PortalMessage::text(format!(
-                                "SVG too large to display: **{:.1} MB** (limit is {:.0} MB)",
+                                "Image too large to display: **{:.1} MB** (limit is {:.0} MB)",
                                 size_mb, limit_mb
                             )));
                         } else {
                             let file_size = data.len() as u64;
                             let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
                             debug!(
-                                "Sending SVG portal message for {} ({} bytes)",
+                                "Sending image portal message for {} ({} bytes)",
                                 file_path,
                                 data.len()
                             );
                             portal_messages.push(shared::PortalMessage::image_with_info(
-                                "image/svg+xml".to_string(),
+                                mime.to_string(),
                                 encoded,
                                 Some(file_path.clone()),
                                 Some(file_size),
@@ -785,7 +805,7 @@ fn extract_svg_portal_messages(
                         }
                     }
                     Err(e) => {
-                        warn!("Failed to read SVG file {}: {}", file_path, e);
+                        warn!("Failed to read image file {}: {}", file_path, e);
                     }
                 }
             }
@@ -809,8 +829,8 @@ fn spawn_output_forwarder(
     tokio::spawn(async move {
         let mut message_count: u64 = 0;
         let mut pending_git_check = false;
-        // Track Read tool calls on SVG files: tool_use_id → file_path
-        let mut svg_read_map: HashMap<String, String> = HashMap::new();
+        // Track Read tool calls on image files: tool_use_id → file_path
+        let mut image_read_map: HashMap<String, String> = HashMap::new();
 
         while let Some(output) = output_rx.recv().await {
             message_count += 1;
@@ -823,11 +843,11 @@ fn spawn_output_forwarder(
                 pending_git_check = true;
             }
 
-            // Track Read tool calls on SVG files from assistant messages
-            track_svg_reads(&output, &mut svg_read_map);
+            // Track Read tool calls on image files from assistant messages
+            track_image_reads(&output, &mut image_read_map);
 
-            // Check for SVG tool results in user messages and send portal messages
-            let portal_messages = extract_svg_portal_messages(&output, &mut svg_read_map);
+            // Check for image tool results in user messages and send portal messages
+            let portal_messages = extract_image_portal_messages(&output, &mut image_read_map);
 
             // Serialize and buffer with sequence number
             let content = serde_json::to_value(&output)
@@ -850,7 +870,7 @@ fn spawn_output_forwarder(
                 }
             }
 
-            // Send any SVG portal messages after the main output
+            // Send any image portal messages after the main output
             for portal_msg in portal_messages {
                 let portal_content = portal_msg.to_json();
                 let portal_seq = {
@@ -864,7 +884,7 @@ fn spawn_output_forwarder(
                 if let Ok(json) = serde_json::to_string(&portal_ws_msg) {
                     let mut ws = ws_write.lock().await;
                     if let Err(e) = ws.send(Message::Text(json)).await {
-                        error!("Failed to send SVG portal message: {}", e);
+                        error!("Failed to send image portal message: {}", e);
                         break;
                     }
                 }

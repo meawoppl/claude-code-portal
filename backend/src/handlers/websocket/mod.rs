@@ -13,7 +13,7 @@ use axum::{
 };
 use dashmap::{DashMap, DashSet};
 use shared::ProxyMessage;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -55,9 +55,6 @@ pub struct SessionManager {
     pending_messages: Arc<DashMap<SessionId, VecDeque<PendingMessage>>>,
     pub pending_truncations: Arc<DashSet<Uuid>>,
     pub launchers: Arc<DashMap<Uuid, LauncherConnection>>,
-    /// Track tool_use_id → file_path for Read tools, keyed by session_id.
-    /// Used to annotate portal image messages with source file paths.
-    pub tool_use_file_paths: Arc<DashMap<Uuid, HashMap<String, String>>>,
 }
 
 impl Default for SessionManager {
@@ -70,7 +67,6 @@ impl Default for SessionManager {
             pending_messages: Arc::new(DashMap::new()),
             pending_truncations: Arc::new(DashSet::new()),
             launchers: Arc::new(DashMap::new()),
-            tool_use_file_paths: Arc::new(DashMap::new()),
         }
     }
 }
