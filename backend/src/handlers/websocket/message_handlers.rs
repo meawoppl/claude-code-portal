@@ -270,8 +270,18 @@ const ALLOWED_IMAGE_MEDIA_TYPES: &[&str] = &[
     "image/svg+xml",
 ];
 
-/// 2 MB limit on base64 image data we'll inject as portal messages.
-const MAX_IMAGE_BASE64_BYTES: usize = 2 * 1024 * 1024;
+/// Default 2 MB limit on base64 image data we'll inject as portal messages.
+/// Override with PORTAL_MAX_IMAGE_MB environment variable.
+const DEFAULT_MAX_IMAGE_MB: usize = 2;
+
+fn max_image_base64_bytes() -> usize {
+    std::env::var("PORTAL_MAX_IMAGE_MB")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_MAX_IMAGE_MB)
+        * 1024
+        * 1024
+}
 
 /// Scan a "user" message's tool result blocks for images and return
 /// a `PortalMessage` for each one found.
@@ -327,9 +337,10 @@ fn extract_image_portal_messages(content: &serde_json::Value) -> Vec<shared::Por
                 None => continue,
             };
 
-            if data.len() > MAX_IMAGE_BASE64_BYTES {
+            let max_bytes = max_image_base64_bytes();
+            if data.len() > max_bytes {
                 let size_mb = data.len() as f64 / (1024.0 * 1024.0);
-                let limit_mb = MAX_IMAGE_BASE64_BYTES as f64 / (1024.0 * 1024.0);
+                let limit_mb = max_bytes as f64 / (1024.0 * 1024.0);
                 portal_messages.push(shared::PortalMessage::text(format!(
                     "Image too large to display: **{:.1} MB** (limit is {:.0} MB)",
                     size_mb, limit_mb
