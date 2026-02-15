@@ -254,6 +254,27 @@
     font-weight: 600;
 }
 
+.pill-stop {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border);
+    background: rgba(247, 118, 142, 0.1);
+    color: var(--text-secondary);
+    font-size: 10px;
+    cursor: pointer;
+    border-radius: 4px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pill-stop:hover {
+    background: rgba(247, 118, 142, 0.3);
+    border-color: var(--error);
+    color: var(--error);
+}
+
 .pill-pause {
     width: 24px;
     height: 24px;

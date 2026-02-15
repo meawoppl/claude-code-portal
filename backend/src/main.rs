@@ -310,6 +310,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/sessions/:id",
             axum::routing::delete(handlers::sessions::delete_session),
         )
+        .route(
+            "/api/sessions/:id/stop",
+            post(handlers::sessions::stop_session),
+        )
         // Session member management routes
         .route(
             "/api/sessions/:id/members",

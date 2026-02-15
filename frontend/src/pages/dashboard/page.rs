@@ -365,6 +365,25 @@ pub fn dashboard_page() -> Html {
         })
     };
 
+    let on_stop = {
+        Callback::from(move |session_id: Uuid| {
+            spawn_local(async move {
+                let url = utils::api_url(&format!("/api/sessions/{}/stop", session_id));
+                match Request::post(&url).send().await {
+                    Ok(resp) if resp.status() == 202 => {
+                        log::info!("Stop request sent for session {}", session_id);
+                    }
+                    Ok(resp) => {
+                        log::error!("Failed to stop session: status {}", resp.status());
+                    }
+                    Err(e) => {
+                        log::error!("Failed to stop session: {:?}", e);
+                    }
+                }
+            });
+        })
+    };
+
     let on_toggle_pause = {
         let paused_sessions = paused_sessions.clone();
         Callback::from(move |session_id: Uuid| {
@@ -586,6 +605,7 @@ pub fn dashboard_page() -> Html {
                         on_leave={on_leave.clone()}
                         on_toggle_pause={on_toggle_pause.clone()}
                         on_toggle_inactive_hidden={on_toggle_inactive_hidden.clone()}
+                        on_stop={on_stop.clone()}
                     />
 
                     // Session views

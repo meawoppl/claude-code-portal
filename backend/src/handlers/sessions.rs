@@ -171,6 +171,42 @@ pub async fn delete_session(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn stop_session(
+    State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
+    Path(session_id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let current_user_id = extract_user_id(&app_state, &cookies)?;
+
+    let mut conn = app_state
+        .db_pool
+        .get()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    use crate::schema::{session_members, sessions};
+
+    // Verify user has access to this session
+    sessions::table
+        .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
+        .filter(sessions::id.eq(session_id))
+        .filter(session_members::user_id.eq(current_user_id))
+        .select(Session::as_select())
+        .first::<Session>(&mut conn)
+        .optional()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    if app_state
+        .session_manager
+        .stop_session_on_launcher(session_id)
+    {
+        Ok(StatusCode::ACCEPTED)
+    } else {
+        // No launcher found with this session
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
 // ============================================================================
 // Session Member Management
 // ============================================================================
