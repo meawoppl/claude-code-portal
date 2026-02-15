@@ -42,6 +42,7 @@ web-sys = { workspace = true, features = [
     "MediaStreamAudioSourceNode",
     "MessageEvent",
     "MessagePort",
+    "KeyboardEvent",
 ] }
 
 # Utility libraries for WASM
