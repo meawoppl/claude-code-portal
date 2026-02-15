@@ -351,12 +351,11 @@ fn extract_image_portal_messages(
 
         let tool_use_id = block.get("tool_use_id").and_then(|t| t.as_str());
 
-        // Handle Structured tool result content
-        let structured_blocks = block
-            .get("content")
-            .filter(|c| c.get("type").and_then(|t| t.as_str()) == Some("Structured"))
-            .and_then(|c| c.get("value"))
-            .and_then(|v| v.as_array());
+        // Handle structured tool result content.
+        // claude-codes uses #[serde(untagged)] on ToolResultContent, so
+        // Structured(Vec<Value>) serializes as a bare JSON array, not
+        // {"type": "Structured", "value": [...]}.
+        let structured_blocks = block.get("content").and_then(|c| c.as_array());
 
         let Some(structured_blocks) = structured_blocks else {
             continue;
