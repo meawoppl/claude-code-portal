@@ -285,6 +285,20 @@ pub enum ProxyMessage {
         running_sessions: Vec<Uuid>,
         uptime_secs: u64,
     },
+
+    /// Log output from a proxy process (launcher -> backend)
+    ProxyLog {
+        session_id: Uuid,
+        level: String,
+        message: String,
+        timestamp: String,
+    },
+
+    /// A proxy process exited (launcher -> backend)
+    SessionExited {
+        session_id: Uuid,
+        exit_code: Option<i32>,
+    },
 }
 
 fn default_language_code() -> String {

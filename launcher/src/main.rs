@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Proxy binary: {}", args.proxy_path);
     tracing::info!("Max processes: {}", args.max_processes);
 
-    let process_manager = process_manager::ProcessManager::new(
+    let (process_manager, log_rx) = process_manager::ProcessManager::new(
         args.proxy_path.into(),
         args.backend_url.clone(),
         args.max_processes,
@@ -75,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
         &launcher_name,
         args.auth_token.as_deref(),
         process_manager,
+        log_rx,
     )
     .await
 }

@@ -178,6 +178,24 @@ fn handle_launcher_message(text: &str, launcher_id: Uuid, user_id: Uuid, app_sta
                 launcher.running_sessions = running_sessions;
             }
         }
+        ProxyMessage::ProxyLog {
+            session_id,
+            level,
+            ref message,
+            ..
+        } => match level.as_str() {
+            "error" => tracing::error!(session_id = %session_id, "[proxy] {}", message),
+            "warn" => tracing::warn!(session_id = %session_id, "[proxy] {}", message),
+            "debug" => tracing::debug!(session_id = %session_id, "[proxy] {}", message),
+            _ => tracing::info!(session_id = %session_id, "[proxy] {}", message),
+        },
+        ProxyMessage::SessionExited {
+            session_id,
+            exit_code,
+        } => {
+            info!("Proxy exited: session={}, code={:?}", session_id, exit_code);
+            app_state.session_manager.broadcast_to_user(&user_id, msg);
+        }
         _ => {}
     }
 }

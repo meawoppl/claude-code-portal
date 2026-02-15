@@ -1,7 +1,8 @@
-use crate::process_manager::ProcessManager;
+use crate::process_manager::{LogLine, ProcessManager};
 use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -16,6 +17,7 @@ pub async fn run_launcher_loop(
     launcher_name: &str,
     auth_token: Option<&str>,
     mut process_manager: ProcessManager,
+    mut log_rx: mpsc::UnboundedReceiver<LogLine>,
 ) -> anyhow::Result<()> {
     let mut backoff = Duration::from_secs(1);
 
@@ -117,6 +119,29 @@ pub async fn run_launcher_loop(
                             let exited = process_manager.reap_exited();
                             for (session_id, code) in exited {
                                 info!("Session {} exited with code {:?}", session_id, code);
+                                let msg = ProxyMessage::SessionExited {
+                                    session_id,
+                                    exit_code: code,
+                                };
+                                if let Ok(json) = serde_json::to_string(&msg) {
+                                    if write.send(Message::Text(json)).await.is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        Some(log_line) = log_rx.recv() => {
+                            let msg = ProxyMessage::ProxyLog {
+                                session_id: log_line.session_id,
+                                level: log_line.level,
+                                message: log_line.message,
+                                timestamp: log_line.timestamp,
+                            };
+                            if let Ok(json) = serde_json::to_string(&msg) {
+                                if write.send(Message::Text(json)).await.is_err() {
+                                    break;
+                                }
                             }
                         }
                     }
