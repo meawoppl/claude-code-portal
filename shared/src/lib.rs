@@ -431,7 +431,29 @@ impl PortalMessage {
     pub fn image(media_type: String, data: String) -> Self {
         Self {
             message_type: "portal".to_string(),
-            content: vec![PortalContent::Image { media_type, data }],
+            content: vec![PortalContent::Image {
+                media_type,
+                data,
+                file_path: None,
+                file_size: None,
+            }],
+        }
+    }
+
+    pub fn image_with_info(
+        media_type: String,
+        data: String,
+        file_path: Option<String>,
+        file_size: Option<u64>,
+    ) -> Self {
+        Self {
+            message_type: "portal".to_string(),
+            content: vec![PortalContent::Image {
+                media_type,
+                data,
+                file_path,
+                file_size,
+            }],
         }
     }
 
@@ -443,8 +465,17 @@ impl PortalMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum PortalContent {
-    Text { text: String },
-    Image { media_type: String, data: String },
+    Text {
+        text: String,
+    },
+    Image {
+        media_type: String,
+        data: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file_path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file_size: Option<u64>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]

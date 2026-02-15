@@ -455,14 +455,53 @@ fn render_portal_message(msg: &PortalMessage) -> Html {
 fn render_portal_content(content: &shared::PortalContent) -> Html {
     match content {
         shared::PortalContent::Text { text } => render_markdown(text),
-        shared::PortalContent::Image { media_type, data } => {
+        shared::PortalContent::Image {
+            media_type,
+            data,
+            file_path,
+            file_size,
+        } => {
             let source = ImageSource {
                 source_type: "base64".to_string(),
                 media_type: media_type.clone(),
                 data: data.clone(),
             };
-            render_image_source(&source)
+            html! {
+                <>
+                    { render_portal_image_header(file_path.as_deref(), *file_size) }
+                    { render_image_source(&source) }
+                </>
+            }
         }
+    }
+}
+
+fn render_portal_image_header(file_path: Option<&str>, file_size: Option<u64>) -> Html {
+    let Some(path) = file_path else {
+        return html! {};
+    };
+    html! {
+        <div class="tool-use-header">
+            <span class="tool-icon">{ "\u{1f5bc}\u{fe0f}" }</span>
+            <span class="read-file-path">{ path }</span>
+            {
+                if let Some(size) = file_size {
+                    html! { <span class="tool-meta">{ format_file_size(size) }</span> }
+                } else {
+                    html! {}
+                }
+            }
+        </div>
+    }
+}
+
+fn format_file_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
 }
 
