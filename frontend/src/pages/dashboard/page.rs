@@ -503,19 +503,21 @@ pub fn dashboard_page() -> Html {
                     >
                         { if *show_new_session { "Close" } else { "+ New Session" } }
                     </button>
-                    <button
-                        class="header-button launch-button"
-                        onclick={toggle_launch_dialog.clone()}
-                        title="Launch a new session via launcher"
-                    >
-                        { "Launch" }
-                    </button>
                     {
                         if *is_admin {
                             html! {
-                                <button class="header-button" onclick={go_to_admin.clone()}>
-                                    { "Admin" }
-                                </button>
+                                <>
+                                    <button
+                                        class="header-button"
+                                        onclick={toggle_launch_dialog.clone()}
+                                        title="Launch a new session via launcher"
+                                    >
+                                        { "Launch" }
+                                    </button>
+                                    <button class="header-button" onclick={go_to_admin.clone()}>
+                                        { "Admin" }
+                                    </button>
+                                </>
                             }
                         } else {
                             html! {}
