@@ -292,6 +292,12 @@
     overflow-y: auto;
 }
 
+.tool-result-image-tag {
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 0.85em;
+}
+
 .tool-result-image {
     margin: 0.5rem 0;
     max-width: 100%;
