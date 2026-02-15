@@ -527,6 +527,14 @@ sessions::table.filter(sessions::id.eq(...))
 
 If code is unused, delete it. It can be recovered from git history if needed later.
 
+### Versioning
+
+The workspace version lives in `Cargo.toml` under `[workspace.package]`. When shipping changes:
+- **Patch bump** (e.g. 1.1.2 → 1.1.3): bug fixes, dependency updates, minor tweaks
+- **Minor bump** (e.g. 1.1.3 → 1.2.0): new features, new crates, protocol changes
+
+Always increment at least the patch version when shipping a meaningful change.
+
 ### Error Handling
 
 **Backend handlers**:
