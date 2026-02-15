@@ -80,8 +80,16 @@ pub enum ClaudeMessage {
     User(UserMessage),
     #[serde(rename = "error")]
     Error(ErrorMessage),
+    #[serde(rename = "portal")]
+    Portal(PortalMessage),
     #[serde(other)]
     Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PortalMessage {
+    #[serde(default)]
+    pub content: Vec<shared::PortalContent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -240,6 +248,7 @@ pub fn message_renderer(props: &MessageRendererProps) -> Html {
         Ok(ClaudeMessage::Result(msg)) => render_result_message(&msg),
         Ok(ClaudeMessage::User(msg)) => render_user_message(&msg),
         Ok(ClaudeMessage::Error(msg)) => render_error_message(&msg),
+        Ok(ClaudeMessage::Portal(msg)) => render_portal_message(&msg),
         Ok(ClaudeMessage::Unknown) | Err(_) => {
             html! { <RawMessageRenderer json={props.json.clone()} session_id={props.session_id} /> }
         }
@@ -426,6 +435,33 @@ fn render_error_message(msg: &ErrorMessage) -> Html {
                 <div class="error-text">{ message }</div>
             </div>
         </div>
+    }
+}
+
+fn render_portal_message(msg: &PortalMessage) -> Html {
+    html! {
+        <div class="claude-message portal-message">
+            <div class="message-header">
+                <span class="message-type-badge portal">{ "Portal" }</span>
+            </div>
+            <div class="message-body">
+                { for msg.content.iter().map(render_portal_content) }
+            </div>
+        </div>
+    }
+}
+
+fn render_portal_content(content: &shared::PortalContent) -> Html {
+    match content {
+        shared::PortalContent::Text { text } => render_markdown(text),
+        shared::PortalContent::Image { media_type, data } => {
+            let source = ImageSource {
+                source_type: "base64".to_string(),
+                media_type: media_type.clone(),
+                data: data.clone(),
+            };
+            render_image_source(&source)
+        }
     }
 }
 
