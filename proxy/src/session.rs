@@ -2,10 +2,12 @@
 //!
 //! Uses claude-session-lib for Claude process management.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use base64::Engine;
 use claude_codes::io::{ContentBlock, ControlRequestPayload, ToolUseBlock};
 use claude_codes::ClaudeOutput;
 use claude_session_lib::{Session as ClaudeSession, SessionEvent};
@@ -700,6 +702,96 @@ async fn check_and_send_branch_update(
     }
 }
 
+/// Default 2 MB limit on SVG file size for portal messages.
+/// Override with PORTAL_MAX_IMAGE_MB environment variable.
+const DEFAULT_MAX_IMAGE_MB: usize = 2;
+
+fn max_image_bytes() -> usize {
+    std::env::var("PORTAL_MAX_IMAGE_MB")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_MAX_IMAGE_MB)
+        * 1024
+        * 1024
+}
+
+/// Track Read tool calls on SVG files from assistant messages.
+/// Stores tool_use_id → file_path for later correlation with tool results.
+fn track_svg_reads(output: &ClaudeOutput, svg_read_map: &mut HashMap<String, String>) {
+    let blocks = match output {
+        ClaudeOutput::Assistant(asst) => &asst.message.content,
+        _ => return,
+    };
+
+    for block in blocks {
+        if let ContentBlock::ToolUse(tu) = block {
+            if let Some(claude_codes::tool_inputs::ToolInput::Read(read_input)) = tu.typed_input() {
+                if read_input.file_path.to_lowercase().ends_with(".svg") {
+                    debug!(
+                        "Tracking SVG Read: tool_use_id={} path={}",
+                        tu.id, read_input.file_path
+                    );
+                    svg_read_map.insert(tu.id.clone(), read_input.file_path.clone());
+                }
+            }
+        }
+    }
+}
+
+/// Check user messages for tool results that correspond to tracked SVG reads.
+/// For each match, reads the SVG from disk, base64-encodes it, and returns a PortalMessage.
+fn extract_svg_portal_messages(
+    output: &ClaudeOutput,
+    svg_read_map: &mut HashMap<String, String>,
+) -> Vec<shared::PortalMessage> {
+    let blocks = match output {
+        ClaudeOutput::User(user) => &user.message.content,
+        _ => return Vec::new(),
+    };
+
+    let mut portal_messages = Vec::new();
+
+    for block in blocks {
+        if let ContentBlock::ToolResult(tr) = block {
+            if let Some(file_path) = svg_read_map.remove(&tr.tool_use_id) {
+                if tr.is_error.unwrap_or(false) {
+                    continue;
+                }
+
+                match std::fs::read(&file_path) {
+                    Ok(data) => {
+                        let max_bytes = max_image_bytes();
+                        if data.len() > max_bytes {
+                            let size_mb = data.len() as f64 / (1024.0 * 1024.0);
+                            let limit_mb = max_bytes as f64 / (1024.0 * 1024.0);
+                            portal_messages.push(shared::PortalMessage::text(format!(
+                                "SVG too large to display: **{:.1} MB** (limit is {:.0} MB)",
+                                size_mb, limit_mb
+                            )));
+                        } else {
+                            let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
+                            debug!(
+                                "Sending SVG portal message for {} ({} bytes)",
+                                file_path,
+                                data.len()
+                            );
+                            portal_messages.push(shared::PortalMessage::image(
+                                "image/svg+xml".to_string(),
+                                encoded,
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to read SVG file {}: {}", file_path, e);
+                    }
+                }
+            }
+        }
+    }
+
+    portal_messages
+}
+
 /// Spawn the output forwarder task
 ///
 /// Forwards Claude outputs to WebSocket with sequence numbers for reliable delivery.
@@ -714,6 +806,8 @@ fn spawn_output_forwarder(
     tokio::spawn(async move {
         let mut message_count: u64 = 0;
         let mut pending_git_check = false;
+        // Track Read tool calls on SVG files: tool_use_id → file_path
+        let mut svg_read_map: HashMap<String, String> = HashMap::new();
 
         while let Some(output) = output_rx.recv().await {
             message_count += 1;
@@ -725,6 +819,12 @@ fn spawn_output_forwarder(
             if is_git_bash_command(&output) {
                 pending_git_check = true;
             }
+
+            // Track Read tool calls on SVG files from assistant messages
+            track_svg_reads(&output, &mut svg_read_map);
+
+            // Check for SVG tool results in user messages and send portal messages
+            let portal_messages = extract_svg_portal_messages(&output, &mut svg_read_map);
 
             // Serialize and buffer with sequence number
             let content = serde_json::to_value(&output)
@@ -744,6 +844,26 @@ fn spawn_output_forwarder(
                 if let Err(e) = ws.send(Message::Text(json)).await {
                     error!("Failed to send to backend: {}", e);
                     break;
+                }
+            }
+
+            // Send any SVG portal messages after the main output
+            for portal_msg in portal_messages {
+                let portal_content = portal_msg.to_json();
+                let portal_seq = {
+                    let mut buf = output_buffer.lock().await;
+                    buf.push(portal_content.clone())
+                };
+                let portal_ws_msg = ProxyMessage::SequencedOutput {
+                    seq: portal_seq,
+                    content: portal_content,
+                };
+                if let Ok(json) = serde_json::to_string(&portal_ws_msg) {
+                    let mut ws = ws_write.lock().await;
+                    if let Err(e) = ws.send(Message::Text(json)).await {
+                        error!("Failed to send SVG portal message: {}", e);
+                        break;
+                    }
                 }
             }
 

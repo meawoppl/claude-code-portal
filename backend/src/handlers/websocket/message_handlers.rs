@@ -283,8 +283,8 @@ fn max_image_base64_bytes() -> usize {
         * 1024
 }
 
-/// Scan a "user" message's tool result blocks for images and return
-/// a `PortalMessage` for each one found.
+/// Scan a "user" message's tool result blocks for base64 image blocks
+/// in Structured results and return a `PortalMessage` for each one found.
 fn extract_image_portal_messages(content: &serde_json::Value) -> Vec<shared::PortalMessage> {
     let mut portal_messages = Vec::new();
 
