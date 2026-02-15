@@ -20,10 +20,7 @@
 - **Launcher selection UI**: LaunchDialog shows launcher cards with
   name, hostname, and running session count; user picks target launcher.
 
-## Remaining Work
-
-### Install / Config
-
-- Install script for systemd/launchd service setup.
-- Launcher config file (`~/.config/claude-portal/launcher.toml`) so
-  users don't need CLI args for everything.
+- **Config file**: Launcher reads `~/.config/claude-portal/launcher.toml`;
+  CLI args override config values.
+- **Install script**: `launcher/install.sh` detects OS, builds if needed,
+  creates config template, installs systemd/launchd service.
