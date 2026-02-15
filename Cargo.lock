@@ -671,7 +671,6 @@ dependencies = [
  "hostname",
  "libc",
  "portal-auth",
- "proxy-session",
  "reqwest 0.12.4",
  "serde",
  "serde_json",
@@ -700,7 +699,6 @@ dependencies = [
  "futures-util",
  "hostname",
  "portal-auth",
- "proxy-session",
  "serde",
  "serde_json",
  "shared",
@@ -716,12 +714,18 @@ dependencies = [
 name = "claude-session-lib"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "base64 0.22.1",
  "chrono",
  "claude-codes",
+ "directories",
+ "futures-util",
  "serde",
  "serde_json",
+ "shared",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "uuid",
 ]
@@ -3133,25 +3137,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213622a1460818959ac1181aaeb2dc9c7f63df720db7d788b3e24eacd1983e13"
 dependencies = [
  "prost",
-]
-
-[[package]]
-name = "proxy-session"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "claude-codes",
- "claude-session-lib",
- "directories",
- "futures-util",
- "serde",
- "serde_json",
- "shared",
- "tokio",
- "tokio-tungstenite",
- "tracing",
- "uuid",
 ]
 
 [[package]]

@@ -4,8 +4,9 @@ use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use claude_session_lib::{Session as ClaudeSession, SessionConfig};
-use proxy_session::{run_connection_loop, LoopResult, ProxySessionConfig};
+use claude_session_lib::{
+    run_connection_loop, LoopResult, ProxySessionConfig, Session as ClaudeSession, SessionConfig,
+};
 
 /// Notification that a session task has finished.
 pub struct SessionExited {

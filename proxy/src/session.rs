@@ -1,1 +1,1 @@
-pub use proxy_session::session::*;
+pub use claude_session_lib::proxy_session::*;

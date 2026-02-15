@@ -59,6 +59,8 @@
 
 pub mod buffer;
 pub mod error;
+pub mod output_buffer;
+pub mod proxy_session;
 pub mod session;
 pub mod snapshot;
 
@@ -67,6 +69,11 @@ pub use buffer::{BufferedOutput, OutputBuffer};
 pub use error::SessionError;
 pub use session::{PermissionResponse, Session, SessionEvent};
 pub use snapshot::{PendingPermission, SessionConfig, SessionSnapshot};
+
+// Re-export proxy session types
+pub use proxy_session::{
+    run_connection_loop, ConnectionResult, LoopResult, ProxySessionConfig, SessionState,
+};
 
 // Re-export claude_codes types that appear in our public API
 pub use claude_codes::io::PermissionSuggestion;
