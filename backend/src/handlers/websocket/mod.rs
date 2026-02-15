@@ -254,6 +254,21 @@ impl SessionManager {
             false
         }
     }
+
+    /// Find the launcher running a given session and send StopSession to it.
+    /// Returns true if the message was sent successfully.
+    pub fn stop_session_on_launcher(&self, session_id: Uuid) -> bool {
+        for entry in self.launchers.iter() {
+            if entry.value().running_sessions.contains(&session_id) {
+                return entry
+                    .value()
+                    .sender
+                    .send(ProxyMessage::StopSession { session_id })
+                    .is_ok();
+            }
+        }
+        false
+    }
 }
 
 pub async fn handle_session_websocket(

@@ -21,6 +21,7 @@ pub struct SessionRailProps {
     pub on_leave: Callback<Uuid>,
     pub on_toggle_pause: Callback<Uuid>,
     pub on_toggle_inactive_hidden: Callback<MouseEvent>,
+    pub on_stop: Callback<Uuid>,
 }
 
 /// SessionRail - Horizontal carousel of session pills
@@ -87,6 +88,15 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             Callback::from(move |e: MouseEvent| {
                 e.stop_propagation();
                 on_leave.emit(session_id);
+            })
+        };
+
+        let on_stop = {
+            let on_stop = props.on_stop.clone();
+            let session_id = session.id;
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                on_stop.emit(session_id);
             })
         };
 
@@ -158,6 +168,17 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     if session.my_role != "owner" {
                         let role_class = format!("pill-role-badge role-{}", session.my_role);
                         html! { <span class={role_class}>{ &session.my_role }</span> }
+                    } else {
+                        html! {}
+                    }
+                }
+                {
+                    if is_connected && session.status == shared::SessionStatus::Active {
+                        html! {
+                            <button class="pill-stop" onclick={on_stop} title="Stop session">
+                                { "■" }
+                            </button>
+                        }
                     } else {
                         html! {}
                     }
