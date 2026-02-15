@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shared::ToolResultContent;
 use uuid::Uuid;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 
@@ -749,6 +750,37 @@ struct ImageViewerProps {
 #[function_component(ImageViewer)]
 fn image_viewer(props: &ImageViewerProps) -> Html {
     let expanded = use_state(|| false);
+
+    // Close lightbox on Escape key (capture phase so it doesn't trigger nav mode)
+    {
+        let expanded = expanded.clone();
+        use_effect_with(*expanded, move |is_expanded| {
+            let listener = if *is_expanded {
+                let expanded = expanded.clone();
+                let options = gloo::events::EventListenerOptions {
+                    phase: gloo::events::EventListenerPhase::Capture,
+                    passive: false,
+                };
+                Some(gloo::events::EventListener::new_with_options(
+                    &gloo::utils::document(),
+                    "keydown",
+                    options,
+                    move |event| {
+                        if let Some(ke) = event.dyn_ref::<web_sys::KeyboardEvent>() {
+                            if ke.key() == "Escape" {
+                                ke.prevent_default();
+                                ke.stop_propagation();
+                                expanded.set(false);
+                            }
+                        }
+                    },
+                ))
+            } else {
+                None
+            };
+            move || drop(listener)
+        });
+    }
 
     let on_thumb_click = {
         let expanded = expanded.clone();
