@@ -88,7 +88,8 @@ pub enum ClaudeMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PortalMessage {
-    pub content: Option<String>,
+    #[serde(default)]
+    pub content: Vec<shared::PortalContent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -438,16 +439,29 @@ fn render_error_message(msg: &ErrorMessage) -> Html {
 }
 
 fn render_portal_message(msg: &PortalMessage) -> Html {
-    let content = msg.content.as_deref().unwrap_or("");
     html! {
         <div class="claude-message portal-message">
             <div class="message-header">
                 <span class="message-type-badge portal">{ "Portal" }</span>
             </div>
             <div class="message-body">
-                { render_markdown(content) }
+                { for msg.content.iter().map(render_portal_content) }
             </div>
         </div>
+    }
+}
+
+fn render_portal_content(content: &shared::PortalContent) -> Html {
+    match content {
+        shared::PortalContent::Text { text } => render_markdown(text),
+        shared::PortalContent::Image { media_type, data } => {
+            let source = ImageSource {
+                source_type: "base64".to_string(),
+                media_type: media_type.clone(),
+                data: data.clone(),
+            };
+            render_image_source(&source)
+        }
     }
 }
 

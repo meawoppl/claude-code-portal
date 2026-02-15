@@ -410,6 +410,36 @@ impl MessageRole {
     }
 }
 
+/// A portal-originated message that can carry text or images.
+/// Serializes with `"type": "portal"` for the frontend's `ClaudeMessage` enum.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortalMessage {
+    /// Always "portal" — used as the serde tag for ClaudeMessage dispatch
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub content: Vec<PortalContent>,
+}
+
+impl PortalMessage {
+    pub fn image(media_type: String, data: String) -> Self {
+        Self {
+            message_type: "portal".to_string(),
+            content: vec![PortalContent::Image { media_type, data }],
+        }
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::to_value(self).unwrap_or_default()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum PortalContent {
+    Text { text: String },
+    Image { media_type: String, data: String },
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MessageInfo {
     pub id: Uuid,
