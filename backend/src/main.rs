@@ -50,6 +50,8 @@ pub struct AppState {
     pub message_retention_count: i64,
     /// Days to retain messages before deletion (default: 30, 0 = disabled)
     pub message_retention_days: u32,
+    /// Days to keep sessions before auto-deletion (default: 14, 0 = disabled)
+    pub session_max_age_days: u32,
 }
 
 #[tokio::main]
@@ -251,10 +253,19 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(30);
 
+    let session_max_age_days: u32 = env::var("SESSION_MAX_AGE_DAYS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(14);
+
     tracing::info!(
         "Message retention: max {} messages/session, {} days",
         message_retention_count,
         message_retention_days
+    );
+    tracing::info!(
+        "Session max age: {} days (0 = disabled)",
+        session_max_age_days
     );
 
     // Create app state
@@ -277,6 +288,7 @@ async fn main() -> anyhow::Result<()> {
         allowed_emails,
         message_retention_count,
         message_retention_days,
+        session_max_age_days,
     });
 
     // Setup CORS
@@ -439,6 +451,23 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Started message retention task (every 60 seconds)");
     }
 
+    // Spawn background task for session age cleanup (runs every hour)
+    if app_state.session_max_age_days > 0 {
+        let max_age_days = app_state.session_max_age_days;
+        let app_state_clone = app_state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                run_session_age_cleanup(&app_state_clone).await;
+            }
+        });
+        tracing::info!(
+            "Started session age cleanup task (every hour, max age {} days)",
+            max_age_days
+        );
+    }
+
     // Run the server with graceful shutdown
     let addr = format!("{}:{}", host, port);
 
@@ -570,4 +599,51 @@ async fn run_retention_cleanup(app_state: &Arc<AppState>) {
             count_deleted
         );
     }
+}
+
+/// Delete sessions whose last_activity is older than SESSION_MAX_AGE_DAYS
+async fn run_session_age_cleanup(app_state: &Arc<AppState>) {
+    use diesel::prelude::*;
+    use handlers::helpers::delete_session_with_data;
+
+    let max_days = app_state.session_max_age_days;
+    if max_days == 0 {
+        return;
+    }
+
+    let Ok(mut conn) = app_state.db_pool.get() else {
+        tracing::error!("Failed to get DB connection for session age cleanup");
+        return;
+    };
+
+    let cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::days(i64::from(max_days));
+
+    let old_sessions: Vec<models::Session> = match schema::sessions::table
+        .filter(schema::sessions::last_activity.lt(cutoff))
+        .load(&mut conn)
+    {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("Failed to query old sessions: {}", e);
+            return;
+        }
+    };
+
+    if old_sessions.is_empty() {
+        return;
+    }
+
+    let mut deleted = 0;
+    for session in &old_sessions {
+        match delete_session_with_data(&mut conn, session, true) {
+            Ok(_) => deleted += 1,
+            Err(e) => tracing::error!("Failed to delete old session {}: {:?}", session.id, e),
+        }
+    }
+
+    tracing::info!(
+        "Session age cleanup: deleted {} sessions older than {} days",
+        deleted,
+        max_days
+    );
 }
