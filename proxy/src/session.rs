@@ -769,15 +769,18 @@ fn extract_svg_portal_messages(
                                 size_mb, limit_mb
                             )));
                         } else {
+                            let file_size = data.len() as u64;
                             let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
                             debug!(
                                 "Sending SVG portal message for {} ({} bytes)",
                                 file_path,
                                 data.len()
                             );
-                            portal_messages.push(shared::PortalMessage::image(
+                            portal_messages.push(shared::PortalMessage::image_with_info(
                                 "image/svg+xml".to_string(),
                                 encoded,
+                                Some(file_path.clone()),
+                                Some(file_size),
                             ));
                         }
                     }

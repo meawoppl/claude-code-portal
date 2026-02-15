@@ -151,9 +151,18 @@ pub fn handle_claude_output(
                 store_result_metadata(&mut conn, session_id, &content);
             }
 
+            // Track Read tool_use file paths from assistant messages
+            if role == shared::MessageRole::Assistant {
+                track_tool_use_file_paths(session_manager, session_id, &content);
+            }
+
             // Inject portal messages for images in tool results
             if role == shared::MessageRole::User {
-                let portal_messages = extract_image_portal_messages(&content);
+                let tool_paths = session_manager
+                    .tool_use_file_paths
+                    .get(&session_id)
+                    .map(|r| r.clone());
+                let portal_messages = extract_image_portal_messages(&content, tool_paths.as_ref());
                 for portal_msg in portal_messages {
                     let portal_json = portal_msg.to_json();
 
@@ -262,6 +271,41 @@ fn store_result_metadata(
     }
 }
 
+/// Scan assistant messages for Read tool_use blocks and track their file paths.
+fn track_tool_use_file_paths(
+    session_manager: &SessionManager,
+    session_id: Uuid,
+    content: &serde_json::Value,
+) {
+    let blocks = content
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array());
+    let Some(blocks) = blocks else { return };
+
+    for block in blocks {
+        if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+            continue;
+        }
+        if block.get("name").and_then(|n| n.as_str()) != Some("Read") {
+            continue;
+        }
+        let id = block.get("id").and_then(|i| i.as_str());
+        let file_path = block
+            .get("input")
+            .and_then(|i| i.get("file_path"))
+            .and_then(|f| f.as_str());
+
+        if let (Some(id), Some(path)) = (id, file_path) {
+            session_manager
+                .tool_use_file_paths
+                .entry(session_id)
+                .or_default()
+                .insert(id.to_string(), path.to_string());
+        }
+    }
+}
+
 const ALLOWED_IMAGE_MEDIA_TYPES: &[&str] = &[
     "image/png",
     "image/jpeg",
@@ -285,7 +329,10 @@ fn max_image_base64_bytes() -> usize {
 
 /// Scan a "user" message's tool result blocks for base64 image blocks
 /// in Structured results and return a `PortalMessage` for each one found.
-fn extract_image_portal_messages(content: &serde_json::Value) -> Vec<shared::PortalMessage> {
+fn extract_image_portal_messages(
+    content: &serde_json::Value,
+    tool_file_paths: Option<&std::collections::HashMap<String, String>>,
+) -> Vec<shared::PortalMessage> {
     let mut portal_messages = Vec::new();
 
     let blocks = content
@@ -302,6 +349,8 @@ fn extract_image_portal_messages(content: &serde_json::Value) -> Vec<shared::Por
             continue;
         }
 
+        let tool_use_id = block.get("tool_use_id").and_then(|t| t.as_str());
+
         // Handle Structured tool result content
         let structured_blocks = block
             .get("content")
@@ -312,6 +361,11 @@ fn extract_image_portal_messages(content: &serde_json::Value) -> Vec<shared::Por
         let Some(structured_blocks) = structured_blocks else {
             continue;
         };
+
+        // Look up file path from tracked Read tool_use blocks
+        let file_path = tool_use_id
+            .and_then(|id| tool_file_paths.and_then(|m| m.get(id)))
+            .cloned();
 
         for item in structured_blocks {
             if item.get("type").and_then(|t| t.as_str()) != Some("image") {
@@ -348,9 +402,14 @@ fn extract_image_portal_messages(content: &serde_json::Value) -> Vec<shared::Por
                 continue;
             }
 
-            portal_messages.push(shared::PortalMessage::image(
+            // Approximate decoded file size from base64 length
+            let file_size = Some((data.len() as u64 * 3) / 4);
+
+            portal_messages.push(shared::PortalMessage::image_with_info(
                 media_type.to_string(),
                 data.to_string(),
+                file_path.clone(),
+                file_size,
             ));
         }
     }
