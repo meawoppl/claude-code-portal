@@ -399,7 +399,7 @@ dependencies = [
 
 [[package]]
 name = "backend"
-version = "1.0.0"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -655,7 +655,7 @@ dependencies = [
 
 [[package]]
 name = "claude-portal"
-version = "1.0.0"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -689,7 +689,7 @@ dependencies = [
 
 [[package]]
 name = "claude-portal-launcher"
-version = "1.0.0"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -726,7 +726,7 @@ dependencies = [
 
 [[package]]
 name = "cli-tools"
-version = "1.0.0"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1243,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "frontend"
-version = "1.0.0"
+version = "1.1.2"
 dependencies = [
  "futures-channel",
  "futures-util",
@@ -3823,7 +3823,7 @@ dependencies = [
 
 [[package]]
 name = "shared"
-version = "1.0.0"
+version = "1.1.2"
 dependencies = [
  "chrono",
  "claude-codes",
