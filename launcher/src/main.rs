@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 #[derive(Parser, Debug)]
 #[command(name = "claude-portal-launcher")]
-#[command(about = "Persistent daemon that launches claude-portal instances on demand")]
+#[command(about = "Persistent daemon that launches claude-portal sessions as in-process tasks")]
 struct Args {
     /// Backend WebSocket URL (e.g., ws://localhost:3000)
     #[arg(long)]
@@ -22,13 +22,9 @@ struct Args {
     #[arg(long)]
     name: Option<String>,
 
-    /// Path to the claude-portal binary
+    /// Maximum concurrent sessions
     #[arg(long)]
-    proxy_path: Option<String>,
-
-    /// Maximum concurrent proxy processes
-    #[arg(long)]
-    max_processes: Option<usize>,
+    max_sessions: Option<usize>,
 
     /// Development mode (no auth required)
     #[arg(long)]
@@ -66,11 +62,7 @@ async fn main() -> anyhow::Result<()> {
             Some(result.access_token)
         }
     };
-    let proxy_path = args
-        .proxy_path
-        .or(config.proxy_path)
-        .unwrap_or_else(|| "claude-portal".to_string());
-    let max_processes = args.max_processes.or(config.max_processes).unwrap_or(5);
+    let max_sessions = args.max_sessions.or(config.max_processes).unwrap_or(5);
 
     let launcher_name = args.name.or(config.name).unwrap_or_else(|| {
         hostname::get()
@@ -86,15 +78,10 @@ async fn main() -> anyhow::Result<()> {
         launcher_id
     );
     tracing::info!("Backend URL: {}", backend_url);
-    tracing::info!("Proxy binary: {}", proxy_path);
-    tracing::info!("Max processes: {}", max_processes);
+    tracing::info!("Max sessions: {}", max_sessions);
 
-    let (process_manager, log_rx) = process_manager::ProcessManager::new(
-        proxy_path.into(),
-        backend_url.clone(),
-        max_processes,
-        args.dev,
-    );
+    let (process_manager, exit_rx) =
+        process_manager::ProcessManager::new(backend_url.clone(), max_sessions);
 
     connection::run_launcher_loop(
         &backend_url,
@@ -102,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
         &launcher_name,
         auth_token.as_deref(),
         process_manager,
-        log_rx,
+        exit_rx,
     )
     .await
 }

@@ -1,4 +1,4 @@
-use crate::process_manager::{LogLine, ProcessManager};
+use crate::process_manager::{ProcessManager, SessionExited};
 use futures_util::{SinkExt, StreamExt};
 use shared::ProxyMessage;
 use std::time::{Duration, Instant};
@@ -8,7 +8,6 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
-const SUPERVISION_INTERVAL: Duration = Duration::from_secs(1);
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 pub async fn run_launcher_loop(
@@ -17,7 +16,7 @@ pub async fn run_launcher_loop(
     launcher_name: &str,
     auth_token: Option<&str>,
     mut process_manager: ProcessManager,
-    mut log_rx: mpsc::UnboundedReceiver<LogLine>,
+    mut exit_rx: mpsc::UnboundedReceiver<SessionExited>,
 ) -> anyhow::Result<()> {
     let mut backoff = Duration::from_secs(1);
 
@@ -76,7 +75,6 @@ pub async fn run_launcher_loop(
 
                 // Main loop
                 let mut heartbeat_timer = tokio::time::interval(HEARTBEAT_INTERVAL);
-                let mut supervision_timer = tokio::time::interval(SUPERVISION_INTERVAL);
                 let start = Instant::now();
 
                 loop {
@@ -115,28 +113,15 @@ pub async fn run_launcher_loop(
                             }
                         }
 
-                        _ = supervision_timer.tick() => {
-                            let exited = process_manager.reap_exited();
-                            for (session_id, code) in exited {
-                                info!("Session {} exited with code {:?}", session_id, code);
-                                let msg = ProxyMessage::SessionExited {
-                                    session_id,
-                                    exit_code: code,
-                                };
-                                if let Ok(json) = serde_json::to_string(&msg) {
-                                    if write.send(Message::Text(json)).await.is_err() {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        Some(log_line) = log_rx.recv() => {
-                            let msg = ProxyMessage::ProxyLog {
-                                session_id: log_line.session_id,
-                                level: log_line.level,
-                                message: log_line.message,
-                                timestamp: log_line.timestamp,
+                        Some(exited) = exit_rx.recv() => {
+                            info!(
+                                "Session {} exited with code {:?}",
+                                exited.session_id, exited.exit_code
+                            );
+                            process_manager.remove_finished(&exited.session_id);
+                            let msg = ProxyMessage::SessionExited {
+                                session_id: exited.session_id,
+                                exit_code: exited.exit_code,
                             };
                             if let Ok(json) = serde_json::to_string(&msg) {
                                 if write.send(Message::Text(json)).await.is_err() {
@@ -183,19 +168,21 @@ async fn handle_message(text: &str, write: &mut WsWrite, process_manager: &mut P
                 working_directory, session_name
             );
 
-            let result = process_manager.spawn(
-                &auth_token,
-                &working_directory,
-                session_name.as_deref(),
-                &claude_args,
-            );
+            let result = process_manager
+                .spawn(
+                    &auth_token,
+                    &working_directory,
+                    session_name.as_deref(),
+                    &claude_args,
+                )
+                .await;
 
             let response = match result {
                 Ok(spawn_result) => ProxyMessage::LaunchSessionResult {
                     request_id,
                     success: true,
                     session_id: Some(spawn_result.session_id),
-                    pid: Some(spawn_result.pid),
+                    pid: None,
                     error: None,
                 },
                 Err(e) => {

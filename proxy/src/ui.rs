@@ -38,27 +38,6 @@ pub fn print_session_info(session_name: &str, session_id: &str, backend_url: &st
     println!();
 }
 
-/// Print the "proxy ready" banner
-pub fn print_ready_banner() {
-    println!();
-    println!(
-        "{}",
-        "╭──────────────────────────────────────╮".bright_green()
-    );
-    println!(
-        "{}",
-        "│         ✓ Proxy Ready                │".bright_green()
-    );
-    println!(
-        "{}",
-        "╰──────────────────────────────────────╯".bright_green()
-    );
-    println!();
-    println!("  Session is now visible in the web interface.");
-    println!("  Press {} to stop.", "Ctrl+C".bright_yellow());
-    println!();
-}
-
 /// Print dev mode status
 pub fn print_dev_mode() {
     println!(
@@ -108,72 +87,9 @@ pub fn print_status(message: &str) {
     let _ = std::io::stdout().flush();
 }
 
-/// Print "connected" result
-pub fn print_connected() {
-    println!("{}", "connected".bright_green());
-}
-
-/// Print "registered" result
-pub fn print_registered() {
-    println!("{}", "registered".bright_green());
-}
-
 /// Print "started" result
 pub fn print_started() {
     println!("{}", "started".bright_green());
-}
-
-/// Print "failed" result
-pub fn print_failed() {
-    println!("{}", "failed".bright_red());
-}
-
-/// Print registration failure with error message
-pub fn print_registration_failed(error: &str) {
-    println!("{}", "failed".bright_red());
-    println!(
-        "  {} Registration error: {}",
-        "✗".bright_red(),
-        error.bright_red()
-    );
-}
-
-/// Print hint to re-authenticate
-pub fn print_reauth_hint() {
-    println!(
-        "  {} Run: {} to re-authenticate",
-        "→".bright_blue(),
-        "claude-portal --reauth".bright_cyan()
-    );
-}
-
-/// Print connection restored message
-pub fn print_connection_restored() {
-    println!("  {} Connection restored", "✓".bright_green());
-    println!();
-}
-
-/// Print disconnection message with backoff and pending message count
-pub fn print_disconnected_with_pending(backoff_secs: u64, pending_count: usize) {
-    println!();
-    if pending_count > 0 {
-        println!(
-            "  {} WebSocket disconnected. {} pending messages buffered.",
-            "⚠".bright_yellow(),
-            pending_count.to_string().bright_cyan()
-        );
-        println!(
-            "  {} Reconnecting in {}s...",
-            "→".bright_blue(),
-            backoff_secs
-        );
-    } else {
-        println!(
-            "  {} WebSocket disconnected. Reconnecting in {}s...",
-            "⚠".bright_yellow(),
-            backoff_secs
-        );
-    }
 }
 
 /// Print logout success

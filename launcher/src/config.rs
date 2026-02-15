@@ -6,7 +6,6 @@ pub struct LauncherConfig {
     pub backend_url: Option<String>,
     pub auth_token: Option<String>,
     pub name: Option<String>,
-    pub proxy_path: Option<String>,
     pub max_processes: Option<usize>,
 }
 

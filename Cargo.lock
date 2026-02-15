@@ -671,6 +671,7 @@ dependencies = [
  "hostname",
  "libc",
  "portal-auth",
+ "proxy-session",
  "reqwest 0.12.4",
  "serde",
  "serde_json",
@@ -694,10 +695,12 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "claude-session-lib",
  "dirs",
  "futures-util",
  "hostname",
  "portal-auth",
+ "proxy-session",
  "serde",
  "serde_json",
  "shared",
@@ -706,7 +709,6 @@ dependencies = [
  "toml 1.0.1+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
- "url",
  "uuid",
 ]
 
@@ -3131,6 +3133,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213622a1460818959ac1181aaeb2dc9c7f63df720db7d788b3e24eacd1983e13"
 dependencies = [
  "prost",
+]
+
+[[package]]
+name = "proxy-session"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "claude-codes",
+ "claude-session-lib",
+ "directories",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "shared",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
