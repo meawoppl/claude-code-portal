@@ -46,3 +46,4 @@ chrono = { workspace = true, features = ["std", "clock"] }
 url = "2.5"
 toml = "1.0.1"
 dirs = "6.0.0"
+portal-auth = { version = "0.1.0", path = "../portal-auth" }

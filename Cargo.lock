@@ -670,6 +670,7 @@ dependencies = [
  "hex",
  "hostname",
  "libc",
+ "portal-auth",
  "reqwest 0.12.4",
  "serde",
  "serde_json",
@@ -696,6 +697,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "hostname",
+ "portal-auth",
  "serde",
  "serde_json",
  "shared",
@@ -2918,6 +2920,20 @@ name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
+
+[[package]]
+name = "portal-auth"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "colored",
+ "hostname",
+ "reqwest 0.12.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "postgres-protocol"
