@@ -44,3 +44,5 @@ chrono = { workspace = true, features = ["std", "clock"] }
 
 # URL parsing
 url = "2.5"
+toml = "1.0.1"
+dirs = "6.0.0"
