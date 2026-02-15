@@ -7,7 +7,6 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/local/bin/claude-portal-launcher</string>
-        <string>--foreground</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
