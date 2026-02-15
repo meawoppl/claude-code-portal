@@ -1,12 +1,23 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Child;
+use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
+
+/// A log line captured from a managed proxy process.
+pub struct LogLine {
+    pub session_id: Uuid,
+    pub level: String,
+    pub message: String,
+    pub timestamp: String,
+}
 
 pub struct ManagedProcess {
     pub pid: u32,
     pub child: Child,
+    reader_handles: Vec<tokio::task::JoinHandle<()>>,
 }
 
 pub struct ProcessManager {
@@ -15,6 +26,7 @@ pub struct ProcessManager {
     backend_url: String,
     max_processes: usize,
     dev_mode: bool,
+    log_tx: mpsc::UnboundedSender<LogLine>,
 }
 
 pub struct SpawnResult {
@@ -28,14 +40,19 @@ impl ProcessManager {
         backend_url: String,
         max_processes: usize,
         dev_mode: bool,
-    ) -> Self {
-        Self {
-            processes: HashMap::new(),
-            proxy_path,
-            backend_url,
-            max_processes,
-            dev_mode,
-        }
+    ) -> (Self, mpsc::UnboundedReceiver<LogLine>) {
+        let (log_tx, log_rx) = mpsc::unbounded_channel();
+        (
+            Self {
+                processes: HashMap::new(),
+                proxy_path,
+                backend_url,
+                max_processes,
+                dev_mode,
+                log_tx,
+            },
+            log_rx,
+        )
     }
 
     pub fn running_session_ids(&self) -> Vec<Uuid> {
@@ -57,7 +74,6 @@ impl ProcessManager {
             );
         }
 
-        // Validate working directory exists
         let wd = std::path::Path::new(working_directory);
         if !wd.is_dir() {
             anyhow::bail!("Working directory does not exist: {}", working_directory);
@@ -76,11 +92,9 @@ impl ProcessManager {
             cmd.arg("--dev");
         }
 
-        // Pass auth token via env var to avoid /proc exposure
         cmd.env("PORTAL_AUTH_TOKEN", auth_token);
         cmd.arg("--auth-token").arg(auth_token);
 
-        // Pass through extra claude args after --
         if !claude_args.is_empty() {
             cmd.arg("--");
             for arg in claude_args {
@@ -93,8 +107,51 @@ impl ProcessManager {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        let child = cmd.spawn()?;
+        let mut child = cmd.spawn()?;
         let pid = child.id().unwrap_or(0);
+
+        // Take ownership of stdout/stderr and spawn reader tasks
+        let mut reader_handles = Vec::new();
+
+        if let Some(stdout) = child.stdout.take() {
+            let tx = self.log_tx.clone();
+            let sid = session_id;
+            reader_handles.push(tokio::spawn(async move {
+                let mut lines = BufReader::new(stdout).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let (level, message) = parse_log_line(&line);
+                    let _ = tx.send(LogLine {
+                        session_id: sid,
+                        level,
+                        message,
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                    });
+                }
+            }));
+        }
+
+        if let Some(stderr) = child.stderr.take() {
+            let tx = self.log_tx.clone();
+            let sid = session_id;
+            reader_handles.push(tokio::spawn(async move {
+                let mut lines = BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let (level, message) = parse_log_line(&line);
+                    // Default stderr to warn if we couldn't parse a level
+                    let level = if level == "info" && !line.contains("INFO") {
+                        "warn".to_string()
+                    } else {
+                        level
+                    };
+                    let _ = tx.send(LogLine {
+                        session_id: sid,
+                        level,
+                        message,
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                    });
+                }
+            }));
+        }
 
         info!(
             "Spawned proxy process: pid={}, session_name={}, dir={}",
@@ -103,8 +160,14 @@ impl ProcessManager {
 
         let result = SpawnResult { session_id, pid };
 
-        self.processes
-            .insert(session_id, ManagedProcess { pid, child });
+        self.processes.insert(
+            session_id,
+            ManagedProcess {
+                pid,
+                child,
+                reader_handles,
+            },
+        );
 
         Ok(result)
     }
@@ -117,6 +180,9 @@ impl ProcessManager {
             );
             if let Err(e) = proc.child.kill().await {
                 warn!("Failed to kill process {}: {}", proc.pid, e);
+            }
+            for h in proc.reader_handles {
+                h.abort();
             }
             true
         } else {
@@ -149,9 +215,34 @@ impl ProcessManager {
                     "Process exited: session={}, pid={}, code={:?}",
                     session_id, proc.pid, code
                 );
+                for h in proc.reader_handles {
+                    h.abort();
+                }
             }
         }
 
         exited
     }
+}
+
+/// Parse a tracing-format log line into (level, message).
+/// Handles lines like: `2026-02-15T10:00:00Z  INFO proxy: Connected to backend`
+/// Falls back to ("info", raw_line) if parsing fails.
+fn parse_log_line(line: &str) -> (String, String) {
+    let trimmed = line.trim();
+
+    // Try to extract level from common tracing format:
+    // "2026-02-15T... LEVEL module: message"
+    for level in &["ERROR", "WARN", "INFO", "DEBUG", "TRACE"] {
+        if let Some(pos) = trimmed.find(level) {
+            // Check it's a word boundary (preceded by whitespace)
+            if pos > 0 && trimmed.as_bytes()[pos - 1] == b' ' {
+                let after_level = &trimmed[pos + level.len()..];
+                let message = after_level.trim_start_matches(' ').trim_start_matches(':');
+                return (level.to_lowercase(), message.trim().to_string());
+            }
+        }
+    }
+
+    ("info".to_string(), trimmed.to_string())
 }
