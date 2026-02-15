@@ -1,16 +1,14 @@
-//! Session management and WebSocket connection handling.
-//!
-//! Uses claude-session-lib for Claude process management.
+//! Proxy session management and WebSocket connection handling.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::session::{Session as ClaudeSession, SessionEvent};
 use anyhow::Result;
 use base64::Engine;
 use claude_codes::io::{ContentBlock, ControlRequestPayload, ToolUseBlock};
 use claude_codes::ClaudeOutput;
-use claude_session_lib::{Session as ClaudeSession, SessionEvent};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use shared::{ProxyMessage, SendMode};
@@ -1310,7 +1308,8 @@ async fn run_main_loop(
     input_rx: &mut mpsc::UnboundedReceiver<String>,
     state: &mut ConnectionState,
 ) -> ConnectionResult {
-    use claude_session_lib::{Permission, PermissionResponse as LibPermissionResponse};
+    use crate::session::PermissionResponse as LibPermissionResponse;
+    use crate::Permission;
 
     loop {
         tokio::select! {

@@ -6,11 +6,17 @@ description = "Library for managing Claude Code sessions"
 license = "MIT"
 
 [dependencies]
-claude-codes = "2.1.17"
-tokio = { version = "1", features = ["sync", "time", "process"] }
+shared = { path = "../shared" }
+claude-codes = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
 tracing = "0.1"
+anyhow = { workspace = true }
+base64 = "0.22"
+directories = "5.0"
