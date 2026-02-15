@@ -1,0 +1,24 @@
+[package]
+name = "proxy-session"
+version = "0.1.0"
+edition = "2021"
+description = "Session management library for Claude Portal proxy"
+
+[dependencies]
+shared = { path = "../shared" }
+claude-session-lib = { version = "0.1.0", path = "../claude-session-lib" }
+claude-codes = { workspace = true }
+
+tokio = { workspace = true, features = ["full"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util = "0.3"
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+uuid = { workspace = true }
+base64 = "0.22"
+directories = "5.0"
