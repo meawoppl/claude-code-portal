@@ -24,3 +24,6 @@
   CLI args override config values.
 - **Install script**: `launcher/install.sh` detects OS, builds if needed,
   creates config template, installs systemd/launchd service.
+- **Device flow auth**: Shared `portal-auth` crate provides browser-based
+  OAuth device flow. Launcher authenticates automatically on first run
+  and saves the token to config.

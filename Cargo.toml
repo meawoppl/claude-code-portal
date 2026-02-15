@@ -1,5 +1,5 @@
 [workspace]
-members = ["shared", "backend", "frontend", "proxy", "cli-tools", "claude-session-lib", "launcher"]
+members = ["shared", "backend", "frontend", "proxy", "cli-tools", "claude-session-lib", "launcher", "portal-auth"]
 resolver = "2"
 
 [workspace.package]

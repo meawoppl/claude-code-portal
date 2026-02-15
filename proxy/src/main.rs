@@ -444,14 +444,14 @@ async fn resolve_auth_token(
 
     // Need to authenticate
     info!("Authenticating via device flow");
-    let (token, user_id, user_email) = auth::device_flow_login(backend_url, Some(cwd)).await?;
+    let result = auth::device_flow_login(backend_url, Some(cwd)).await?;
 
     config.set_session_auth(
         cwd.to_string(),
         SessionAuth {
-            user_id,
-            auth_token: token.clone(),
-            user_email: Some(user_email),
+            user_id: result.user_id,
+            auth_token: result.access_token.clone(),
+            user_email: Some(result.user_email),
             last_used: chrono::Utc::now().to_rfc3339(),
             backend_url: None,
             session_prefix: None,
@@ -459,7 +459,7 @@ async fn resolve_auth_token(
     );
     config.atomic_save()?;
 
-    Ok(Some(token))
+    Ok(Some(result.access_token))
 }
 
 /// Start Claude and run the proxy session

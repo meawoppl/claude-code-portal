@@ -54,7 +54,18 @@ async fn main() -> anyhow::Result<()> {
         .or(config.backend_url)
         .ok_or_else(|| anyhow::anyhow!("--backend-url is required (or set in config file)"))?;
 
-    let auth_token = args.auth_token.or(config.auth_token);
+    let auth_token = match args.auth_token.or(config.auth_token) {
+        Some(token) => Some(token),
+        None if args.dev => None,
+        None => {
+            tracing::info!("No auth token found, starting device flow authentication");
+            let result = portal_auth::device_flow_login(&backend_url, None).await?;
+            if let Err(e) = config::save_auth_token(&result.access_token) {
+                tracing::warn!("Failed to save auth token to config: {}", e);
+            }
+            Some(result.access_token)
+        }
+    };
     let proxy_path = args
         .proxy_path
         .or(config.proxy_path)
