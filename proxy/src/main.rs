@@ -15,6 +15,7 @@ use claude_session_lib::{Session as ClaudeSession, SessionConfig};
 use config::{ProxyConfig, SessionAuth};
 use session::ProxySessionConfig;
 use tracing::{info, warn};
+use tracing_subscriber::prelude::*;
 use uuid::Uuid;
 
 #[derive(Parser, Debug)]
@@ -122,11 +123,39 @@ struct Args {
     #[arg(long)]
     update: bool,
 
+    /// Session ID for log tagging (set by launcher daemon).
+    ///
+    /// When provided, all log output is tagged with this session ID
+    /// and output is switched to JSON format for machine parsing.
+    #[arg(long, value_name = "UUID", hide = true)]
+    session_id_tag: Option<Uuid>,
+
     /// Arguments to pass through to the claude CLI.
     ///
     /// Everything after -- or unrecognized flags are forwarded to claude.
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     claude_args: Vec<String>,
+}
+
+fn init_tracing(session_id_tag: Option<Uuid>) {
+    let env_filter =
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+
+    if let Some(sid) = session_id_tag {
+        // Launched by daemon: JSON format with session_id field
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .json()
+            .with_target(false)
+            .with_span_list(false);
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer)
+            .init();
+        tracing::info!(session_id = %sid, "Proxy starting with session tag");
+    } else {
+        // Interactive: human-readable format
+        tracing_subscriber::fmt().with_env_filter(env_filter).init();
+    }
 }
 
 fn default_session_name() -> String {
@@ -224,15 +253,11 @@ async fn handle_force_update() -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .init();
-
     dotenvy::dotenv().ok();
 
     let args = Args::parse();
+
+    init_tracing(args.session_id_tag);
 
     // Check for and apply pending updates (Windows only)
     // This handles the case where an update was downloaded but couldn't be
