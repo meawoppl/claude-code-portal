@@ -874,21 +874,7 @@ fn render_structured_block(block: &Value) -> Html {
     let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
     match block_type {
         "image" => {
-            let source_val = block.get("source");
-            let media_type = source_val
-                .and_then(|s| s.get("media_type"))
-                .and_then(|m| m.as_str())
-                .unwrap_or("image/png");
-            let data = source_val
-                .and_then(|s| s.get("data"))
-                .and_then(|d| d.as_str())
-                .unwrap_or("");
-            let source = ImageSource {
-                source_type: "base64".to_string(),
-                media_type: media_type.to_string(),
-                data: data.to_string(),
-            };
-            render_image_source(&source)
+            html! { <span class="tool-result-image-tag">{ "[image]" }</span> }
         }
         "text" => {
             let text = block.get("text").and_then(|t| t.as_str()).unwrap_or("");
