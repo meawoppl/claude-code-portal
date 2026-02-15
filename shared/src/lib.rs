@@ -421,6 +421,13 @@ pub struct PortalMessage {
 }
 
 impl PortalMessage {
+    pub fn text(text: String) -> Self {
+        Self {
+            message_type: "portal".to_string(),
+            content: vec![PortalContent::Text { text }],
+        }
+    }
+
     pub fn image(media_type: String, data: String) -> Self {
         Self {
             message_type: "portal".to_string(),

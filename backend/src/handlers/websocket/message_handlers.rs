@@ -328,6 +328,12 @@ fn extract_image_portal_messages(content: &serde_json::Value) -> Vec<shared::Por
             };
 
             if data.len() > MAX_IMAGE_BASE64_BYTES {
+                let size_mb = data.len() as f64 / (1024.0 * 1024.0);
+                let limit_mb = MAX_IMAGE_BASE64_BYTES as f64 / (1024.0 * 1024.0);
+                portal_messages.push(shared::PortalMessage::text(format!(
+                    "Image too large to display: **{:.1} MB** (limit is {:.0} MB)",
+                    size_mb, limit_mb
+                )));
                 continue;
             }
 
