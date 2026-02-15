@@ -61,6 +61,15 @@
     color: var(--accent);
 }
 
+.message-type-badge.portal {
+    background: rgba(187, 154, 247, 0.2);
+    color: var(--link-color);
+}
+
+.portal-message {
+    border-left: 3px solid var(--link-color);
+}
+
 .message-type-badge.raw {
     background: rgba(127, 132, 156, 0.2);
     color: var(--text-secondary);

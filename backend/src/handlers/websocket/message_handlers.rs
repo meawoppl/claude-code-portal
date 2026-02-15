@@ -126,10 +126,12 @@ pub fn handle_claude_output(
             .find(session_id)
             .first::<crate::models::Session>(&mut conn)
         {
-            let role = content
-                .get("type")
-                .and_then(|t| t.as_str())
-                .unwrap_or("assistant");
+            let role = shared::MessageRole::from_type_str(
+                content
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("assistant"),
+            );
 
             let new_message = crate::models::NewMessage {
                 session_id,
@@ -145,7 +147,7 @@ pub fn handle_claude_output(
                 error!("Failed to store message: {}", e);
             }
 
-            if role == "result" {
+            if role == shared::MessageRole::Result {
                 store_result_metadata(&mut conn, session_id, &content);
             }
 

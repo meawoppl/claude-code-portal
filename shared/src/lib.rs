@@ -368,10 +368,52 @@ pub struct UserInfo {
     pub voice_enabled: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageRole {
+    System,
+    Assistant,
+    User,
+    Result,
+    Error,
+    Portal,
+    #[serde(other)]
+    Unknown,
+}
+
+impl std::fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::System => "system",
+            Self::Assistant => "assistant",
+            Self::User => "user",
+            Self::Result => "result",
+            Self::Error => "error",
+            Self::Portal => "portal",
+            Self::Unknown => "unknown",
+        };
+        f.write_str(s)
+    }
+}
+
+impl MessageRole {
+    pub fn from_type_str(s: &str) -> Self {
+        match s {
+            "system" => Self::System,
+            "assistant" => Self::Assistant,
+            "user" => Self::User,
+            "result" => Self::Result,
+            "error" => Self::Error,
+            "portal" => Self::Portal,
+            _ => Self::Unknown,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MessageInfo {
     pub id: Uuid,
-    pub role: String,
+    pub role: MessageRole,
     pub content: String,
     pub created_at: String,
 }

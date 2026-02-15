@@ -80,8 +80,15 @@ pub enum ClaudeMessage {
     User(UserMessage),
     #[serde(rename = "error")]
     Error(ErrorMessage),
+    #[serde(rename = "portal")]
+    Portal(PortalMessage),
     #[serde(other)]
     Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PortalMessage {
+    pub content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -240,6 +247,7 @@ pub fn message_renderer(props: &MessageRendererProps) -> Html {
         Ok(ClaudeMessage::Result(msg)) => render_result_message(&msg),
         Ok(ClaudeMessage::User(msg)) => render_user_message(&msg),
         Ok(ClaudeMessage::Error(msg)) => render_error_message(&msg),
+        Ok(ClaudeMessage::Portal(msg)) => render_portal_message(&msg),
         Ok(ClaudeMessage::Unknown) | Err(_) => {
             html! { <RawMessageRenderer json={props.json.clone()} session_id={props.session_id} /> }
         }
@@ -424,6 +432,20 @@ fn render_error_message(msg: &ErrorMessage) -> Html {
             </div>
             <div class="message-body">
                 <div class="error-text">{ message }</div>
+            </div>
+        </div>
+    }
+}
+
+fn render_portal_message(msg: &PortalMessage) -> Html {
+    let content = msg.content.as_deref().unwrap_or("");
+    html! {
+        <div class="claude-message portal-message">
+            <div class="message-header">
+                <span class="message-type-badge portal">{ "Portal" }</span>
+            </div>
+            <div class="message-body">
+                { render_markdown(content) }
             </div>
         </div>
     }
