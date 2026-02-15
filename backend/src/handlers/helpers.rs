@@ -1,5 +1,8 @@
 use crate::models::{NewDeletedSessionCosts, Session};
-use crate::schema::{deleted_session_costs, messages, raw_message_log, session_members, sessions};
+use crate::schema::{
+    deleted_session_costs, messages, pending_inputs, pending_permission_requests, raw_message_log,
+    session_members, sessions,
+};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::PgConnection;
@@ -90,6 +93,17 @@ pub fn delete_session_with_data(
             error!("Failed to delete session members: {}", e);
             DeleteSessionError(format!("Failed to delete session members: {}", e))
         })?;
+
+    // Delete pending_inputs
+    let _ = diesel::delete(pending_inputs::table.filter(pending_inputs::session_id.eq(session_id)))
+        .execute(conn);
+
+    // Delete pending_permission_requests
+    let _ = diesel::delete(
+        pending_permission_requests::table
+            .filter(pending_permission_requests::session_id.eq(session_id)),
+    )
+    .execute(conn);
 
     // Delete raw_message_log (ignore errors, table may not have entries)
     let _ =
