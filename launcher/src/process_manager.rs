@@ -94,7 +94,6 @@ impl ProcessManager {
         }
 
         cmd.env("PORTAL_AUTH_TOKEN", auth_token);
-        cmd.arg("--auth-token").arg(auth_token);
 
         if !claude_args.is_empty() {
             cmd.arg("--");

@@ -64,7 +64,7 @@ struct Args {
     ///
     /// Skips the OAuth device flow. Useful for CI/CD or scripted usage.
     /// The token is a JWT issued by the backend server.
-    #[arg(long, value_name = "JWT")]
+    #[arg(long, value_name = "JWT", env = "PORTAL_AUTH_TOKEN")]
     auth_token: Option<String>,
 
     /// Custom name for this session.

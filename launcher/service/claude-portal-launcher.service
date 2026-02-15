@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.cargo/bin/claude-portal-launcher --foreground
+ExecStart=%h/.cargo/bin/claude-portal-launcher
 Restart=on-failure
 RestartSec=5
 Environment=LAUNCHER_AUTH_TOKEN=

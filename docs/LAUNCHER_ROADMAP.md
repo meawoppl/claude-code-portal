@@ -10,15 +10,17 @@
 - **Exit notifications** (PR #324): Launcher sends `SessionExited` to
   the backend when a proxy process terminates.
 
+- **StopSession** (PR #332): Frontend stop button sends REST request
+  through backend to launcher, which kills the proxy process.
+- **Auth token cleanup**: Proxy reads `PORTAL_AUTH_TOKEN` env var via
+  clap; launcher no longer passes redundant `--auth-token` CLI arg.
+- **Service file cleanup**: Removed non-existent `--foreground` flag
+  from systemd and launchd service files.
+
 ## Remaining Work
 
 ### Cleanup
 
-- Remove redundant `--auth-token` CLI arg from launcher spawn (already
-  passed via `PORTAL_AUTH_TOKEN` env var).
-- Remove `--foreground` from service files (not a real CLI flag) or add
-  it as a no-op.
-- `StopSession` button in the frontend session view.
 - Launcher selection UI in `LaunchDialog` (show name, hostname, load).
 
 ### Install / Config
