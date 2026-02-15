@@ -17,11 +17,10 @@
 - **Service file cleanup**: Removed non-existent `--foreground` flag
   from systemd and launchd service files.
 
+- **Launcher selection UI**: LaunchDialog shows launcher cards with
+  name, hostname, and running session count; user picks target launcher.
+
 ## Remaining Work
-
-### Cleanup
-
-- Launcher selection UI in `LaunchDialog` (show name, hostname, load).
 
 ### Install / Config
 

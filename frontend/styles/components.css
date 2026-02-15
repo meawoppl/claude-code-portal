@@ -449,3 +449,52 @@
     cursor: not-allowed;
 }
 
+.launcher-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.launcher-card {
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.launcher-card:hover {
+    border-color: var(--text-muted);
+}
+
+.launcher-card.selected {
+    border-color: var(--accent);
+    background: rgba(125, 174, 255, 0.05);
+}
+
+.launcher-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.launcher-card-name {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.launcher-card-sessions {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.launcher-card-hostname {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-family: 'Courier New', Consolas, monospace;
+}
+
