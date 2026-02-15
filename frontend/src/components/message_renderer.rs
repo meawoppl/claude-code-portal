@@ -736,9 +736,66 @@ fn render_image_source(source: &ImageSource) -> Html {
     }
     let src = format!("data:{};base64,{}", source.media_type, source.data);
     html! {
-        <div class="tool-result-image">
-            <img src={src} alt="Tool result image" />
-        </div>
+        <ImageViewer src={src} media_type={source.media_type.clone()} />
+    }
+}
+
+#[derive(Properties, PartialEq)]
+struct ImageViewerProps {
+    pub src: String,
+    pub media_type: String,
+}
+
+#[function_component(ImageViewer)]
+fn image_viewer(props: &ImageViewerProps) -> Html {
+    let expanded = use_state(|| false);
+
+    let on_thumb_click = {
+        let expanded = expanded.clone();
+        Callback::from(move |_: MouseEvent| expanded.set(true))
+    };
+
+    let on_close = {
+        let expanded = expanded.clone();
+        Callback::from(move |_: MouseEvent| expanded.set(false))
+    };
+
+    let ext = match props.media_type.as_str() {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        "image/svg+xml" => "svg",
+        _ => "bin",
+    };
+
+    let download_name = format!("image.{ext}");
+
+    html! {
+        <>
+            <div class="tool-result-image" onclick={on_thumb_click}>
+                <img src={props.src.clone()} alt="Tool result image" />
+            </div>
+            if *expanded {
+                <div class="image-lightbox" onclick={on_close.clone()}>
+                    <div class="image-lightbox-content" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                        <img src={props.src.clone()} alt="Full size image" />
+                        <div class="image-lightbox-controls">
+                            <a
+                                class="image-lightbox-download"
+                                href={props.src.clone()}
+                                download={download_name}
+                            >
+                                { "Download" }
+                            </a>
+                            <button class="image-lightbox-close" onclick={on_close}>
+                                { "\u{00d7}" }
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </>
     }
 }
 
