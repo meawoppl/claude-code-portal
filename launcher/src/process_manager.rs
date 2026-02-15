@@ -87,6 +87,7 @@ impl ProcessManager {
         cmd.arg("--backend-url").arg(&self.backend_url);
         cmd.arg("--session-name").arg(name);
         cmd.arg("--new-session");
+        cmd.arg("--session-id-tag").arg(session_id.to_string());
 
         if self.dev_mode {
             cmd.arg("--dev");
