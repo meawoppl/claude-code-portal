@@ -76,6 +76,8 @@ pub struct ProxySessionConfig {
     pub claude_args: Vec<String>,
     /// If this session replaces a previous one (after SessionNotFound), the old session ID
     pub replaces_session_id: Option<Uuid>,
+    /// Launcher ID if this session was started by a launcher
+    pub launcher_id: Option<Uuid>,
 }
 
 /// Exponential backoff helper
@@ -379,6 +381,11 @@ async fn register_session(
 ) -> Result<(), Duration> {
     info!("Registering session...");
 
+    let hostname = hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .unwrap_or_else(|| "unknown".to_string());
+
     let register_msg = ProxyMessage::Register {
         session_id: config.session_id,
         session_name: config.session_name.clone(),
@@ -389,6 +396,8 @@ async fn register_session(
         replay_after: None, // Proxy doesn't need history replay
         client_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         replaces_session_id: config.replaces_session_id,
+        hostname: Some(hostname),
+        launcher_id: config.launcher_id,
     };
 
     if let Err(e) = conn.send(&register_msg).await {

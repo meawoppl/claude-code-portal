@@ -52,6 +52,12 @@ pub enum ProxyMessage {
         /// the old session ID so the backend can mark it as replaced.
         #[serde(default)]
         replaces_session_id: Option<Uuid>,
+        /// Hostname of the machine running the session
+        #[serde(default)]
+        hostname: Option<String>,
+        /// Launcher ID if this session was started by a launcher
+        #[serde(default)]
+        launcher_id: Option<Uuid>,
     },
 
     /// Output from Claude Code to be displayed
@@ -389,6 +395,12 @@ pub struct SessionInfo {
     pub git_branch: Option<String>,
     /// The current user's role in this session (owner, editor, viewer)
     pub my_role: String,
+    /// Hostname of the machine running the session
+    #[serde(default)]
+    pub hostname: String,
+    /// Launcher ID if this session was started by a launcher
+    #[serde(default)]
+    pub launcher_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

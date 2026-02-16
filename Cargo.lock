@@ -720,6 +720,7 @@ dependencies = [
  "claude-codes",
  "directories",
  "futures-util",
+ "hostname",
  "serde",
  "serde_json",
  "shared",

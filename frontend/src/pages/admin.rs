@@ -69,6 +69,8 @@ struct AdminSessionInfo {
     total_cost_usd: f64,
     last_activity: String,
     is_connected: bool,
+    #[serde(default)]
+    hostname: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -280,7 +282,7 @@ fn session_row(props: &SessionRowProps) -> Html {
         &session.status
     };
 
-    let hostname = utils::extract_hostname(&session.session_name);
+    let hostname = &session.hostname;
     let project_name = utils::extract_folder(&session.working_directory);
 
     html! {

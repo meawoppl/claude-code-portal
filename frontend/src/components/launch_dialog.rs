@@ -30,7 +30,6 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
     let session_name = use_state(String::new);
     let launching = use_state(|| false);
     let error_msg = use_state(|| None::<String>);
-    let success_msg = use_state(|| None::<String>);
     let debounce_handle = use_mut_ref(|| None::<Timeout>);
 
     // Fetch launchers on mount
@@ -162,7 +161,7 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
         let selected_launcher = selected_launcher.clone();
         let launching = launching.clone();
         let error_msg = error_msg.clone();
-        let success_msg = success_msg.clone();
+        let on_close = props.on_close.clone();
         Callback::from(move |_| {
             let dir = (*current_path).clone();
             if dir.is_empty() {
@@ -179,11 +178,10 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
             let launcher_id = *selected_launcher;
             let launching = launching.clone();
             let error_msg = error_msg.clone();
-            let success_msg = success_msg.clone();
+            let on_close = on_close.clone();
 
             launching.set(true);
             error_msg.set(None);
-            success_msg.set(None);
 
             spawn_local(async move {
                 let body = serde_json::json!({
@@ -200,7 +198,7 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                     .await
                 {
                     Ok(resp) if resp.ok() => {
-                        success_msg.set(Some("Session launching...".to_string()));
+                        on_close.emit(());
                     }
                     Ok(resp) => {
                         let status = resp.status();
@@ -386,10 +384,6 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
 
                     if let Some(ref err) = *error_msg {
                         <p class="launch-error">{ err }</p>
-                    }
-
-                    if let Some(ref msg) = *success_msg {
-                        <p class="launch-success">{ msg }</p>
                     }
 
                     <div class="launch-actions">

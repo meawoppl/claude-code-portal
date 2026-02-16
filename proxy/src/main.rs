@@ -352,6 +352,7 @@ async fn main() -> Result<()> {
         git_branch,
         claude_args: args.claude_args.clone(),
         replaces_session_id: None,
+        launcher_id: None,
     };
 
     // Start Claude and run session

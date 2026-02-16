@@ -149,7 +149,7 @@ fn session_row(props: &SessionRowProps) -> Html {
     });
 
     let project = utils::extract_folder(&session.working_directory);
-    let hostname = utils::extract_hostname(&session.session_name);
+    let hostname = &session.hostname;
 
     // Only owners can share
     let is_owner = session.my_role == "owner";

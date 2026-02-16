@@ -37,20 +37,6 @@ pub fn ws_url(path: &str) -> String {
     format!("{}{}", get_ws_url(), path)
 }
 
-/// Extract hostname from session_name (format: "hostname-YYYYMMDD-HHMMSS")
-pub fn extract_hostname(session_name: &str) -> &str {
-    let mut dash_count = 0;
-    for (i, c) in session_name.bytes().enumerate().rev() {
-        if c == b'-' {
-            dash_count += 1;
-            if dash_count == 2 {
-                return &session_name[..i];
-            }
-        }
-    }
-    session_name
-}
-
 /// Extract folder name from path (last path component)
 pub fn extract_folder(path: &str) -> &str {
     let trimmed = path.trim_end_matches('/');
