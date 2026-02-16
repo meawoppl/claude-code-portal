@@ -147,8 +147,8 @@ pub fn dashboard_page() -> Html {
             let folder_b = utils::extract_folder(&b.working_directory);
             match folder_a.to_lowercase().cmp(&folder_b.to_lowercase()) {
                 std::cmp::Ordering::Equal => {
-                    let hostname_a = utils::extract_hostname(&a.session_name);
-                    let hostname_b = utils::extract_hostname(&b.session_name);
+                    let hostname_a = &a.hostname;
+                    let hostname_b = &b.hostname;
                     hostname_a.to_lowercase().cmp(&hostname_b.to_lowercase())
                 }
                 other => other,

@@ -20,3 +20,4 @@ tracing = "0.1"
 anyhow = { workspace = true }
 base64 = "0.22"
 directories = "5.0"
+hostname = "0.4.2"

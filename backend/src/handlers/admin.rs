@@ -523,6 +523,7 @@ pub struct AdminSessionInfo {
     pub created_at: String,
     pub last_activity: String,
     pub is_connected: bool,
+    pub hostname: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -573,6 +574,7 @@ pub async fn list_sessions(
                 created_at: session.created_at.to_string(),
                 last_activity: session.last_activity.to_string(),
                 is_connected,
+                hostname: session.hostname,
             }
         })
         .collect();

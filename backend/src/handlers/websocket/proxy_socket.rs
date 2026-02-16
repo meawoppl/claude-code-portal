@@ -104,6 +104,8 @@ fn handle_proxy_message(
             replay_after: _,
             client_version,
             replaces_session_id,
+            hostname,
+            launcher_id,
         } => {
             let key = claude_session_id.to_string();
             *session_key = Some(key.clone());
@@ -120,6 +122,8 @@ fn handle_proxy_message(
                 client_version: &client_version,
                 session_key: &key,
                 replaces_session_id,
+                hostname: hostname.as_deref().unwrap_or("unknown"),
+                launcher_id,
             };
             let result = register_or_update_session(app_state, &params);
 

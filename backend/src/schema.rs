@@ -117,6 +117,9 @@ diesel::table! {
         #[max_length = 32]
         client_version -> Nullable<Varchar>,
         input_seq -> Int8,
+        #[max_length = 255]
+        hostname -> Varchar,
+        launcher_id -> Nullable<Uuid>,
     }
 }
 

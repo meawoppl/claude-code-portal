@@ -50,6 +50,8 @@ pub struct Session {
     pub cache_read_tokens: i64,
     pub client_version: Option<String>,
     pub input_seq: i64,
+    pub hostname: String,
+    pub launcher_id: Option<Uuid>,
 }
 
 #[derive(Debug, Insertable)]
@@ -75,6 +77,8 @@ pub struct NewSessionWithId {
     pub status: String,
     pub git_branch: Option<String>,
     pub client_version: Option<String>,
+    pub hostname: String,
+    pub launcher_id: Option<Uuid>,
 }
 
 #[derive(Debug, Queryable, Selectable, Serialize, Deserialize, Clone)]

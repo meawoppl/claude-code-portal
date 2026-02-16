@@ -23,6 +23,7 @@ pub struct ProcessManager {
     backend_url: String,
     max_sessions: usize,
     exit_tx: mpsc::UnboundedSender<SessionExited>,
+    launcher_id: Option<Uuid>,
 }
 
 pub struct SpawnResult {
@@ -41,9 +42,14 @@ impl ProcessManager {
                 backend_url,
                 max_sessions,
                 exit_tx,
+                launcher_id: None,
             },
             exit_rx,
         )
+    }
+
+    pub fn set_launcher_id(&mut self, id: Uuid) {
+        self.launcher_id = Some(id);
     }
 
     pub fn running_session_ids(&self) -> Vec<Uuid> {
@@ -71,7 +77,14 @@ impl ProcessManager {
         }
 
         let session_id = Uuid::new_v4();
-        let default_name = format!("launched-{}", chrono::Local::now().format("%H%M%S"));
+        let default_name = {
+            let hostname = hostname::get()
+                .ok()
+                .and_then(|h| h.into_string().ok())
+                .unwrap_or_else(|| "unknown".to_string());
+            let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+            format!("{}-{}", hostname, timestamp)
+        };
         let name = session_name.unwrap_or(&default_name).to_string();
 
         let git_branch = get_git_branch(working_directory);
@@ -86,6 +99,7 @@ impl ProcessManager {
             git_branch,
             claude_args: claude_args.to_vec(),
             replaces_session_id: None,
+            launcher_id: self.launcher_id,
         };
 
         let exit_tx = self.exit_tx.clone();

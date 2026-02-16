@@ -18,6 +18,7 @@ pub async fn run_launcher_loop(
     mut process_manager: ProcessManager,
     mut exit_rx: mpsc::UnboundedReceiver<SessionExited>,
 ) -> anyhow::Result<()> {
+    process_manager.set_launcher_id(launcher_id);
     let mut backoff = Duration::from_secs(1);
 
     loop {

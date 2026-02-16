@@ -230,7 +230,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             },
         );
 
-        let hostname = utils::extract_hostname(&session.session_name);
+        let hostname = &session.hostname;
         let folder = utils::extract_folder(&session.working_directory);
 
         let connection_class = if is_connected {
