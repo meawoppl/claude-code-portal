@@ -28,6 +28,7 @@ pub struct SessionRailProps {
 #[function_component(SessionRail)]
 pub fn session_rail(props: &SessionRailProps) -> Html {
     let rail_ref = use_node_ref();
+    let context_menu_session = use_state(|| None::<Uuid>);
 
     // Scroll focused session into view
     {
@@ -36,11 +37,30 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         use_effect_with(focused_index, move |_| {
             if let Some(rail) = rail_ref.cast::<Element>() {
                 if let Some(child) = rail.children().item(focused_index as u32) {
-                    // Use simple scroll into view - smooth scrolling via CSS
                     child.scroll_into_view();
                 }
             }
             || ()
+        });
+    }
+
+    // Close context menu on any click outside
+    {
+        let context_menu_session = context_menu_session.clone();
+        let is_open = (*context_menu_session).is_some();
+        use_effect_with(is_open, move |is_open| {
+            let listener = if *is_open {
+                Some(gloo::events::EventListener::new(
+                    &gloo::utils::document(),
+                    "click",
+                    move |_| {
+                        context_menu_session.set(None);
+                    },
+                ))
+            } else {
+                None
+            };
+            move || drop(listener)
         });
     }
 
@@ -57,8 +77,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
     };
 
     // Helper to render a single session pill
-    // index: position in full sessions array (for selection)
-    // display_number: visible position for nav mode numbering (None = no number shown)
     let render_pill = |index: usize,
                        session: &SessionInfo,
                        display_number: Option<usize>|
@@ -67,36 +85,53 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         let is_awaiting = props.awaiting_sessions.contains(&session.id);
         let is_paused = props.paused_sessions.contains(&session.id);
         let is_connected = props.connected_sessions.contains(&session.id);
+        let is_menu_open = *context_menu_session == Some(session.id);
 
         let on_click = {
             let on_select = props.on_select.clone();
             Callback::from(move |_| on_select.emit(index))
         };
 
+        let on_context_menu = {
+            let context_menu_session = context_menu_session.clone();
+            let session_id = session.id;
+            Callback::from(move |e: MouseEvent| {
+                e.prevent_default();
+                e.stop_propagation();
+                context_menu_session.set(Some(session_id));
+            })
+        };
+
         let on_pause = {
             let on_toggle_pause = props.on_toggle_pause.clone();
             let session_id = session.id;
+            let context_menu_session = context_menu_session.clone();
             Callback::from(move |e: MouseEvent| {
                 e.stop_propagation();
                 on_toggle_pause.emit(session_id);
+                context_menu_session.set(None);
             })
         };
 
         let on_leave = {
             let on_leave = props.on_leave.clone();
             let session_id = session.id;
+            let context_menu_session = context_menu_session.clone();
             Callback::from(move |e: MouseEvent| {
                 e.stop_propagation();
                 on_leave.emit(session_id);
+                context_menu_session.set(None);
             })
         };
 
         let on_stop = {
             let on_stop = props.on_stop.clone();
             let session_id = session.id;
+            let context_menu_session = context_menu_session.clone();
             Callback::from(move |e: MouseEvent| {
                 e.stop_propagation();
                 on_stop.emit(session_id);
+                context_menu_session.set(None);
             })
         };
 
@@ -124,7 +159,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             "pill-status disconnected"
         };
 
-        // Show number annotation only in nav mode (1-9) for visible sessions
         let number_annotation = if in_nav_mode {
             display_number
                 .filter(|&n| n < 9)
@@ -133,8 +167,61 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             None
         };
 
+        // Pre-compute context menu HTML
+        let context_menu_html = if is_menu_open {
+            let stop_option = if is_connected && session.status == shared::SessionStatus::Active {
+                html! {
+                    <button type="button" class="context-menu-option stop" onclick={on_stop}>
+                        { "Stop Session" }
+                        <span class="option-hint">{ "Terminate process" }</span>
+                    </button>
+                }
+            } else {
+                html! {}
+            };
+
+            let pause_label = if is_paused {
+                "Unpause Session"
+            } else {
+                "Pause Session"
+            };
+            let pause_hint = if is_paused {
+                "Resume rotation"
+            } else {
+                "Skip in rotation"
+            };
+
+            let leave_option = if session.my_role != "owner" {
+                html! {
+                    <button type="button" class="context-menu-option leave" onclick={on_leave}>
+                        { "Leave Session" }
+                        <span class="option-hint">{ "Remove from your list" }</span>
+                    </button>
+                }
+            } else {
+                html! {}
+            };
+
+            html! {
+                <div class="pill-context-menu" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                    { stop_option }
+                    <button
+                        type="button"
+                        class={classes!("context-menu-option", "pause", is_paused.then_some("active"))}
+                        onclick={on_pause}
+                    >
+                        { pause_label }
+                        <span class="option-hint">{ pause_hint }</span>
+                    </button>
+                    { leave_option }
+                </div>
+            }
+        } else {
+            html! {}
+        };
+
         html! {
-            <div class={pill_class} onclick={on_click} key={session.id.to_string()}>
+            <div class={pill_class} onclick={on_click} oncontextmenu={on_context_menu} key={session.id.to_string()}>
                 {
                     if let Some(num) = &number_annotation {
                         html! { <span class="pill-number">{ num }</span> }
@@ -163,7 +250,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                         html! {}
                     }
                 }
-                // Show role badge for non-owners
                 {
                     if session.my_role != "owner" {
                         let role_class = format!("pill-role-badge role-{}", session.my_role);
@@ -172,40 +258,12 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                         html! {}
                     }
                 }
-                {
-                    if is_connected && session.status == shared::SessionStatus::Active {
-                        html! {
-                            <button class="pill-stop" onclick={on_stop} title="Stop session">
-                                { "■" }
-                            </button>
-                        }
-                    } else {
-                        html! {}
-                    }
-                }
-                <button
-                    class={classes!("pill-pause", if is_paused { Some("active") } else { None })}
-                    onclick={on_pause}
-                    title={if is_paused { "Unpause session" } else { "Pause session (skip in rotation)" }}
-                >
-                    { if is_paused { "▶" } else { "⏸" } }
-                </button>
-                // Leave button for non-owners (delete is in Settings)
-                {
-                    if session.my_role != "owner" {
-                        html! {
-                            <button class="pill-leave" onclick={on_leave} title="Leave session">{ "↩" }</button>
-                        }
-                    } else {
-                        html! {}
-                    }
-                }
+                { context_menu_html }
             </div>
         }
     };
 
     // Split sessions into visible (not paused) vs hidden (paused only)
-    // Disconnected sessions remain visible - only explicitly paused sessions go in the hidden section
     let (visible_indices, paused_indices): (Vec<_>, Vec<_>) =
         props.sessions.iter().enumerate().partition(|(_, session)| {
             let is_paused = props.paused_sessions.contains(&session.id);
@@ -213,20 +271,14 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         });
 
     let paused_count = paused_indices.len();
-
-    // Calculate display numbers for visible sessions
-    // When paused section is hidden, only visible (non-paused) sessions get numbers
-    // When paused section is shown, all sessions get numbers in display order
     let visible_count = visible_indices.len();
 
     html! {
         <div class="session-rail" ref={rail_ref} onwheel={on_wheel}>
-            // Visible sessions (not paused) - always get numbers starting from 0
             { visible_indices.iter().enumerate().map(|(display_idx, (index, session))| {
                 render_pill(*index, session, Some(display_idx))
             }).collect::<Html>() }
 
-            // Divider (only show if there are paused sessions)
             {
                 if paused_count > 0 {
                     let toggle_class = classes!(
@@ -250,8 +302,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                 }
             }
 
-            // Paused sessions (hidden when collapsed)
-            // When shown, continue numbering from where visible sessions left off
             {
                 if !props.inactive_hidden {
                     paused_indices.iter().enumerate().map(|(display_idx, (index, session))| {
