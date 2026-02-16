@@ -73,9 +73,7 @@ pub enum SessionViewMsg {
     ToggleSendModeDropdown,
     /// Close send mode dropdown (click outside)
     CloseSendModeDropdown,
-    /// Set the send mode
-    SetSendMode(SendMode),
-    /// Send with wiggum mode specifically
+    /// Send with wiggum mode
     SendWiggum,
 }
 
@@ -106,7 +104,6 @@ pub struct SessionView {
     voice_button_ref: NodeRef,
     multi_select_options: HashMap<usize, HashSet<usize>>,
     question_answers: QuestionAnswers,
-    send_mode: SendMode,
     send_mode_dropdown_open: bool,
 }
 
@@ -181,7 +178,6 @@ impl Component for SessionView {
             voice_button_ref: NodeRef::default(),
             multi_select_options: HashMap::new(),
             question_answers: HashMap::new(),
-            send_mode: SendMode::Normal,
             send_mode_dropdown_open: false,
         }
     }
@@ -245,7 +241,7 @@ impl Component for SessionView {
                 self.input_value = value;
                 true
             }
-            SessionViewMsg::SendInput => self.handle_send_input(ctx),
+            SessionViewMsg::SendInput => self.handle_send_input_with_mode(ctx, SendMode::Normal),
             SessionViewMsg::LoadHistory(mut messages, last_timestamp) => {
                 if messages.len() > MAX_MESSAGES_PER_SESSION {
                     let excess = messages.len() - MAX_MESSAGES_PER_SESSION;
@@ -402,15 +398,9 @@ impl Component for SessionView {
                     false
                 }
             }
-            SessionViewMsg::SetSendMode(mode) => {
-                self.send_mode = mode;
-                self.send_mode_dropdown_open = false;
-                true
-            }
             SessionViewMsg::SendWiggum => {
-                self.send_mode = SendMode::Wiggum;
                 self.send_mode_dropdown_open = false;
-                self.handle_send_input(ctx)
+                self.handle_send_input_with_mode(ctx, SendMode::Wiggum)
             }
         }
     }
@@ -541,7 +531,7 @@ impl SessionView {
         }
     }
 
-    fn handle_send_input(&mut self, ctx: &Context<Self>) -> bool {
+    fn handle_send_input_with_mode(&mut self, ctx: &Context<Self>, send_mode: SendMode) -> bool {
         let input = self.input_value.trim().to_string();
         if input.is_empty() {
             return false;
@@ -552,10 +542,6 @@ impl SessionView {
 
         let session_id = ctx.props().session.id;
         ctx.props().on_message_sent.emit(session_id);
-
-        // Capture current send mode and reset to normal after sending
-        let send_mode = self.send_mode;
-        self.send_mode = SendMode::Normal;
 
         if let Some(ref sender) = self.ws_sender {
             let msg = ProxyMessage::ClaudeInput {
@@ -873,20 +859,15 @@ impl SessionView {
             "send-mode-dropdown"
         };
 
-        let button_label = match self.send_mode {
-            SendMode::Normal => "Send",
-            SendMode::Wiggum => "Wiggum",
-        };
-
         html! {
             <div class="send-button-container">
                 <button
                     type="submit"
-                    class={classes!("send-button", (self.send_mode == SendMode::Wiggum).then_some("wiggum-mode"))}
+                    class="send-button"
                     disabled={!self.ws_connected}
                     onclick={on_send}
                 >
-                    { button_label }
+                    { "Send" }
                 </button>
                 <button
                     type="button"
@@ -899,15 +880,15 @@ impl SessionView {
                 <div class={dropdown_class}>
                     <button
                         type="button"
-                        class={classes!("dropdown-option", (self.send_mode == SendMode::Normal).then_some("selected"))}
-                        onclick={link.callback(|_| SessionViewMsg::SetSendMode(SendMode::Normal))}
+                        class="dropdown-option selected"
+                        onclick={link.callback(|_| SessionViewMsg::CloseSendModeDropdown)}
                     >
                         { "Send" }
                         <span class="option-hint">{ "Normal message" }</span>
                     </button>
                     <button
                         type="button"
-                        class={classes!("dropdown-option", "wiggum", (self.send_mode == SendMode::Wiggum).then_some("selected"))}
+                        class="dropdown-option wiggum"
                         onclick={on_wiggum}
                     >
                         <span class="wiggum-label">
