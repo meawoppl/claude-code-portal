@@ -53,8 +53,10 @@ pub fn extract_hostname(session_name: &str) -> &str {
 
 /// Extract folder name from path (last path component)
 pub fn extract_folder(path: &str) -> &str {
-    path.rsplit('/')
+    let trimmed = path.trim_end_matches('/');
+    trimmed
+        .rsplit('/')
         .next()
         .filter(|s| !s.is_empty())
-        .unwrap_or(path)
+        .unwrap_or(trimmed)
 }

@@ -92,13 +92,19 @@ pub struct DirectoryQuery {
     pub path: String,
 }
 
+#[derive(serde::Serialize)]
+pub struct DirectoryListingResponse {
+    pub entries: Vec<DirectoryEntry>,
+    pub resolved_path: Option<String>,
+}
+
 /// GET /api/launchers/:launcher_id/directories?path=/some/path
 pub async fn list_directories(
     State(app_state): State<Arc<AppState>>,
     cookies: Cookies,
     Path(launcher_id): Path<Uuid>,
     Query(query): Query<DirectoryQuery>,
-) -> Result<Json<Vec<DirectoryEntry>>, StatusCode> {
+) -> Result<Json<DirectoryListingResponse>, StatusCode> {
     let user_id = get_user_id(&app_state, &cookies)?;
 
     // Verify the launcher belongs to this user
@@ -133,12 +139,20 @@ pub async fn list_directories(
     }
 
     match tokio::time::timeout(std::time::Duration::from_secs(5), rx).await {
-        Ok(Ok(ProxyMessage::ListDirectoriesResult { entries, error, .. })) => {
+        Ok(Ok(ProxyMessage::ListDirectoriesResult {
+            entries,
+            error,
+            resolved_path,
+            ..
+        })) => {
             if let Some(err) = error {
                 warn!("Directory listing error: {}", err);
                 return Err(StatusCode::BAD_REQUEST);
             }
-            Ok(Json(entries))
+            Ok(Json(DirectoryListingResponse {
+                entries,
+                resolved_path,
+            }))
         }
         Ok(Ok(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
         Ok(Err(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
