@@ -10,7 +10,7 @@ use uuid::Uuid;
 #[command(name = "claude-portal-launcher")]
 #[command(about = "Persistent daemon that launches claude-portal sessions as in-process tasks")]
 struct Args {
-    /// Backend WebSocket URL (e.g., ws://localhost:3000)
+    /// Backend WebSocket URL (default: wss://txcl.io in release, ws://localhost:3000 in debug)
     #[arg(long)]
     backend_url: Option<String>,
 
@@ -44,11 +44,16 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::load_config();
 
-    // CLI args override config file values
+    // CLI args override config file, which overrides the compile-time default
+    let default_url = if cfg!(debug_assertions) {
+        "ws://localhost:3000"
+    } else {
+        "wss://txcl.io"
+    };
     let backend_url = args
         .backend_url
         .or(config.backend_url)
-        .ok_or_else(|| anyhow::anyhow!("--backend-url is required (or set in config file)"))?;
+        .unwrap_or_else(|| default_url.to_string());
 
     let auth_token = match args.auth_token.or(config.auth_token) {
         Some(token) => Some(token),
