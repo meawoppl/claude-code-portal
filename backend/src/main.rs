@@ -387,6 +387,10 @@ async fn main() -> anyhow::Result<()> {
         )
         // Launcher API routes
         .route("/api/launchers", get(handlers::launchers::list_launchers))
+        .route(
+            "/api/launchers/:launcher_id/directories",
+            get(handlers::launchers::list_directories),
+        )
         .route("/api/launch", post(handlers::launchers::launch_session))
         // Download routes for proxy binary and install script
         .route(

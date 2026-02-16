@@ -16,7 +16,7 @@ use shared::ProxyMessage;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tower_cookies::Cookies;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
@@ -55,6 +55,7 @@ pub struct SessionManager {
     pending_messages: Arc<DashMap<SessionId, VecDeque<PendingMessage>>>,
     pub pending_truncations: Arc<DashSet<Uuid>>,
     pub launchers: Arc<DashMap<Uuid, LauncherConnection>>,
+    pub pending_dir_requests: Arc<DashMap<Uuid, oneshot::Sender<ProxyMessage>>>,
 }
 
 impl Default for SessionManager {
@@ -67,6 +68,7 @@ impl Default for SessionManager {
             pending_messages: Arc::new(DashMap::new()),
             pending_truncations: Arc::new(DashSet::new()),
             launchers: Arc::new(DashMap::new()),
+            pending_dir_requests: Arc::new(DashMap::new()),
         }
     }
 }
@@ -268,6 +270,18 @@ impl SessionManager {
             }
         }
         false
+    }
+
+    pub fn register_dir_request(&self, request_id: Uuid) -> oneshot::Receiver<ProxyMessage> {
+        let (tx, rx) = oneshot::channel();
+        self.pending_dir_requests.insert(request_id, tx);
+        rx
+    }
+
+    pub fn complete_dir_request(&self, request_id: Uuid, msg: ProxyMessage) {
+        if let Some((_, tx)) = self.pending_dir_requests.remove(&request_id) {
+            let _ = tx.send(msg);
+        }
     }
 }
 

@@ -299,6 +299,17 @@ pub enum ProxyMessage {
         session_id: Uuid,
         exit_code: Option<i32>,
     },
+
+    /// Request directory listing from a launcher (backend -> launcher)
+    ListDirectories { request_id: Uuid, path: String },
+
+    /// Directory listing response (launcher -> backend)
+    ListDirectoriesResult {
+        request_id: Uuid,
+        #[serde(default)]
+        entries: Vec<DirectoryEntry>,
+        error: Option<String>,
+    },
 }
 
 fn default_language_code() -> String {
@@ -340,6 +351,13 @@ pub enum SendMode {
     /// Wiggum mode - iterative autonomous loop until completion
     /// Proxy will re-send the prompt after each result until Claude responds with "DONE"
     Wiggum,
+}
+
+/// A directory entry returned by the launcher's filesystem listing
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DirectoryEntry {
+    pub name: String,
+    pub is_dir: bool,
 }
 
 /// Info about a connected launcher daemon

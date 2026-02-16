@@ -349,7 +349,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 2rem;
-    max-width: 480px;
+    max-width: 540px;
     width: 90%;
     animation: scaleIn 0.2s ease-out;
 }
@@ -437,7 +437,6 @@
     font-size: 1rem;
     font-weight: 500;
     cursor: pointer;
-    margin-top: 0.5rem;
 }
 
 .launch-button:hover:not(:disabled) {
@@ -449,52 +448,144 @@
     cursor: not-allowed;
 }
 
-.launcher-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.launcher-card {
+.launcher-select {
+    width: 100%;
     padding: 0.6rem 0.75rem;
     background: var(--bg-dark);
     border: 1px solid var(--border);
     border-radius: 6px;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-}
-
-.launcher-card:hover {
-    border-color: var(--text-muted);
-}
-
-.launcher-card.selected {
-    border-color: var(--accent);
-    background: rgba(125, 174, 255, 0.05);
-}
-
-.launcher-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.launcher-card-name {
     color: var(--text-primary);
     font-size: 0.95rem;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.launcher-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.launcher-subtitle {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: 0.3rem;
+}
+
+.dir-path-input {
+    margin-bottom: 0.4rem;
+}
+
+.dir-breadcrumb {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.15rem;
+    padding: 0.3rem 0;
+    font-size: 0.8rem;
+    font-family: 'Courier New', Consolas, monospace;
+}
+
+.dir-breadcrumb-sep {
+    color: var(--text-muted);
+}
+
+.dir-breadcrumb-seg {
+    color: var(--accent);
+    text-decoration: none;
+    padding: 0.1rem 0.2rem;
+    border-radius: 3px;
+}
+
+.dir-breadcrumb-seg:hover {
+    background: rgba(125, 174, 255, 0.1);
+}
+
+.dir-breadcrumb-seg.active {
+    color: var(--text-primary);
     font-weight: 500;
 }
 
-.launcher-card-sessions {
-    color: var(--text-muted);
-    font-size: 0.8rem;
+.dir-browser {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-dark);
+    max-height: 240px;
+    overflow-y: auto;
 }
 
-.launcher-card-hostname {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
+.dir-entry {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    cursor: default;
+    font-size: 0.9rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.dir-entry:last-child {
+    border-bottom: none;
+}
+
+.dir-entry-folder {
+    cursor: pointer;
+}
+
+.dir-entry-folder:hover {
+    background: rgba(125, 174, 255, 0.06);
+}
+
+.dir-entry-icon {
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.dir-entry-name {
+    color: var(--text-primary);
     font-family: 'Courier New', Consolas, monospace;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dir-entry-file .dir-entry-name {
+    color: var(--text-secondary);
+}
+
+.dir-loading,
+.dir-error-msg,
+.dir-empty {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.dir-error-msg {
+    color: var(--error);
+}
+
+.launch-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.launch-button-cancel {
+    padding: 0.75rem 1.5rem;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.launch-button-cancel:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
 }
 

@@ -196,6 +196,11 @@ fn handle_launcher_message(text: &str, launcher_id: Uuid, user_id: Uuid, app_sta
             info!("Proxy exited: session={}, code={:?}", session_id, exit_code);
             app_state.session_manager.broadcast_to_user(&user_id, msg);
         }
+        ProxyMessage::ListDirectoriesResult { request_id, .. } => {
+            app_state
+                .session_manager
+                .complete_dir_request(request_id, msg);
+        }
         _ => {}
     }
 }
