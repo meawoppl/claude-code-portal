@@ -320,7 +320,7 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                                 let selected = *selected_launcher == Some(l.launcher_id);
                                 html! {
                                     <option value={l.launcher_id.to_string()} {selected}>
-                                        { format!("{} — {}", l.launcher_name, l.hostname) }
+                                        { &l.launcher_name }
                                     </option>
                                 }
                             }).collect::<Html>() }
