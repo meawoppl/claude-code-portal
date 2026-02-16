@@ -296,6 +296,11 @@
     background: rgba(247, 118, 142, 0.15);
 }
 
+.pill-menu-option.stop.confirming {
+    background: rgba(247, 118, 142, 0.2);
+    font-weight: 600;
+}
+
 .pill-menu-option.pause.active {
     color: var(--success);
 }
