@@ -149,7 +149,35 @@ type WsWrite = futures_util::stream::SplitSink<
 >;
 
 fn list_directory(path: &str, request_id: Uuid) -> ProxyMessage {
-    let dir = std::path::Path::new(path);
+    // Resolve ~ to home directory
+    let resolved = if path == "~" || path == "~/" {
+        dirs::home_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "/".to_string())
+    } else if let Some(rest) = path.strip_prefix("~/") {
+        dirs::home_dir()
+            .map(|p| format!("{}/{}", p.to_string_lossy(), rest))
+            .unwrap_or_else(|| format!("/{}", rest))
+    } else {
+        path.to_string()
+    };
+
+    // Split into (dir_to_list, filter_prefix)
+    // If the path ends with '/', list the directory with no filter
+    // Otherwise, treat the last component as a prefix filter
+    let (dir_path, filter) = if resolved.ends_with('/') || resolved == "/" {
+        (resolved.as_str(), "")
+    } else {
+        let p = std::path::Path::new(&resolved);
+        match (p.parent(), p.file_name()) {
+            (Some(parent), Some(fname)) => {
+                (parent.to_str().unwrap_or("/"), fname.to_str().unwrap_or(""))
+            }
+            _ => (resolved.as_str(), ""),
+        }
+    };
+
+    let dir = std::path::Path::new(dir_path);
     let read_dir = match std::fs::read_dir(dir) {
         Ok(rd) => rd,
         Err(e) => {
@@ -157,14 +185,19 @@ fn list_directory(path: &str, request_id: Uuid) -> ProxyMessage {
                 request_id,
                 entries: vec![],
                 error: Some(e.to_string()),
+                resolved_path: Some(resolved),
             };
         }
     };
 
+    let filter_lower = filter.to_lowercase();
     let mut entries: Vec<shared::DirectoryEntry> = Vec::new();
     for entry in read_dir.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
+            continue;
+        }
+        if !filter_lower.is_empty() && !name.to_lowercase().starts_with(&filter_lower) {
             continue;
         }
         let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
@@ -174,10 +207,18 @@ fn list_directory(path: &str, request_id: Uuid) -> ProxyMessage {
     // Sort: directories first, then alphabetical
     entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
 
+    // Return the dir_path as resolved (not including the filter fragment)
+    let resolved_dir = if dir_path.ends_with('/') || dir_path == "/" {
+        dir_path.to_string()
+    } else {
+        format!("{}/", dir_path)
+    };
+
     ProxyMessage::ListDirectoriesResult {
         request_id,
         entries,
         error: None,
+        resolved_path: Some(resolved_dir),
     }
 }
 

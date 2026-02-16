@@ -1,11 +1,18 @@
 use gloo::timers::callback::Timeout;
 use gloo_net::http::Request;
+use serde::Deserialize;
 use shared::{DirectoryEntry, LauncherInfo};
 use std::rc::Rc;
 use uuid::Uuid;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
+
+#[derive(Deserialize)]
+struct DirectoryListingResponse {
+    entries: Vec<DirectoryEntry>,
+    resolved_path: Option<String>,
+}
 
 #[derive(Properties, PartialEq)]
 pub struct LaunchDialogProps {
@@ -16,7 +23,7 @@ pub struct LaunchDialogProps {
 pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
     let launchers = use_state(Vec::<LauncherInfo>::new);
     let selected_launcher = use_state(|| None::<Uuid>);
-    let current_path = use_state(|| "/".to_string());
+    let current_path = use_state(|| "~".to_string());
     let dir_entries = use_state(Vec::<DirectoryEntry>::new);
     let dir_loading = use_state(|| false);
     let dir_error = use_state(|| None::<String>);
@@ -41,10 +48,10 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                         if let Some(first) = data.first() {
                             let lid = first.launcher_id;
                             selected_launcher.set(Some(lid));
-                            // Fetch initial directory listing
+                            // Fetch initial directory listing (home dir)
                             fetch_directories(
                                 lid,
-                                "/".to_string(),
+                                "~".to_string(),
                                 current_path,
                                 dir_entries,
                                 dir_loading,
@@ -134,7 +141,7 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
             if let Some(select) = e.target_dyn_into::<web_sys::HtmlSelectElement>() {
                 if let Ok(id) = select.value().parse::<Uuid>() {
                     selected_launcher.set(Some(id));
-                    let path = "/".to_string();
+                    let path = "~".to_string();
                     current_path.set(path.clone());
                     fetch_directories(
                         id,
@@ -435,9 +442,14 @@ fn fetch_directories(
         );
         match Request::get(&url).send().await {
             Ok(resp) if resp.ok() => {
-                if let Ok(entries) = resp.json::<Vec<DirectoryEntry>>().await {
-                    dir_entries.set(entries);
-                    current_path.set(path);
+                if let Ok(listing) = resp.json::<DirectoryListingResponse>().await {
+                    dir_entries.set(listing.entries);
+                    // Use the resolved path from the launcher (handles ~ expansion)
+                    if let Some(resolved) = listing.resolved_path {
+                        current_path.set(resolved);
+                    } else {
+                        current_path.set(path);
+                    }
                 } else {
                     dir_error.set(Some("Failed to parse response".to_string()));
                 }

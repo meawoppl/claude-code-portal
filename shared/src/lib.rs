@@ -309,6 +309,8 @@ pub enum ProxyMessage {
         #[serde(default)]
         entries: Vec<DirectoryEntry>,
         error: Option<String>,
+        #[serde(default)]
+        resolved_path: Option<String>,
     },
 }
 
