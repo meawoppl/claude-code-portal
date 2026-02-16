@@ -46,26 +46,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         });
     }
 
-    // Close menu on any click outside
-    {
-        let menu_session = menu_session.clone();
-        let is_open = (*menu_session).is_some();
-        use_effect_with(is_open, move |is_open| {
-            let listener = if *is_open {
-                Some(gloo::events::EventListener::new(
-                    &gloo::utils::document(),
-                    "click",
-                    move |_| {
-                        menu_session.set(None);
-                    },
-                ))
-            } else {
-                None
-            };
-            move || drop(listener)
-        });
-    }
-
     // Handle wheel event to translate vertical scroll to horizontal
     let on_wheel = {
         let rail_ref = rail_ref.clone();
@@ -156,21 +136,29 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         let (left, top) = *menu_pos;
         let style = format!("left: {}px; top: {}px;", left, top);
 
+        let on_close_overlay = {
+            let menu_session = menu_session.clone();
+            Callback::from(move |_: MouseEvent| {
+                menu_session.set(None);
+            })
+        };
+
         html! {
-            <div class="pill-dropdown open" {style}
-                onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}
-            >
-                { stop_option }
-                <button
-                    type="button"
-                    class={classes!("pill-menu-option", "pause", is_paused.then_some("active"))}
-                    onclick={on_pause}
-                >
-                    { pause_label }
-                    <span class="option-hint">{ pause_hint }</span>
-                </button>
-                { leave_option }
-            </div>
+            <>
+                <div class="pill-dropdown-overlay" onclick={on_close_overlay} />
+                <div class="pill-dropdown" {style}>
+                    { stop_option }
+                    <button
+                        type="button"
+                        class={classes!("pill-menu-option", "pause", is_paused.then_some("active"))}
+                        onclick={on_pause}
+                    >
+                        { pause_label }
+                        <span class="option-hint">{ pause_hint }</span>
+                    </button>
+                    { leave_option }
+                </div>
+            </>
         }
     } else {
         html! {}
@@ -197,11 +185,15 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             let session_id = session.id;
             Callback::from(move |e: MouseEvent| {
                 e.stop_propagation();
-                if let Some(target) = e.current_target() {
-                    if let Some(el) = target.dyn_ref::<Element>() {
-                        let rect = el.get_bounding_client_rect();
-                        menu_pos.set((rect.left() as i32, rect.bottom() as i32 + 4));
-                    }
+                // Toggle: if already open for this session, close it
+                if *menu_session == Some(session_id) {
+                    menu_session.set(None);
+                    return;
+                }
+                // Compute position from the clicked button
+                if let Some(el) = e.target_dyn_into::<HtmlElement>() {
+                    let rect = el.get_bounding_client_rect();
+                    menu_pos.set((rect.left() as i32, rect.bottom() as i32 + 4));
                 }
                 menu_session.set(Some(session_id));
             })

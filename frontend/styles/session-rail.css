@@ -250,6 +250,13 @@
     background: rgba(122, 162, 247, 0.2);
 }
 
+/* Invisible overlay to catch clicks outside the dropdown */
+.pill-dropdown-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+}
+
 /* Pill dropdown menu - rendered outside the rail with fixed positioning */
 .pill-dropdown {
     position: fixed;
@@ -257,15 +264,11 @@
     border: 1px solid var(--border);
     border-radius: 6px;
     min-width: 160px;
-    display: none;
+    display: flex;
     flex-direction: column;
     overflow: hidden;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     z-index: 100;
-}
-
-.pill-dropdown.open {
-    display: flex;
 }
 
 .pill-menu-option {
