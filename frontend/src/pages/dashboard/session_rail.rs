@@ -29,8 +29,8 @@ pub struct SessionRailProps {
 #[function_component(SessionRail)]
 pub fn session_rail(props: &SessionRailProps) -> Html {
     let rail_ref = use_node_ref();
-    let context_menu_session = use_state(|| None::<Uuid>);
-    let menu_position = use_state(|| (0.0_f64, 0.0_f64));
+    let menu_session = use_state(|| None::<Uuid>);
+    let menu_pos = use_state(|| (0i32, 0i32));
 
     // Scroll focused session into view
     {
@@ -46,17 +46,17 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         });
     }
 
-    // Close context menu on any click outside
+    // Close menu on any click outside
     {
-        let context_menu_session = context_menu_session.clone();
-        let is_open = (*context_menu_session).is_some();
+        let menu_session = menu_session.clone();
+        let is_open = (*menu_session).is_some();
         use_effect_with(is_open, move |is_open| {
             let listener = if *is_open {
                 Some(gloo::events::EventListener::new(
                     &gloo::utils::document(),
                     "click",
                     move |_| {
-                        context_menu_session.set(None);
+                        menu_session.set(None);
                     },
                 ))
             } else {
@@ -78,6 +78,104 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         })
     };
 
+    // Find the session whose menu is open (for rendering the floating dropdown)
+    let open_session: Option<&SessionInfo> =
+        (*menu_session).and_then(|id| props.sessions.iter().find(|s| s.id == id));
+
+    // Pre-compute the floating dropdown menu (rendered outside the rail)
+    let floating_menu = if let Some(session) = open_session {
+        let is_paused = props.paused_sessions.contains(&session.id);
+        let is_connected = props.connected_sessions.contains(&session.id);
+
+        let on_stop = {
+            let on_stop = props.on_stop.clone();
+            let session_id = session.id;
+            let menu_session = menu_session.clone();
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                on_stop.emit(session_id);
+                menu_session.set(None);
+            })
+        };
+
+        let on_pause = {
+            let on_toggle_pause = props.on_toggle_pause.clone();
+            let session_id = session.id;
+            let menu_session = menu_session.clone();
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                on_toggle_pause.emit(session_id);
+                menu_session.set(None);
+            })
+        };
+
+        let on_leave = {
+            let on_leave = props.on_leave.clone();
+            let session_id = session.id;
+            let menu_session = menu_session.clone();
+            Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();
+                on_leave.emit(session_id);
+                menu_session.set(None);
+            })
+        };
+
+        let stop_option = if is_connected && session.status == shared::SessionStatus::Active {
+            html! {
+                <button type="button" class="pill-menu-option stop" onclick={on_stop}>
+                    { "Stop Session" }
+                    <span class="option-hint">{ "Terminate process" }</span>
+                </button>
+            }
+        } else {
+            html! {}
+        };
+
+        let pause_label = if is_paused {
+            "Unpause Session"
+        } else {
+            "Pause Session"
+        };
+        let pause_hint = if is_paused {
+            "Resume rotation"
+        } else {
+            "Skip in rotation"
+        };
+
+        let leave_option = if session.my_role != "owner" {
+            html! {
+                <button type="button" class="pill-menu-option leave" onclick={on_leave}>
+                    { "Leave Session" }
+                    <span class="option-hint">{ "Remove from your list" }</span>
+                </button>
+            }
+        } else {
+            html! {}
+        };
+
+        let (left, top) = *menu_pos;
+        let style = format!("left: {}px; top: {}px;", left, top);
+
+        html! {
+            <div class="pill-dropdown open" {style}
+                onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}
+            >
+                { stop_option }
+                <button
+                    type="button"
+                    class={classes!("pill-menu-option", "pause", is_paused.then_some("active"))}
+                    onclick={on_pause}
+                >
+                    { pause_label }
+                    <span class="option-hint">{ pause_hint }</span>
+                </button>
+                { leave_option }
+            </div>
+        }
+    } else {
+        html! {}
+    };
+
     // Helper to render a single session pill
     let render_pill = |index: usize,
                        session: &SessionInfo,
@@ -87,7 +185,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         let is_awaiting = props.awaiting_sessions.contains(&session.id);
         let is_paused = props.paused_sessions.contains(&session.id);
         let is_connected = props.connected_sessions.contains(&session.id);
-        let is_menu_open = *context_menu_session == Some(session.id);
 
         let on_click = {
             let on_select = props.on_select.clone();
@@ -95,51 +192,18 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         };
 
         let on_toggle_menu = {
-            let context_menu_session = context_menu_session.clone();
-            let menu_position = menu_position.clone();
+            let menu_session = menu_session.clone();
+            let menu_pos = menu_pos.clone();
             let session_id = session.id;
             Callback::from(move |e: MouseEvent| {
                 e.stop_propagation();
                 if let Some(target) = e.current_target() {
                     if let Some(el) = target.dyn_ref::<Element>() {
                         let rect = el.get_bounding_client_rect();
-                        menu_position.set((rect.left(), rect.bottom() + 4.0));
+                        menu_pos.set((rect.left() as i32, rect.bottom() as i32 + 4));
                     }
                 }
-                context_menu_session.set(Some(session_id));
-            })
-        };
-
-        let on_pause = {
-            let on_toggle_pause = props.on_toggle_pause.clone();
-            let session_id = session.id;
-            let context_menu_session = context_menu_session.clone();
-            Callback::from(move |e: MouseEvent| {
-                e.stop_propagation();
-                on_toggle_pause.emit(session_id);
-                context_menu_session.set(None);
-            })
-        };
-
-        let on_leave = {
-            let on_leave = props.on_leave.clone();
-            let session_id = session.id;
-            let context_menu_session = context_menu_session.clone();
-            Callback::from(move |e: MouseEvent| {
-                e.stop_propagation();
-                on_leave.emit(session_id);
-                context_menu_session.set(None);
-            })
-        };
-
-        let on_stop = {
-            let on_stop = props.on_stop.clone();
-            let session_id = session.id;
-            let context_menu_session = context_menu_session.clone();
-            Callback::from(move |e: MouseEvent| {
-                e.stop_propagation();
-                on_stop.emit(session_id);
-                context_menu_session.set(None);
+                menu_session.set(Some(session_id));
             })
         };
 
@@ -173,62 +237,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                 .map(|n| format!("{}", n + 1))
         } else {
             None
-        };
-
-        // Pre-compute context menu HTML
-        let context_menu_html = if is_menu_open {
-            let stop_option = if is_connected && session.status == shared::SessionStatus::Active {
-                html! {
-                    <button type="button" class="context-menu-option stop" onclick={on_stop}>
-                        { "Stop Session" }
-                        <span class="option-hint">{ "Terminate process" }</span>
-                    </button>
-                }
-            } else {
-                html! {}
-            };
-
-            let pause_label = if is_paused {
-                "Unpause Session"
-            } else {
-                "Pause Session"
-            };
-            let pause_hint = if is_paused {
-                "Resume rotation"
-            } else {
-                "Skip in rotation"
-            };
-
-            let leave_option = if session.my_role != "owner" {
-                html! {
-                    <button type="button" class="context-menu-option leave" onclick={on_leave}>
-                        { "Leave Session" }
-                        <span class="option-hint">{ "Remove from your list" }</span>
-                    </button>
-                }
-            } else {
-                html! {}
-            };
-
-            let (left, top) = *menu_position;
-            let style = format!("left: {}px; top: {}px;", left, top);
-
-            html! {
-                <div class="pill-context-menu" {style} onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
-                    { stop_option }
-                    <button
-                        type="button"
-                        class={classes!("context-menu-option", "pause", is_paused.then_some("active"))}
-                        onclick={on_pause}
-                    >
-                        { pause_label }
-                        <span class="option-hint">{ pause_hint }</span>
-                    </button>
-                    { leave_option }
-                </div>
-            }
-        } else {
-            html! {}
         };
 
         html! {
@@ -272,7 +280,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                 <button type="button" class="pill-menu-toggle" onclick={on_toggle_menu}>
                     { "▼" }
                 </button>
-                { context_menu_html }
             </div>
         }
     };
@@ -288,43 +295,46 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
     let visible_count = visible_indices.len();
 
     html! {
-        <div class="session-rail" ref={rail_ref} onwheel={on_wheel}>
-            { visible_indices.iter().enumerate().map(|(display_idx, (index, session))| {
-                render_pill(*index, session, Some(display_idx))
-            }).collect::<Html>() }
+        <>
+            <div class="session-rail" ref={rail_ref} onwheel={on_wheel}>
+                { visible_indices.iter().enumerate().map(|(display_idx, (index, session))| {
+                    render_pill(*index, session, Some(display_idx))
+                }).collect::<Html>() }
 
-            {
-                if paused_count > 0 {
-                    let toggle_class = classes!(
-                        "session-rail-divider",
-                        if props.inactive_hidden { Some("collapsed") } else { None }
-                    );
-                    html! {
-                        <div class={toggle_class} onclick={props.on_toggle_inactive_hidden.clone()}>
-                            <span class="divider-line"></span>
-                            <button class="divider-toggle" title={if props.inactive_hidden { "Show paused sessions" } else { "Hide paused sessions" }}>
-                                { if props.inactive_hidden {
-                                    format!("▶ {}", paused_count)
-                                } else {
-                                    "◀".to_string()
-                                }}
-                            </button>
-                        </div>
+                {
+                    if paused_count > 0 {
+                        let toggle_class = classes!(
+                            "session-rail-divider",
+                            if props.inactive_hidden { Some("collapsed") } else { None }
+                        );
+                        html! {
+                            <div class={toggle_class} onclick={props.on_toggle_inactive_hidden.clone()}>
+                                <span class="divider-line"></span>
+                                <button class="divider-toggle" title={if props.inactive_hidden { "Show paused sessions" } else { "Hide paused sessions" }}>
+                                    { if props.inactive_hidden {
+                                        format!("▶ {}", paused_count)
+                                    } else {
+                                        "◀".to_string()
+                                    }}
+                                </button>
+                            </div>
+                        }
+                    } else {
+                        html! {}
                     }
-                } else {
-                    html! {}
                 }
-            }
 
-            {
-                if !props.inactive_hidden {
-                    paused_indices.iter().enumerate().map(|(display_idx, (index, session))| {
-                        render_pill(*index, session, Some(visible_count + display_idx))
-                    }).collect::<Html>()
-                } else {
-                    html! {}
+                {
+                    if !props.inactive_hidden {
+                        paused_indices.iter().enumerate().map(|(display_idx, (index, session))| {
+                            render_pill(*index, session, Some(visible_count + display_idx))
+                        }).collect::<Html>()
+                    } else {
+                        html! {}
+                    }
                 }
-            }
-        </div>
+            </div>
+            { floating_menu }
+        </>
     }
 }
