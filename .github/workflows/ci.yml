@@ -259,3 +259,49 @@ jobs:
           name: launcher-darwin-aarch64
           path: target/release/claude-portal-launcher
 
+  build-proxy-windows:
+    name: Build Proxy (Windows x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.92.0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "proxy-windows"
+
+      - name: Build proxy
+        run: cargo build -p claude-portal --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxy-windows-x86_64
+          path: target/release/claude-portal.exe
+
+  build-launcher-windows:
+    name: Build Launcher (Windows x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.92.0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "launcher-windows"
+
+      - name: Build launcher
+        run: cargo build -p claude-portal-launcher --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-windows-x86_64
+          path: target/release/claude-portal-launcher.exe
+
