@@ -4,6 +4,7 @@ use crate::utils;
 use shared::SessionInfo;
 use std::collections::HashSet;
 use uuid::Uuid;
+use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlElement, WheelEvent};
 use yew::prelude::*;
 
@@ -29,6 +30,7 @@ pub struct SessionRailProps {
 pub fn session_rail(props: &SessionRailProps) -> Html {
     let rail_ref = use_node_ref();
     let context_menu_session = use_state(|| None::<Uuid>);
+    let menu_position = use_state(|| (0.0_f64, 0.0_f64));
 
     // Scroll focused session into view
     {
@@ -94,9 +96,16 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
 
         let on_toggle_menu = {
             let context_menu_session = context_menu_session.clone();
+            let menu_position = menu_position.clone();
             let session_id = session.id;
             Callback::from(move |e: MouseEvent| {
                 e.stop_propagation();
+                if let Some(target) = e.current_target() {
+                    if let Some(el) = target.dyn_ref::<Element>() {
+                        let rect = el.get_bounding_client_rect();
+                        menu_position.set((rect.left(), rect.bottom() + 4.0));
+                    }
+                }
                 context_menu_session.set(Some(session_id));
             })
         };
@@ -201,8 +210,11 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                 html! {}
             };
 
+            let (left, top) = *menu_position;
+            let style = format!("left: {}px; top: {}px;", left, top);
+
             html! {
-                <div class="pill-context-menu" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                <div class="pill-context-menu" {style} onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                     { stop_option }
                     <button
                         type="button"
