@@ -65,6 +65,12 @@ impl ConfigLock {
     /// Uses a PID-style lockfile with retry logic
     pub fn acquire(config_path: &Path) -> Result<Self> {
         let lock_path = config_path.with_extension("lock");
+
+        // Ensure parent directory exists before creating lock file
+        if let Some(parent) = lock_path.parent() {
+            fs::create_dir_all(parent).context("Failed to create config directory")?;
+        }
+
         let max_attempts = 50; // 5 seconds total with 100ms sleep
         let mut attempts = 0;
 
