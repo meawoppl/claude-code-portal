@@ -23,6 +23,8 @@ wasm-bindgen-futures = { workspace = true }
 web-sys = { workspace = true, features = [
     "Window",
     "Document",
+    "Element",
+    "DomRect",
     "HtmlElement",
     "HtmlSelectElement",
     "Location",

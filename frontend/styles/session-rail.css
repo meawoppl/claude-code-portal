@@ -9,7 +9,6 @@
     background: var(--bg-darker);
     border-bottom: 1px solid var(--border);
     overflow-x: auto;
-    overflow-y: visible;
     scroll-behavior: smooth;
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
@@ -244,11 +243,6 @@
     border-radius: 4px;
     transition: color 0.15s, background 0.15s;
     flex-shrink: 0;
-    opacity: 0;
-}
-
-.session-pill:hover .pill-menu-toggle {
-    opacity: 1;
 }
 
 .pill-menu-toggle:hover {
@@ -256,12 +250,9 @@
     background: rgba(122, 162, 247, 0.2);
 }
 
-/* Pill dropdown menu */
+/* Pill dropdown menu - uses fixed positioning to escape overflow clipping */
 .pill-context-menu {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    margin-top: 4px;
+    position: fixed;
     background: var(--bg-darker);
     border: 1px solid var(--border);
     border-radius: 6px;
