@@ -148,6 +148,39 @@ type WsWrite = futures_util::stream::SplitSink<
     Message,
 >;
 
+fn list_directory(path: &str, request_id: Uuid) -> ProxyMessage {
+    let dir = std::path::Path::new(path);
+    let read_dir = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(e) => {
+            return ProxyMessage::ListDirectoriesResult {
+                request_id,
+                entries: vec![],
+                error: Some(e.to_string()),
+            };
+        }
+    };
+
+    let mut entries: Vec<shared::DirectoryEntry> = Vec::new();
+    for entry in read_dir.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+        entries.push(shared::DirectoryEntry { name, is_dir });
+    }
+
+    // Sort: directories first, then alphabetical
+    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
+
+    ProxyMessage::ListDirectoriesResult {
+        request_id,
+        entries,
+        error: None,
+    }
+}
+
 async fn handle_message(text: &str, write: &mut WsWrite, process_manager: &mut ProcessManager) {
     let msg: ProxyMessage = match serde_json::from_str(text) {
         Ok(m) => m,
@@ -204,6 +237,12 @@ async fn handle_message(text: &str, write: &mut WsWrite, process_manager: &mut P
         ProxyMessage::StopSession { session_id } => {
             info!("Stop request for session {}", session_id);
             process_manager.stop(&session_id).await;
+        }
+        ProxyMessage::ListDirectories { request_id, path } => {
+            let response = list_directory(&path, request_id);
+            if let Ok(json) = serde_json::to_string(&response) {
+                let _ = write.send(Message::Text(json)).await;
+            }
         }
         ProxyMessage::ServerShutdown { reason, .. } => {
             info!("Server shutting down: {}", reason);

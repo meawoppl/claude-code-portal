@@ -1,9 +1,13 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    Json,
+};
 use serde::Deserialize;
-use shared::{LauncherInfo, ProxyMessage};
+use shared::{DirectoryEntry, LauncherInfo, ProxyMessage};
 use std::sync::Arc;
 use tower_cookies::Cookies;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::AppState;
@@ -81,6 +85,72 @@ pub async fn launch_session(
     );
 
     Ok(Json(LaunchResponse { request_id }))
+}
+
+#[derive(Deserialize)]
+pub struct DirectoryQuery {
+    pub path: String,
+}
+
+/// GET /api/launchers/:launcher_id/directories?path=/some/path
+pub async fn list_directories(
+    State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
+    Path(launcher_id): Path<Uuid>,
+    Query(query): Query<DirectoryQuery>,
+) -> Result<Json<Vec<DirectoryEntry>>, StatusCode> {
+    let user_id = get_user_id(&app_state, &cookies)?;
+
+    // Verify the launcher belongs to this user
+    let launcher = app_state
+        .session_manager
+        .launchers
+        .get(&launcher_id)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    if launcher.user_id != user_id {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    drop(launcher);
+
+    let request_id = Uuid::new_v4();
+    let rx = app_state.session_manager.register_dir_request(request_id);
+
+    let sent = app_state.session_manager.send_to_launcher(
+        &launcher_id,
+        ProxyMessage::ListDirectories {
+            request_id,
+            path: query.path.clone(),
+        },
+    );
+
+    if !sent {
+        app_state
+            .session_manager
+            .pending_dir_requests
+            .remove(&request_id);
+        error!("Failed to send ListDirectories to launcher {}", launcher_id);
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+
+    match tokio::time::timeout(std::time::Duration::from_secs(5), rx).await {
+        Ok(Ok(ProxyMessage::ListDirectoriesResult { entries, error, .. })) => {
+            if let Some(err) = error {
+                warn!("Directory listing error: {}", err);
+                return Err(StatusCode::BAD_REQUEST);
+            }
+            Ok(Json(entries))
+        }
+        Ok(Ok(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Ok(Err(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(_) => {
+            app_state
+                .session_manager
+                .pending_dir_requests
+                .remove(&request_id);
+            warn!("Directory listing timed out for launcher {}", launcher_id);
+            Err(StatusCode::GATEWAY_TIMEOUT)
+        }
+    }
 }
 
 fn mint_launch_token(app_state: &AppState, user_id: Uuid) -> Result<String, StatusCode> {
