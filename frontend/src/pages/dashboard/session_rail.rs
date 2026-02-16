@@ -1,4 +1,7 @@
 //! SessionRail component - Horizontal carousel of session pills
+//!
+//! Dropdown pattern matches the send button: always in DOM, toggled by .open class,
+//! parent page onclick closes it, toggle button uses stop_propagation.
 
 use crate::utils;
 use shared::SessionInfo;
@@ -57,12 +60,26 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         })
     };
 
-    // Find the session whose menu is open (for rendering the floating dropdown)
+    // Find the session whose menu is open
     let open_session: Option<&SessionInfo> =
         (*menu_session).and_then(|id| props.sessions.iter().find(|s| s.id == id));
 
-    // Pre-compute the floating dropdown menu (rendered outside the rail)
-    let floating_menu = if let Some(session) = open_session {
+    // Build dropdown class + style + content (always rendered, toggled by .open class)
+    let is_menu_open = open_session.is_some();
+    let dropdown_class = if is_menu_open {
+        "pill-dropdown open"
+    } else {
+        "pill-dropdown"
+    };
+
+    let (left, top) = *menu_pos;
+    let dropdown_style = if is_menu_open {
+        format!("left: {}px; top: {}px;", left, top)
+    } else {
+        String::new()
+    };
+
+    let dropdown_content = if let Some(session) = open_session {
         let is_paused = props.paused_sessions.contains(&session.id);
         let is_connected = props.connected_sessions.contains(&session.id);
 
@@ -70,8 +87,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             let on_stop = props.on_stop.clone();
             let session_id = session.id;
             let menu_session = menu_session.clone();
-            Callback::from(move |e: MouseEvent| {
-                e.stop_propagation();
+            Callback::from(move |_: MouseEvent| {
                 on_stop.emit(session_id);
                 menu_session.set(None);
             })
@@ -81,8 +97,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             let on_toggle_pause = props.on_toggle_pause.clone();
             let session_id = session.id;
             let menu_session = menu_session.clone();
-            Callback::from(move |e: MouseEvent| {
-                e.stop_propagation();
+            Callback::from(move |_: MouseEvent| {
                 on_toggle_pause.emit(session_id);
                 menu_session.set(None);
             })
@@ -92,8 +107,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             let on_leave = props.on_leave.clone();
             let session_id = session.id;
             let menu_session = menu_session.clone();
-            Callback::from(move |e: MouseEvent| {
-                e.stop_propagation();
+            Callback::from(move |_: MouseEvent| {
                 on_leave.emit(session_id);
                 menu_session.set(None);
             })
@@ -132,31 +146,18 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             html! {}
         };
 
-        let (left, top) = *menu_pos;
-        let style = format!("left: {}px; top: {}px;", left, top);
-
-        let on_close_overlay = {
-            let menu_session = menu_session.clone();
-            Callback::from(move |_: MouseEvent| {
-                menu_session.set(None);
-            })
-        };
-
         html! {
             <>
-                <div class="pill-dropdown-overlay" onclick={on_close_overlay} />
-                <div class="pill-dropdown" {style}>
-                    { stop_option }
-                    <button
-                        type="button"
-                        class={classes!("pill-menu-option", "pause", is_paused.then_some("active"))}
-                        onclick={on_pause}
-                    >
-                        { pause_label }
-                        <span class="option-hint">{ pause_hint }</span>
-                    </button>
-                    { leave_option }
-                </div>
+                { stop_option }
+                <button
+                    type="button"
+                    class={classes!("pill-menu-option", "pause", is_paused.then_some("active"))}
+                    onclick={on_pause}
+                >
+                    { pause_label }
+                    <span class="option-hint">{ pause_hint }</span>
+                </button>
+                { leave_option }
             </>
         }
     } else {
@@ -184,12 +185,10 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             let session_id = session.id;
             Callback::from(move |e: MouseEvent| {
                 e.stop_propagation();
-                // Toggle: if already open for this session, close it
                 if *menu_session == Some(session_id) {
                     menu_session.set(None);
                     return;
                 }
-                // Compute position from the clicked button
                 if let Some(el) = e.target_dyn_into::<HtmlElement>() {
                     let rect = el.get_bounding_client_rect();
                     menu_pos.set((rect.left() as i32, rect.bottom() as i32 + 4));
@@ -285,8 +284,21 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
     let paused_count = paused_indices.len();
     let visible_count = visible_indices.len();
 
+    // Container with position:relative holds the rail + dropdown.
+    // Dropdown uses position:fixed to escape rail overflow clipping.
+    // Dropdown uses display:none/.open pattern (same as send button).
+    // Clicking anywhere in the container closes the dropdown.
+    let on_container_click = {
+        let menu_session = menu_session.clone();
+        Callback::from(move |_: MouseEvent| {
+            if (*menu_session).is_some() {
+                menu_session.set(None);
+            }
+        })
+    };
+
     html! {
-        <>
+        <div class="session-rail-container" onclick={on_container_click}>
             <div class="session-rail" ref={rail_ref} onwheel={on_wheel}>
                 { visible_indices.iter().enumerate().map(|(display_idx, (index, session))| {
                     render_pill(*index, session, Some(display_idx))
@@ -325,7 +337,11 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     }
                 }
             </div>
-            { floating_menu }
-        </>
+            <div class={dropdown_class} style={dropdown_style}
+                onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}
+            >
+                { dropdown_content }
+            </div>
+        </div>
     }
 }
