@@ -233,7 +233,30 @@
     font-weight: 600;
 }
 
-/* Context menu (right-click on pill) */
+/* Pill menu toggle (▼ button) */
+.pill-menu-toggle {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.6rem;
+    cursor: pointer;
+    padding: 0.2rem 0.3rem;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+    flex-shrink: 0;
+    opacity: 0;
+}
+
+.session-pill:hover .pill-menu-toggle {
+    opacity: 1;
+}
+
+.pill-menu-toggle:hover {
+    color: var(--text-primary);
+    background: rgba(122, 162, 247, 0.2);
+}
+
+/* Pill dropdown menu */
 .pill-context-menu {
     position: absolute;
     top: 100%;

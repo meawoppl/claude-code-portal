@@ -92,11 +92,10 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             Callback::from(move |_| on_select.emit(index))
         };
 
-        let on_context_menu = {
+        let on_toggle_menu = {
             let context_menu_session = context_menu_session.clone();
             let session_id = session.id;
             Callback::from(move |e: MouseEvent| {
-                e.prevent_default();
                 e.stop_propagation();
                 context_menu_session.set(Some(session_id));
             })
@@ -221,7 +220,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         };
 
         html! {
-            <div class={pill_class} onclick={on_click} oncontextmenu={on_context_menu} key={session.id.to_string()}>
+            <div class={pill_class} onclick={on_click} key={session.id.to_string()}>
                 {
                     if let Some(num) = &number_annotation {
                         html! { <span class="pill-number">{ num }</span> }
@@ -258,6 +257,9 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                         html! {}
                     }
                 }
+                <button type="button" class="pill-menu-toggle" onclick={on_toggle_menu}>
+                    { "▼" }
+                </button>
                 { context_menu_html }
             </div>
         }
