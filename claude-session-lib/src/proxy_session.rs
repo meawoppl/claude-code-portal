@@ -1381,8 +1381,7 @@ async fn run_main_loop(
                 };
 
                 if let Err(e) = claude_session.respond_permission(&perm_response.request_id, lib_response).await {
-                    error!("Failed to send permission response to Claude: {}", e);
-                    return ConnectionResult::ClaudeExited;
+                    warn!("Permission response failed (stale request?): {}", e);
                 }
             }
 
