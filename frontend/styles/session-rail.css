@@ -250,21 +250,25 @@
     background: rgba(122, 162, 247, 0.2);
 }
 
-/* Pill dropdown menu - uses fixed positioning to escape overflow clipping */
-.pill-context-menu {
+/* Pill dropdown menu - rendered outside the rail with fixed positioning */
+.pill-dropdown {
     position: fixed;
     background: var(--bg-darker);
     border: 1px solid var(--border);
     border-radius: 6px;
     min-width: 160px;
-    display: flex;
+    display: none;
     flex-direction: column;
     overflow: hidden;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     z-index: 100;
 }
 
-.context-menu-option {
+.pill-dropdown.open {
+    display: flex;
+}
+
+.pill-menu-option {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -279,35 +283,35 @@
     transition: background 0.15s;
 }
 
-.context-menu-option:hover {
+.pill-menu-option:hover {
     background: rgba(122, 162, 247, 0.15);
 }
 
-.context-menu-option.stop {
+.pill-menu-option.stop {
     color: var(--error);
 }
 
-.context-menu-option.stop:hover {
+.pill-menu-option.stop:hover {
     background: rgba(247, 118, 142, 0.15);
 }
 
-.context-menu-option.pause.active {
+.pill-menu-option.pause.active {
     color: var(--success);
 }
 
-.context-menu-option.pause.active:hover {
+.pill-menu-option.pause.active:hover {
     background: rgba(158, 206, 106, 0.15);
 }
 
-.context-menu-option.leave {
+.pill-menu-option.leave {
     color: #e0af68;
 }
 
-.context-menu-option.leave:hover {
+.pill-menu-option.leave:hover {
     background: rgba(224, 175, 104, 0.15);
 }
 
-.context-menu-option .option-hint {
+.pill-menu-option .option-hint {
     font-size: 0.7rem;
     font-weight: 400;
     color: var(--text-muted);
