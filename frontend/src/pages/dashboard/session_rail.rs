@@ -4,7 +4,6 @@ use crate::utils;
 use shared::SessionInfo;
 use std::collections::HashSet;
 use uuid::Uuid;
-use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlElement, WheelEvent};
 use yew::prelude::*;
 
