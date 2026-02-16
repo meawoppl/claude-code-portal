@@ -33,6 +33,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
     let rail_ref = use_node_ref();
     let menu_session = use_state(|| None::<Uuid>);
     let menu_pos = use_state(|| (0i32, 0i32));
+    let stop_confirm = use_state(|| false);
 
     // Scroll focused session into view
     {
@@ -87,11 +88,18 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             let on_stop = props.on_stop.clone();
             let session_id = session.id;
             let menu_session = menu_session.clone();
+            let stop_confirm = stop_confirm.clone();
             Callback::from(move |_: MouseEvent| {
-                on_stop.emit(session_id);
-                menu_session.set(None);
+                if *stop_confirm {
+                    on_stop.emit(session_id);
+                    stop_confirm.set(false);
+                    menu_session.set(None);
+                } else {
+                    stop_confirm.set(true);
+                }
             })
         };
+        let confirming_stop = *stop_confirm;
 
         let on_pause = {
             let on_toggle_pause = props.on_toggle_pause.clone();
@@ -113,17 +121,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             })
         };
 
-        let stop_option = if is_connected && session.status == shared::SessionStatus::Active {
-            html! {
-                <button type="button" class="pill-menu-option stop" onclick={on_stop}>
-                    { "Stop Session" }
-                    <span class="option-hint">{ "Terminate process" }</span>
-                </button>
-            }
-        } else {
-            html! {}
-        };
-
         let pause_label = if is_paused {
             "Unpause Session"
         } else {
@@ -133,6 +130,25 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             "Resume rotation"
         } else {
             "Skip in rotation"
+        };
+
+        let stop_option = if is_connected && session.status == shared::SessionStatus::Active {
+            let (stop_label, stop_hint) = if confirming_stop {
+                ("Click again to confirm", "This will terminate the process")
+            } else {
+                ("Stop Session", "Terminate process")
+            };
+            html! {
+                <button type="button"
+                    class={classes!("pill-menu-option", "stop", confirming_stop.then_some("confirming"))}
+                    onclick={on_stop}
+                >
+                    { stop_label }
+                    <span class="option-hint">{ stop_hint }</span>
+                </button>
+            }
+        } else {
+            html! {}
         };
 
         let leave_option = if session.my_role != "owner" {
@@ -148,7 +164,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
 
         html! {
             <>
-                { stop_option }
                 <button
                     type="button"
                     class={classes!("pill-menu-option", "pause", is_paused.then_some("active"))}
@@ -157,6 +172,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     { pause_label }
                     <span class="option-hint">{ pause_hint }</span>
                 </button>
+                { stop_option }
                 { leave_option }
             </>
         }
@@ -182,9 +198,11 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         let on_toggle_menu = {
             let menu_session = menu_session.clone();
             let menu_pos = menu_pos.clone();
+            let stop_confirm = stop_confirm.clone();
             let session_id = session.id;
             Callback::from(move |e: MouseEvent| {
                 e.stop_propagation();
+                stop_confirm.set(false);
                 if *menu_session == Some(session_id) {
                     menu_session.set(None);
                     return;
@@ -290,9 +308,11 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
     // Clicking anywhere in the container closes the dropdown.
     let on_container_click = {
         let menu_session = menu_session.clone();
+        let stop_confirm = stop_confirm.clone();
         Callback::from(move |_: MouseEvent| {
             if (*menu_session).is_some() {
                 menu_session.set(None);
+                stop_confirm.set(false);
             }
         })
     };
