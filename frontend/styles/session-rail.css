@@ -9,6 +9,7 @@
     background: var(--bg-darker);
     border-bottom: 1px solid var(--border);
     overflow-x: auto;
+    overflow-y: visible;
     scroll-behavior: smooth;
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
@@ -173,28 +174,6 @@
     color: var(--text-secondary);
 }
 
-.pill-delete {
-    width: 24px;
-    height: 24px;
-    border: 1px solid var(--border);
-    background: rgba(247, 118, 142, 0.1);
-    color: var(--error);
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.pill-delete:hover {
-    background: var(--error);
-    border-color: var(--error);
-    color: white;
-}
-
 /* Disconnected session (DB status) styling */
 .session-pill.status-disconnected {
     opacity: 0.6;
@@ -254,58 +233,71 @@
     font-weight: 600;
 }
 
-.pill-stop {
-    width: 24px;
-    height: 24px;
+/* Context menu (right-click on pill) */
+.pill-context-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: var(--bg-darker);
     border: 1px solid var(--border);
-    background: rgba(247, 118, 142, 0.1);
-    color: var(--text-secondary);
-    font-size: 10px;
-    cursor: pointer;
-    border-radius: 4px;
-    flex-shrink: 0;
+    border-radius: 6px;
+    min-width: 160px;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 100;
 }
 
-.pill-stop:hover {
-    background: rgba(247, 118, 142, 0.3);
-    border-color: var(--error);
+.context-menu-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0.6rem 0.8rem;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.context-menu-option:hover {
+    background: rgba(122, 162, 247, 0.15);
+}
+
+.context-menu-option.stop {
     color: var(--error);
 }
 
-.pill-pause {
-    width: 24px;
-    height: 24px;
-    border: 1px solid var(--border);
-    background: rgba(122, 162, 247, 0.1);
-    color: var(--text-secondary);
-    font-size: 12px;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.context-menu-option.stop:hover {
+    background: rgba(247, 118, 142, 0.15);
 }
 
-.pill-pause:hover {
-    background: rgba(122, 162, 247, 0.3);
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-.pill-pause.active {
-    background: rgba(122, 162, 247, 0.2);
-    border-color: var(--accent);
-    color: var(--accent);
-}
-
-.pill-pause.active:hover {
-    background: rgba(158, 206, 106, 0.2);
-    border-color: var(--success);
+.context-menu-option.pause.active {
     color: var(--success);
+}
+
+.context-menu-option.pause.active:hover {
+    background: rgba(158, 206, 106, 0.15);
+}
+
+.context-menu-option.leave {
+    color: #e0af68;
+}
+
+.context-menu-option.leave:hover {
+    background: rgba(224, 175, 104, 0.15);
+}
+
+.context-menu-option .option-hint {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-top: 0.1rem;
 }
 
 /* Number annotation for nav mode (1-9 keys) */
@@ -389,24 +381,3 @@
     background: rgba(122, 162, 247, 0.3);
 }
 
-.pill-leave {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 0.9rem;
-    padding: 0.2rem 0.4rem;
-    border-radius: 4px;
-    transition: background 0.15s, color 0.15s;
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-}
-
-.pill-leave:hover {
-    background: rgba(224, 175, 104, 0.2);
-    color: #e0af68;
-}
-
-.pill-leave:active {
-    background: rgba(224, 175, 104, 0.3);
-}
