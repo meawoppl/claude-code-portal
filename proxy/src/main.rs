@@ -129,6 +129,10 @@ struct Args {
     #[arg(long, value_name = "UUID", hide = true)]
     session_id_tag: Option<Uuid>,
 
+    /// Enable debug-level logging for troubleshooting.
+    #[arg(long, short = 'v')]
+    verbose: bool,
+
     /// Arguments to pass through to the claude CLI.
     ///
     /// Everything after -- or unrecognized flags are forwarded to claude.
@@ -136,9 +140,10 @@ struct Args {
     claude_args: Vec<String>,
 }
 
-fn init_tracing(session_id_tag: Option<Uuid>) {
-    let env_filter =
-        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+fn init_tracing(session_id_tag: Option<Uuid>, verbose: bool) {
+    let default_level = if verbose { "debug" } else { "info" };
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| default_level.into());
 
     if let Some(sid) = session_id_tag {
         // Launched by daemon: JSON format with session_id field
@@ -256,7 +261,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    init_tracing(args.session_id_tag);
+    init_tracing(args.session_id_tag, args.verbose);
 
     // Check for and apply pending updates (Windows only)
     // This handles the case where an update was downloaded but couldn't be
