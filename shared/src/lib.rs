@@ -12,6 +12,16 @@ pub mod protocol;
 pub mod api;
 pub use api::{ApiClientConfig, ApiError, CcProxyApi};
 
+/// Default backend URL based on build profile.
+/// Release builds point to `wss://txcl.io`, debug builds to `ws://localhost:3000`.
+pub fn default_backend_url() -> &'static str {
+    if cfg!(debug_assertions) {
+        "ws://localhost:3000"
+    } else {
+        "wss://txcl.io"
+    }
+}
+
 // Re-export claude-codes types for frontend message parsing
 pub use claude_codes::io::{
     ContentBlock, ImageBlock, ImageSource, PermissionSuggestion, TextBlock, ThinkingBlock,

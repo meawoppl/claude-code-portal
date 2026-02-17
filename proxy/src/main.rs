@@ -316,17 +316,12 @@ async fn main() -> Result<()> {
     let (session_id, session_name, resuming) = resolve_session(&args, &cwd)?;
 
     // Resolve backend URL: CLI arg > per-directory config > global default > compile-time default
-    let default_url = if cfg!(debug_assertions) {
-        "ws://localhost:3000"
-    } else {
-        "wss://txcl.io"
-    };
     let backend_url = args
         .backend_url
         .clone()
         .or_else(|| config.get_backend_url(&cwd).map(|s| s.to_string()))
         .or_else(|| config.preferences.default_backend_url.clone())
-        .unwrap_or_else(|| default_url.to_string());
+        .unwrap_or_else(|| shared::default_backend_url().to_string());
 
     // Print startup info
     ui::print_startup_banner();

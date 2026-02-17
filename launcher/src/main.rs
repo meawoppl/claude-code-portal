@@ -45,15 +45,10 @@ async fn main() -> anyhow::Result<()> {
     let config = config::load_config();
 
     // CLI args override config file, which overrides the compile-time default
-    let default_url = if cfg!(debug_assertions) {
-        "ws://localhost:3000"
-    } else {
-        "wss://txcl.io"
-    };
     let backend_url = args
         .backend_url
         .or(config.backend_url)
-        .unwrap_or_else(|| default_url.to_string());
+        .unwrap_or_else(|| shared::default_backend_url().to_string());
 
     let auth_token = match args.auth_token.or(config.auth_token) {
         Some(token) => Some(token),
