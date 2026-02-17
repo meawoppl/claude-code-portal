@@ -555,9 +555,40 @@ impl Session {
         self.buffer.pending_count()
     }
 
+    /// Log the resolved path and version of the claude binary for diagnostics.
+    fn log_claude_info(claude_path: &Path) {
+        if let Ok(full_path) = which::which(claude_path) {
+            tracing::info!("Claude binary: {}", full_path.display());
+        } else {
+            tracing::warn!(
+                "Could not resolve full path for '{}' — using PATH lookup",
+                claude_path.display()
+            );
+        }
+
+        match std::process::Command::new(claude_path)
+            .arg("--version")
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout);
+                tracing::info!("Claude version: {}", version.trim());
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::warn!("claude --version failed: {}", stderr.trim());
+            }
+            Err(e) => {
+                tracing::warn!("Failed to run claude --version: {}", e);
+            }
+        }
+    }
+
     /// Spawn the Claude process
     async fn spawn_claude(config: &SessionConfig) -> Result<AsyncClient, SessionError> {
         let claude_path = config.claude_path.as_deref().unwrap_or(Path::new("claude"));
+
+        Self::log_claude_info(claude_path);
 
         let mut cmd = Command::new(claude_path);
         cmd.arg("--print")

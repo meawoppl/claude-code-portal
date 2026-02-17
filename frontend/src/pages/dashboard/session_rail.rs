@@ -3,6 +3,7 @@
 //! Dropdown pattern matches the send button: always in DOM, toggled by .open class,
 //! parent page onclick closes it, toggle button uses stop_propagation.
 
+use crate::components::ShareDialog;
 use crate::utils;
 use gloo::events::EventListener;
 use shared::SessionInfo;
@@ -37,6 +38,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
     let menu_pos = use_state(|| (0i32, 0i32));
     let stop_confirm = use_state(|| false);
     let copied_id = use_state(|| false);
+    let share_session_id = use_state(|| None::<Uuid>);
 
     // Scroll focused session into view
     {
@@ -218,6 +220,24 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             html! {}
         };
 
+        let share_option = if session.my_role == "owner" {
+            let share_session_id = share_session_id.clone();
+            let session_id = session.id;
+            let menu_session = menu_session.clone();
+            let on_share = Callback::from(move |_: MouseEvent| {
+                share_session_id.set(Some(session_id));
+                menu_session.set(None);
+            });
+            html! {
+                <button type="button" class="pill-menu-option share" onclick={on_share}>
+                    { "Share Session" }
+                    <span class="option-hint">{ "Manage access" }</span>
+                </button>
+            }
+        } else {
+            html! {}
+        };
+
         html! {
             <>
                 <button
@@ -237,6 +257,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     <span class="option-hint">{ pause_hint }</span>
                 </button>
                 { stop_option }
+                { share_option }
                 { leave_option }
             </>
         }
@@ -428,6 +449,15 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             >
                 { dropdown_content }
             </div>
+            {
+                if let Some(session_id) = *share_session_id {
+                    let share_session_id = share_session_id.clone();
+                    let on_close = Callback::from(move |_| share_session_id.set(None));
+                    html! { <ShareDialog {session_id} {on_close} /> }
+                } else {
+                    html! {}
+                }
+            }
         </div>
     }
 }
