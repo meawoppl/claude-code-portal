@@ -175,6 +175,10 @@ pub struct SessionState<'a> {
     pub backoff: Backoff,
     /// Whether this is the first connection attempt
     pub first_connection: bool,
+    /// When the last disconnect occurred (for reporting reconnect duration)
+    pub disconnected_at: Option<Instant>,
+    /// Whether the last disconnect was a graceful server shutdown
+    pub last_disconnect_graceful: bool,
 }
 
 impl<'a> SessionState<'a> {
@@ -205,6 +209,8 @@ impl<'a> SessionState<'a> {
             output_buffer,
             backoff: Backoff::new(),
             first_connection: true,
+            disconnected_at: None,
+            last_disconnect_graceful: false,
         })
     }
 
@@ -263,6 +269,8 @@ pub async fn run_connection_loop(
                 return Ok(LoopResult::SessionNotFound);
             }
             ConnectionResult::Disconnected(duration) => {
+                session.disconnected_at = Some(Instant::now());
+                session.last_disconnect_graceful = false;
                 session.backoff.reset_if_stable(duration);
                 session.persist_buffer().await;
 
@@ -277,6 +285,8 @@ pub async fn run_connection_loop(
                 session.backoff.advance();
             }
             ConnectionResult::ServerShutdown(delay) => {
+                session.disconnected_at = Some(Instant::now());
+                session.last_disconnect_graceful = true;
                 // Graceful shutdown - reset backoff and use server's suggested delay
                 session.backoff.reset();
                 session.persist_buffer().await;
@@ -338,6 +348,48 @@ async fn run_single_connection(session: &mut SessionState<'_>) -> ConnectionResu
                 }
             }
             debug!("Finished replaying pending messages");
+        }
+    }
+
+    // Send a portal message so the frontend shows connection status
+    {
+        let text = if session.first_connection {
+            "Proxy connected".to_string()
+        } else {
+            let duration_str = session
+                .disconnected_at
+                .map(|t| {
+                    let secs = t.elapsed().as_secs();
+                    if secs < 60 {
+                        format!("{}s", secs)
+                    } else {
+                        format!("{}m {}s", secs / 60, secs % 60)
+                    }
+                })
+                .unwrap_or_default();
+            let reason = if session.last_disconnect_graceful {
+                "server restart"
+            } else {
+                "unexpected disconnect"
+            };
+            if duration_str.is_empty() {
+                format!("Proxy reconnected ({})", reason)
+            } else {
+                format!("Proxy reconnected after {} ({})", duration_str, reason)
+            }
+        };
+        let portal_content = shared::PortalMessage::text(text).to_json();
+        let seq = {
+            let mut buf = session.output_buffer.lock().await;
+            buf.push(portal_content.clone())
+        };
+        let msg = ProxyMessage::SequencedOutput {
+            seq,
+            content: portal_content,
+        };
+        if let Err(e) = conn.send(&msg).await {
+            error!("Failed to send connection portal message: {}", e);
+            return ConnectionResult::Disconnected(Duration::ZERO);
         }
     }
 
