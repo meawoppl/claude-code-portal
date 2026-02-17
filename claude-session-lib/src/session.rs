@@ -200,6 +200,9 @@ impl Session {
         mut command_rx: mpsc::UnboundedReceiver<IoCommand>,
         event_tx: mpsc::UnboundedSender<IoEvent>,
     ) {
+        // Take stderr so we can read it if Claude exits unexpectedly
+        let mut stderr_reader = client.take_stderr();
+
         loop {
             tokio::select! {
                 // Handle incoming commands (input to send to Claude)
@@ -230,13 +233,51 @@ impl Session {
                                 let _ = event_tx.send(IoEvent::Exited { code: 1 });
                                 break;
                             }
-                            if event_tx.send(IoEvent::Error(SessionError::ClaudeError(e))).is_err() {
+                            // Try to read stderr for more context
+                            let stderr_output = Self::read_stderr(&mut stderr_reader).await;
+                            let enriched_error = if let Some(stderr) = stderr_output {
+                                SessionError::CommunicationError(format!(
+                                    "{}\nClaude stderr: {}",
+                                    e, stderr
+                                ))
+                            } else {
+                                SessionError::ClaudeError(e)
+                            };
+                            if event_tx.send(IoEvent::Error(enriched_error)).is_err() {
                                 break;
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    /// Read available stderr output from the Claude process
+    async fn read_stderr(
+        stderr_reader: &mut Option<tokio::io::BufReader<tokio::process::ChildStderr>>,
+    ) -> Option<String> {
+        use tokio::io::AsyncReadExt;
+
+        let reader = stderr_reader.as_mut()?;
+        let mut buf = Vec::with_capacity(4096);
+
+        // Use a short timeout — stderr may have data already buffered
+        match tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            reader.read_to_end(&mut buf),
+        )
+        .await
+        {
+            Ok(Ok(_)) if !buf.is_empty() => {
+                let text = String::from_utf8_lossy(&buf).trim().to_string();
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text)
+                }
+            }
+            _ => None,
         }
     }
 
