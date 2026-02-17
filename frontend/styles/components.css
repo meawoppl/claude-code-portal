@@ -413,6 +413,21 @@
     color: var(--text-muted);
 }
 
+.launch-checkbox label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 0.9rem;
+}
+
+.launch-checkbox input[type="checkbox"] {
+    width: auto;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
 .launch-error {
     color: var(--error);
     font-size: 0.9rem;

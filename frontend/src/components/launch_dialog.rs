@@ -28,6 +28,8 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
     let dir_loading = use_state(|| false);
     let dir_error = use_state(|| None::<String>);
     let session_name = use_state(String::new);
+    let extra_args = use_state(String::new);
+    let skip_permissions = use_state(|| false);
     let launching = use_state(|| false);
     let error_msg = use_state(|| None::<String>);
     let debounce_handle = use_mut_ref(|| None::<Timeout>);
@@ -109,6 +111,24 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
         })
     };
 
+    let on_args_input = {
+        let extra_args = extra_args.clone();
+        Callback::from(move |e: InputEvent| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                extra_args.set(input.value());
+            }
+        })
+    };
+
+    let on_skip_permissions = {
+        let skip_permissions = skip_permissions.clone();
+        Callback::from(move |e: Event| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                skip_permissions.set(input.checked());
+            }
+        })
+    };
+
     let navigate_to = {
         let selected_launcher = selected_launcher.clone();
         let current_path = current_path.clone();
@@ -158,6 +178,8 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
     let on_launch = {
         let current_path = current_path.clone();
         let session_name = session_name.clone();
+        let extra_args = extra_args.clone();
+        let skip_permissions = skip_permissions.clone();
         let selected_launcher = selected_launcher.clone();
         let launching = launching.clone();
         let error_msg = error_msg.clone();
@@ -175,6 +197,14 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                 Some((*session_name).clone())
             };
 
+            let mut claude_args: Vec<String> = (*extra_args)
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect();
+            if *skip_permissions {
+                claude_args.push("--dangerously-skip-permissions".to_string());
+            }
+
             let launcher_id = *selected_launcher;
             let launching = launching.clone();
             let error_msg = error_msg.clone();
@@ -188,7 +218,7 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                     "working_directory": dir,
                     "session_name": name,
                     "launcher_id": launcher_id,
-                    "claude_args": [],
+                    "claude_args": claude_args,
                 });
 
                 match Request::post("/api/launch")
@@ -380,6 +410,29 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                             value={(*session_name).clone()}
                             oninput={on_name_input}
                         />
+                    </div>
+
+                    // Extra CLI arguments
+                    <div class="launch-field">
+                        <label>{ "Extra CLI Arguments (optional)" }</label>
+                        <input
+                            type="text"
+                            placeholder="--model sonnet --allowedTools \"Bash Edit\""
+                            value={(*extra_args).clone()}
+                            oninput={on_args_input}
+                        />
+                    </div>
+
+                    // Skip permissions checkbox
+                    <div class="launch-field launch-checkbox">
+                        <label>
+                            <input
+                                type="checkbox"
+                                checked={*skip_permissions}
+                                onchange={on_skip_permissions}
+                            />
+                            { " --dangerously-skip-permissions" }
+                        </label>
                     </div>
 
                     if let Some(ref err) = *error_msg {
