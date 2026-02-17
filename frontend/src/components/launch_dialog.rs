@@ -1,6 +1,7 @@
 use gloo::timers::callback::Timeout;
 use gloo_net::http::Request;
 use serde::Deserialize;
+use shared::api::LaunchRequest;
 use shared::{DirectoryEntry, LauncherInfo};
 use std::rc::Rc;
 use uuid::Uuid;
@@ -27,7 +28,6 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
     let dir_entries = use_state(Vec::<DirectoryEntry>::new);
     let dir_loading = use_state(|| false);
     let dir_error = use_state(|| None::<String>);
-    let session_name = use_state(String::new);
     let extra_args = use_state(String::new);
     let skip_permissions = use_state(|| false);
     let launching = use_state(|| false);
@@ -102,15 +102,6 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
         })
     };
 
-    let on_name_input = {
-        let session_name = session_name.clone();
-        Callback::from(move |e: InputEvent| {
-            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
-                session_name.set(input.value());
-            }
-        })
-    };
-
     let on_args_input = {
         let extra_args = extra_args.clone();
         Callback::from(move |e: InputEvent| {
@@ -177,7 +168,6 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
 
     let on_launch = {
         let current_path = current_path.clone();
-        let session_name = session_name.clone();
         let extra_args = extra_args.clone();
         let skip_permissions = skip_permissions.clone();
         let selected_launcher = selected_launcher.clone();
@@ -190,12 +180,6 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                 error_msg.set(Some("Working directory is required".to_string()));
                 return;
             }
-
-            let name = if session_name.is_empty() {
-                None
-            } else {
-                Some((*session_name).clone())
-            };
 
             let mut claude_args: Vec<String> = (*extra_args)
                 .split_whitespace()
@@ -214,12 +198,11 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
             error_msg.set(None);
 
             spawn_local(async move {
-                let body = serde_json::json!({
-                    "working_directory": dir,
-                    "session_name": name,
-                    "launcher_id": launcher_id,
-                    "claude_args": claude_args,
-                });
+                let body = LaunchRequest {
+                    working_directory: dir,
+                    launcher_id,
+                    claude_args,
+                };
 
                 match Request::post("/api/launch")
                     .json(&body)
@@ -399,17 +382,6 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                         <div class="dir-browser">
                             { dir_listing_html }
                         </div>
-                    </div>
-
-                    // Session name
-                    <div class="launch-field">
-                        <label>{ "Session Name (optional)" }</label>
-                        <input
-                            type="text"
-                            placeholder="my-feature"
-                            value={(*session_name).clone()}
-                            oninput={on_name_input}
-                        />
                     </div>
 
                     // Extra CLI arguments
