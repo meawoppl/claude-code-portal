@@ -1518,7 +1518,21 @@ async fn handle_session_event_with_wiggum(
             Some(ConnectionResult::ClaudeExited)
         }
         Some(SessionEvent::Error(e)) => {
-            error!("Session error: {}", e);
+            let err_msg = e.to_string();
+            error!("Session error: {}", err_msg);
+            if err_msg.contains("Connection closed") || err_msg.contains("Claude stderr") {
+                // Claude exited immediately — print a user-visible hint
+                eprintln!();
+                eprintln!("Claude CLI exited unexpectedly.");
+                if let Some(stderr_start) = err_msg.find("Claude stderr: ") {
+                    let stderr_text = &err_msg[stderr_start + 15..];
+                    eprintln!("stderr: {}", stderr_text);
+                } else {
+                    eprintln!("No output from Claude. Is `claude` installed and on your PATH?");
+                    eprintln!("Try running: claude --version");
+                }
+                eprintln!();
+            }
             Some(ConnectionResult::ClaudeExited)
         }
         None => {
