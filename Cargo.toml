@@ -40,7 +40,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Claude Code integration
-claude-codes = "2.1.17"
+claude-codes = "2.1.19"
 
 # Frontend (Yew)
 yew = { version = "0.21", features = ["csr"] }
