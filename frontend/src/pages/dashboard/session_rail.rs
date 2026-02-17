@@ -4,9 +4,11 @@
 //! parent page onclick closes it, toggle button uses stop_propagation.
 
 use crate::utils;
+use gloo::events::EventListener;
 use shared::SessionInfo;
 use std::collections::HashSet;
 use uuid::Uuid;
+use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlElement, WheelEvent};
 use yew::prelude::*;
 
@@ -34,6 +36,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
     let menu_session = use_state(|| None::<Uuid>);
     let menu_pos = use_state(|| (0i32, 0i32));
     let stop_confirm = use_state(|| false);
+    let copied_id = use_state(|| false);
 
     // Scroll focused session into view
     {
@@ -60,6 +63,36 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             }
         })
     };
+
+    // Close dropdown when clicking anywhere outside the rail container
+    {
+        let menu_session = menu_session.clone();
+        let stop_confirm = stop_confirm.clone();
+        let rail_ref = rail_ref.clone();
+        let is_open = (*menu_session).is_some();
+        use_effect_with(is_open, move |is_open| {
+            let listener = if *is_open {
+                let document = gloo::utils::document();
+                Some(EventListener::new(&document, "click", move |e| {
+                    if let Some(rail_el) = rail_ref.cast::<Element>() {
+                        if let Some(container) = rail_el.parent_element() {
+                            if let Some(target) =
+                                e.target().and_then(|t| t.dyn_into::<web_sys::Node>().ok())
+                            {
+                                if !container.contains(Some(&target)) {
+                                    menu_session.set(None);
+                                    stop_confirm.set(false);
+                                }
+                            }
+                        }
+                    }
+                }))
+            } else {
+                None
+            };
+            move || drop(listener)
+        });
+    }
 
     // Find the session whose menu is open
     let open_session: Option<&SessionInfo> =
@@ -151,6 +184,29 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             html! {}
         };
 
+        let on_copy_id = {
+            let session_id = session.id;
+            let copied_id = copied_id.clone();
+            Callback::from(move |_: MouseEvent| {
+                let window = web_sys::window().expect("no window");
+                let clipboard = window.navigator().clipboard();
+                let id_str = session_id.to_string();
+                let copied_id = copied_id.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let _ =
+                        wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&id_str)).await;
+                    copied_id.set(true);
+                    let copied_id = copied_id.clone();
+                    gloo::timers::callback::Timeout::new(1_500, move || {
+                        copied_id.set(false);
+                    })
+                    .forget();
+                });
+            })
+        };
+        let copy_label = if *copied_id { "Copied!" } else { "Session ID" };
+        let short_id = &session.id.to_string()[..8];
+
         let leave_option = if session.my_role != "owner" {
             html! {
                 <button type="button" class="pill-menu-option leave" onclick={on_leave}>
@@ -164,6 +220,14 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
 
         html! {
             <>
+                <button
+                    type="button"
+                    class={classes!("pill-menu-option", "copy-id", (*copied_id).then_some("copied"))}
+                    onclick={on_copy_id}
+                >
+                    { copy_label }
+                    <span class="option-hint">{ short_id }</span>
+                </button>
                 <button
                     type="button"
                     class={classes!("pill-menu-option", "pause", is_paused.then_some("active"))}
@@ -199,10 +263,12 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             let menu_session = menu_session.clone();
             let menu_pos = menu_pos.clone();
             let stop_confirm = stop_confirm.clone();
+            let copied_id = copied_id.clone();
             let session_id = session.id;
             Callback::from(move |e: MouseEvent| {
                 e.stop_propagation();
                 stop_confirm.set(false);
+                copied_id.set(false);
                 if *menu_session == Some(session_id) {
                     menu_session.set(None);
                     return;

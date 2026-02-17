@@ -317,6 +317,14 @@
     background: rgba(224, 175, 104, 0.15);
 }
 
+.pill-menu-option.copy-id .option-hint {
+    font-family: monospace;
+}
+
+.pill-menu-option.copy-id.copied {
+    color: var(--success);
+}
+
 .pill-menu-option .option-hint {
     font-size: 0.7rem;
     font-weight: 400;
