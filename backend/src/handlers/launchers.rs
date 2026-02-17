@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
+use shared::api::LaunchRequest;
 use shared::{DirectoryEntry, LauncherInfo, ProxyMessage};
 use std::sync::Arc;
 use tower_cookies::Cookies;
@@ -20,17 +21,6 @@ pub async fn list_launchers(
     let user_id = get_user_id(&app_state, &cookies)?;
     let launchers = app_state.session_manager.get_launchers_for_user(&user_id);
     Ok(Json(launchers))
-}
-
-#[derive(Deserialize)]
-pub struct LaunchRequest {
-    pub working_directory: String,
-    #[serde(default)]
-    pub session_name: Option<String>,
-    #[serde(default)]
-    pub launcher_id: Option<Uuid>,
-    #[serde(default)]
-    pub claude_args: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -67,7 +57,7 @@ pub async fn launch_session(
         user_id,
         auth_token,
         working_directory: req.working_directory.clone(),
-        session_name: req.session_name,
+        session_name: None,
         claude_args: req.claude_args,
     };
 
