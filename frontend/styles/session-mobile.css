@@ -8,10 +8,6 @@
         padding-left: max(0.75rem, env(safe-area-inset-left));
         padding-right: max(0.75rem, env(safe-area-inset-right));
     }
-
-    .session-view-input {
-        padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
-    }
 }
 
 /* --- Tablet + phone (max-width: 768px) ---------------------------------- */
