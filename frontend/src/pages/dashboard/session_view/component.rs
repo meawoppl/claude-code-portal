@@ -746,7 +746,7 @@ impl SessionView {
                     }
                     serde_json::to_value(&pa).unwrap_or_default()
                 } else {
-                    serde_json::to_value(&PermissionAnswers::empty()).unwrap_or_default()
+                    serde_json::to_value(PermissionAnswers::empty()).unwrap_or_default()
                 };
 
                 let msg = ProxyMessage::PermissionResponse {
