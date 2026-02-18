@@ -1143,6 +1143,13 @@ fn log_claude_output(output: &ClaudeOutput) {
                 error!("← [error] API error: {}", err.error.message);
             }
         }
+        ClaudeOutput::RateLimitEvent(evt) => {
+            let info = &evt.rate_limit_info;
+            debug!(
+                "← [rate_limit_event] status={} type={} resets_at={} overage={}",
+                info.status, info.rate_limit_type, info.resets_at, info.is_using_overage
+            );
+        }
     }
 }
 

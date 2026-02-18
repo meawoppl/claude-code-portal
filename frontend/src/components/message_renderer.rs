@@ -83,6 +83,8 @@ pub enum ClaudeMessage {
     Error(ErrorMessage),
     #[serde(rename = "portal")]
     Portal(PortalMessage),
+    #[serde(rename = "rate_limit_event")]
+    RateLimitEvent(RateLimitEventMessage),
     #[serde(other)]
     Unknown,
 }
@@ -138,6 +140,24 @@ impl ErrorMessage {
     pub fn error_type(&self) -> Option<&str> {
         self.error.as_ref().and_then(|e| e.error_type.as_deref())
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RateLimitEventMessage {
+    pub rate_limit_info: Option<RateLimitInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RateLimitInfo {
+    pub status: Option<String>,
+    #[serde(rename = "resetsAt")]
+    pub resets_at: Option<u64>,
+    #[serde(rename = "rateLimitType")]
+    pub rate_limit_type: Option<String>,
+    #[serde(rename = "overageStatus")]
+    pub overage_status: Option<String>,
+    #[serde(rename = "isUsingOverage")]
+    pub is_using_overage: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -250,6 +270,7 @@ pub fn message_renderer(props: &MessageRendererProps) -> Html {
         Ok(ClaudeMessage::User(msg)) => render_user_message(&msg),
         Ok(ClaudeMessage::Error(msg)) => render_error_message(&msg),
         Ok(ClaudeMessage::Portal(msg)) => render_portal_message(&msg),
+        Ok(ClaudeMessage::RateLimitEvent(msg)) => render_rate_limit_event(&msg),
         Ok(ClaudeMessage::Unknown) | Err(_) => {
             html! { <RawMessageRenderer json={props.json.clone()} session_id={props.session_id} /> }
         }
@@ -525,6 +546,54 @@ fn render_overload_error(msg: &ErrorMessage) -> Html {
                 </div>
                 <div class="overload-details">
                     <span class="request-id" title="Request ID for debugging">{ format!("Request: {}", request_id) }</span>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+fn render_rate_limit_event(msg: &RateLimitEventMessage) -> Html {
+    let info = msg.rate_limit_info.as_ref();
+    let status = info.and_then(|i| i.status.as_deref()).unwrap_or("unknown");
+    let rate_type = info
+        .and_then(|i| i.rate_limit_type.as_deref())
+        .unwrap_or("unknown");
+    let resets_at = info.and_then(|i| i.resets_at).unwrap_or(0);
+    let using_overage = info.and_then(|i| i.is_using_overage).unwrap_or(false);
+
+    let reset_text = if resets_at > 0 {
+        let now = (js_sys::Date::now() / 1000.0) as u64;
+        if resets_at > now {
+            let mins = (resets_at - now) / 60;
+            if mins > 60 {
+                format!("Resets in {}h {}m", mins / 60, mins % 60)
+            } else {
+                format!("Resets in {}m", mins)
+            }
+        } else {
+            "Reset".to_string()
+        }
+    } else {
+        String::new()
+    };
+
+    let format_type = rate_type.replace('_', " ");
+
+    html! {
+        <div class="claude-message rate-limit-message">
+            <div class="message-header">
+                <span class="message-type-badge rate-limit">{ "Rate Limit" }</span>
+            </div>
+            <div class="message-body">
+                <div class="overload-content">
+                    <div class="overload-icon">{ "\u{23f1}\u{fe0f}" }</div>
+                    <div class="overload-text">
+                        <div class="overload-title">{ format!("Rate limit: {} ({})", status, format_type) }</div>
+                        <div class="overload-description">
+                            { &reset_text }
+                            { if using_overage { " \u{b7} Using overage" } else { "" } }
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
