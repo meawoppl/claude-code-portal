@@ -156,6 +156,15 @@
     text-align: left;
 }
 
+.pill-branch-link {
+    text-decoration: underline;
+    color: var(--accent);
+}
+
+.pill-branch-link:hover {
+    color: var(--accent-hover);
+}
+
 .session-pill.status-disconnected .pill-branch {
     color: var(--text-secondary);
 }

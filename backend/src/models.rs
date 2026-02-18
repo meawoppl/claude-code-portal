@@ -52,6 +52,7 @@ pub struct Session {
     pub input_seq: i64,
     pub hostname: String,
     pub launcher_id: Option<Uuid>,
+    pub pr_url: Option<String>,
 }
 
 #[derive(Debug, Insertable)]

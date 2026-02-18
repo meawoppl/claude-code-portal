@@ -138,6 +138,9 @@ pub enum ProxyMessage {
         /// Updated git branch (if changed)
         #[serde(skip_serializing_if = "Option::is_none")]
         git_branch: Option<String>,
+        /// GitHub PR URL for the current branch (if any)
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        pr_url: Option<String>,
     },
 
     /// User spend update (sent to web clients periodically)
@@ -411,6 +414,9 @@ pub struct SessionInfo {
     /// Launcher ID if this session was started by a launcher
     #[serde(default)]
     pub launcher_id: Option<Uuid>,
+    /// GitHub PR URL for the current branch
+    #[serde(default)]
+    pub pr_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
