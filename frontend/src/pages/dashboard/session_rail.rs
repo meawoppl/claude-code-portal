@@ -248,6 +248,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     { copy_label }
                     <span class="option-hint">{ short_id }</span>
                 </button>
+                { share_option }
                 <button
                     type="button"
                     class={classes!("pill-menu-option", "pause", is_paused.then_some("active"))}
@@ -256,9 +257,8 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     { pause_label }
                     <span class="option-hint">{ pause_hint }</span>
                 </button>
-                { stop_option }
-                { share_option }
                 { leave_option }
+                { stop_option }
             </>
         }
     } else {
