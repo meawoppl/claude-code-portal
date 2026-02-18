@@ -601,6 +601,17 @@
     color: var(--text-muted);
 }
 
+/* Rate Limit Event Message */
+.rate-limit-message {
+    border-left: 3px solid #e0af68;
+    background: rgba(224, 175, 104, 0.05);
+}
+
+.message-type-badge.rate-limit {
+    background: rgba(224, 175, 104, 0.2);
+    color: #e0af68;
+}
+
 /* Compaction/Summary Message */
 .compaction-message {
     border-left: 3px solid #7aa2f7;
