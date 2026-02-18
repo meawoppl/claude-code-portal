@@ -120,6 +120,8 @@ diesel::table! {
         #[max_length = 255]
         hostname -> Varchar,
         launcher_id -> Nullable<Uuid>,
+        #[max_length = 512]
+        pr_url -> Nullable<Varchar>,
     }
 }
 

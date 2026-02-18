@@ -325,6 +325,21 @@ async fn run_single_connection(session: &mut SessionState<'_>) -> ConnectionResu
         return ConnectionResult::Disconnected(duration);
     }
 
+    // Look up PR URL for the current branch and send as SessionUpdate
+    if let Some(ref branch) = config_with_branch.git_branch {
+        let pr_url = get_pr_url(&session.config.working_directory, branch);
+        if pr_url.is_some() {
+            let update_msg = ProxyMessage::SessionUpdate {
+                session_id: config_with_branch.session_id,
+                git_branch: config_with_branch.git_branch.clone(),
+                pr_url,
+            };
+            if let Err(e) = conn.send(&update_msg).await {
+                error!("Failed to send initial PR URL update: {}", e);
+            }
+        }
+    }
+
     // Replay pending messages after successful registration
     {
         let buf = session.output_buffer.lock().await;
@@ -601,8 +616,9 @@ async fn run_message_loop(
     // Channel to signal WebSocket disconnection
     let (disconnect_tx, disconnect_rx) = tokio::sync::oneshot::channel::<()>();
 
-    // Shared state for tracking git branch updates
+    // Shared state for tracking git branch and PR URL updates
     let current_branch = Arc::new(Mutex::new(config.git_branch.clone()));
+    let current_pr_url = Arc::new(Mutex::new(None::<String>));
 
     // Spawn output forwarder task with buffer
     let output_task = spawn_output_forwarder(
@@ -611,6 +627,7 @@ async fn run_message_loop(
         session_id,
         config.working_directory.clone(),
         current_branch,
+        current_pr_url,
         session.output_buffer.clone(),
     );
 
@@ -695,6 +712,7 @@ fn is_git_bash_command(output: &ClaudeOutput) -> bool {
                     let content_str = format!("{:?}", content);
                     // Check if this looks like output from a git command
                     if content_str.contains("git ")
+                        || content_str.contains("gh ")
                         || content_str.contains("branch")
                         || content_str.contains("checkout")
                         || content_str.contains("merge")
@@ -710,12 +728,31 @@ fn is_git_bash_command(output: &ClaudeOutput) -> bool {
     // Also check if an assistant message contains a Bash tool_use with git
     if let Some(bash) = output.as_tool_use("Bash") {
         if let Some(claude_codes::tool_inputs::ToolInput::Bash(input)) = bash.typed_input() {
-            if input.command.contains("git ") {
+            if input.command.contains("git ") || input.command.contains("gh ") {
                 return true;
             }
         }
     }
     false
+}
+
+/// Look up the GitHub PR URL for a branch using the `gh` CLI
+fn get_pr_url(cwd: &str, branch: &str) -> Option<String> {
+    if branch == "main" || branch == "master" || branch.starts_with("detached:") {
+        return None;
+    }
+    let output = std::process::Command::new("gh")
+        .args(["pr", "view", branch, "--json", "url", "-q", ".url"])
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8(output.stdout)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 /// Check and send git branch update if changed
@@ -724,6 +761,7 @@ async fn check_and_send_branch_update(
     session_id: Uuid,
     working_directory: &str,
     current_branch: &Arc<Mutex<Option<String>>>,
+    current_pr_url: &Arc<Mutex<Option<String>>>,
 ) {
     let new_branch = get_git_branch(working_directory);
     let mut branch_guard = current_branch.lock().await;
@@ -735,10 +773,16 @@ async fn check_and_send_branch_update(
         );
         *branch_guard = new_branch.clone();
 
+        let new_pr_url = new_branch
+            .as_deref()
+            .and_then(|b| get_pr_url(working_directory, b));
+        *current_pr_url.lock().await = new_pr_url.clone();
+
         // Send SessionUpdate to backend
         let update_msg = ProxyMessage::SessionUpdate {
             session_id,
             git_branch: new_branch,
+            pr_url: new_pr_url,
         };
 
         if let Ok(json) = serde_json::to_string(&update_msg) {
@@ -872,6 +916,7 @@ fn spawn_output_forwarder(
     session_id: Uuid,
     working_directory: String,
     current_branch: Arc<Mutex<Option<String>>>,
+    current_pr_url: Arc<Mutex<Option<String>>>,
     output_buffer: Arc<Mutex<PendingOutputBuffer>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -947,6 +992,7 @@ fn spawn_output_forwarder(
                     session_id,
                     &working_directory,
                     &current_branch,
+                    &current_pr_url,
                 )
                 .await;
             }

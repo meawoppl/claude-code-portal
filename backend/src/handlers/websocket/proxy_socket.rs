@@ -191,6 +191,7 @@ fn handle_proxy_message(
         ProxyMessage::SessionUpdate {
             session_id: update_session_id,
             git_branch,
+            pr_url,
         } => {
             handle_session_update(
                 session_manager,
@@ -199,6 +200,7 @@ fn handle_proxy_message(
                 db_pool,
                 update_session_id,
                 git_branch,
+                pr_url,
             );
         }
         ProxyMessage::InputAck {
@@ -218,6 +220,7 @@ fn handle_session_update(
     db_pool: &crate::db::DbPool,
     update_session_id: Uuid,
     git_branch: Option<String>,
+    pr_url: Option<String>,
 ) {
     let Some(current_session_id) = db_session_id else {
         return;
@@ -243,14 +246,17 @@ fn handle_session_update(
 
     use crate::schema::sessions;
     if let Err(e) = diesel::update(sessions::table.find(current_session_id))
-        .set(sessions::git_branch.eq(&git_branch))
+        .set((
+            sessions::git_branch.eq(&git_branch),
+            sessions::pr_url.eq(&pr_url),
+        ))
         .execute(&mut conn)
     {
-        error!("Failed to update git_branch: {}", e);
+        error!("Failed to update session metadata: {}", e);
     } else {
         info!(
-            "Updated git_branch for session {}: {:?}",
-            current_session_id, git_branch
+            "Updated session {}: branch={:?} pr_url={:?}",
+            current_session_id, git_branch, pr_url
         );
 
         if let Some(ref key) = session_key {
@@ -259,6 +265,7 @@ fn handle_session_update(
                 ProxyMessage::SessionUpdate {
                     session_id: current_session_id,
                     git_branch,
+                    pr_url,
                 },
             );
         }

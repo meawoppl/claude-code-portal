@@ -1,0 +1,1 @@
+ALTER TABLE sessions ADD COLUMN pr_url VARCHAR(512);

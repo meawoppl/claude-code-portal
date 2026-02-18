@@ -20,7 +20,7 @@ pub enum WsEvent {
     Output(String),
     HistoryBatch(Vec<String>),
     Permission(PendingPermission),
-    BranchChanged(Option<String>),
+    BranchChanged(Option<String>, Option<String>),
 }
 
 /// Connect to WebSocket and start receiving messages.
@@ -116,8 +116,9 @@ fn handle_proxy_message(msg: ProxyMessage, on_event: &Callback<WsEvent>) {
         ProxyMessage::SessionUpdate {
             session_id: _,
             git_branch,
+            pr_url,
         } => {
-            on_event.emit(WsEvent::BranchChanged(git_branch));
+            on_event.emit(WsEvent::BranchChanged(git_branch, pr_url));
         }
         _ => {}
     }
