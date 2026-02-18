@@ -81,6 +81,119 @@ pub struct LaunchRequest {
     pub claude_args: Vec<String>,
 }
 
+/// Request body for device code creation
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeviceCodeRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<String>,
+}
+
+/// Request body for polling device flow status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceFlowPollRequest {
+    pub device_code: String,
+}
+
+/// Response for device flow approve/deny actions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceFlowActionResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+/// Request to update a user's admin/ban/voice settings (admin endpoint)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateUserRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_admin: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice_enabled: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_double_option",
+        serialize_with = "serialize_double_option"
+    )]
+    pub ban_reason: Option<Option<String>>,
+}
+
+fn deserialize_double_option<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // If the field is present, deserialize its value (which may be null)
+    Ok(Some(Option::deserialize(deserializer)?))
+}
+
+fn serialize_double_option<S>(
+    value: &Option<Option<String>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match value {
+        None => serializer.serialize_none(),
+        Some(inner) => inner.serialize(serializer),
+    }
+}
+
+/// Request to add a member to a session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddMemberRequest {
+    pub email: String,
+    pub role: String,
+}
+
+/// Request to update a session member's role
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMemberRoleRequest {
+    pub role: String,
+}
+
+/// An error message for display in the terminal output stream
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorMessage {
+    #[serde(rename = "type")]
+    pub error_type: String,
+    pub message: String,
+}
+
+impl ErrorMessage {
+    pub fn new(message: String) -> Self {
+        Self {
+            error_type: "error".to_string(),
+            message,
+        }
+    }
+}
+
+/// Permission answer payload sent with PermissionResponse
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionAnswers {
+    pub answers: serde_json::Map<String, serde_json::Value>,
+}
+
+impl PermissionAnswers {
+    pub fn empty() -> Self {
+        Self {
+            answers: serde_json::Map::new(),
+        }
+    }
+}
+
+/// Fallback wrapper for unparseable DB message content
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawMessageFallback {
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub content: String,
+}
+
 /// API endpoint definitions
 pub mod endpoints {
     pub const HEALTH: &str = "/";

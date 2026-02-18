@@ -3,6 +3,7 @@
 use crate::utils;
 use futures_util::{SinkExt, StreamExt};
 use gloo_net::websocket::{futures::WebSocket, Message};
+use shared::api::ErrorMessage;
 use shared::ProxyMessage;
 use uuid::Uuid;
 use wasm_bindgen_futures::spawn_local;
@@ -108,11 +109,9 @@ fn handle_proxy_message(msg: ProxyMessage, on_event: &Callback<WsEvent>) {
             }));
         }
         ProxyMessage::Error { message } => {
-            let error_json = serde_json::json!({
-                "type": "error",
-                "message": message
-            });
-            on_event.emit(WsEvent::Output(error_json.to_string()));
+            let error_msg = ErrorMessage::new(message);
+            let error_json = serde_json::to_string(&error_msg).unwrap_or_default();
+            on_event.emit(WsEvent::Output(error_json));
         }
         ProxyMessage::SessionUpdate {
             session_id: _,

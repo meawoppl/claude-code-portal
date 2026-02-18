@@ -10,6 +10,7 @@ use axum::{
 use bigdecimal::ToPrimitive;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
+use shared::api::UpdateUserRequest;
 use std::sync::Arc;
 use tower_cookies::Cookies;
 use tracing::{error, info, warn};
@@ -358,14 +359,6 @@ pub async fn list_users(
     }
 
     Ok(Json(AdminUsersResponse { users: user_infos }))
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateUserRequest {
-    pub is_admin: Option<bool>,
-    pub disabled: Option<bool>,
-    pub voice_enabled: Option<bool>,
-    pub ban_reason: Option<Option<String>>, // Option<Option<...>> to distinguish "not sent" from "sent as null"
 }
 
 pub async fn update_user(

@@ -327,8 +327,10 @@ mod tests {
     }
 
     fn make_output(n: u32) -> ProxyMessage {
+        let mut map = serde_json::Map::new();
+        map.insert("n".to_string(), serde_json::Value::from(n));
         ProxyMessage::ClaudeOutput {
-            content: serde_json::json!({"n": n}),
+            content: serde_json::Value::Object(map),
         }
     }
 

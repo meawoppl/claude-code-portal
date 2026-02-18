@@ -535,6 +535,23 @@ The workspace version lives in `Cargo.toml` under `[workspace.package]`. When sh
 
 Always increment at least the patch version when shipping a meaningful change.
 
+### No `serde_json::json!`
+
+**Never use `serde_json::json!` for API request/response bodies.** Instead, define typed structs in `shared/src/api.rs` so both frontend and backend share the same types. This ensures:
+- Compile-time type checking on both sides
+- No field name typos or missing fields
+- Symmetric serialization/deserialization
+
+```rust
+// ❌ BAD
+let body = serde_json::json!({ "email": email, "role": role });
+Request::post(&url).body(body.to_string())
+
+// ✅ GOOD
+let body = AddMemberRequest { email, role };
+Request::post(&url).json(&body)
+```
+
 ### Error Handling
 
 **Backend handlers**:

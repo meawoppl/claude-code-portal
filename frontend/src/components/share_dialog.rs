@@ -1,4 +1,5 @@
 use gloo_net::http::Request;
+use shared::api::{AddMemberRequest, UpdateMemberRoleRequest};
 use uuid::Uuid;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlInputElement;
@@ -117,14 +118,8 @@ impl Component for ShareDialog {
 
                 spawn_local(async move {
                     let url = utils::api_url(&format!("/api/sessions/{}/members", session_id));
-                    let body = serde_json::json!({ "email": email, "role": role });
-                    match Request::post(&url)
-                        .header("Content-Type", "application/json")
-                        .body(body.to_string())
-                        .unwrap()
-                        .send()
-                        .await
-                    {
+                    let body = AddMemberRequest { email, role };
+                    match Request::post(&url).json(&body).unwrap().send().await {
                         Ok(response) if response.status() == 201 => {
                             link.send_message(ShareDialogMsg::MemberAdded);
                         }
@@ -202,14 +197,8 @@ impl Component for ShareDialog {
                         "/api/sessions/{}/members/{}",
                         session_id, user_id
                     ));
-                    let body = serde_json::json!({ "role": role });
-                    match Request::patch(&url)
-                        .header("Content-Type", "application/json")
-                        .body(body.to_string())
-                        .unwrap()
-                        .send()
-                        .await
-                    {
+                    let body = UpdateMemberRoleRequest { role: role.clone() };
+                    match Request::patch(&url).json(&body).unwrap().send().await {
                         Ok(response) if response.ok() => {
                             link.send_message(ShareDialogMsg::RoleChanged(user_id, role));
                         }

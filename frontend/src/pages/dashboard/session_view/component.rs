@@ -4,6 +4,7 @@ use crate::components::{group_messages, MessageGroupRenderer, VoiceInput};
 use crate::utils;
 use gloo::timers::callback::Timeout;
 use gloo_net::http::Request;
+use shared::api::{ErrorMessage, PermissionAnswers};
 use shared::{ProxyMessage, SendMode, SessionInfo};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -712,11 +713,9 @@ impl SessionView {
                 link.send_message(SessionViewMsg::AttemptReconnect);
             }));
         } else {
-            let error_msg = serde_json::json!({
-                "type": "error",
-                "message": format!("Connection lost: {}", err)
-            });
-            self.messages.push(error_msg.to_string());
+            let error_msg = ErrorMessage::new(format!("Connection lost: {}", err));
+            self.messages
+                .push(serde_json::to_string(&error_msg).unwrap_or_default());
         }
         true
     }
@@ -736,18 +735,18 @@ impl SessionView {
         if let Some(perm) = self.pending_permission.take() {
             if let Some(ref sender) = self.ws_sender {
                 let answers_json = if let Some(parsed) = parse_ask_user_question(&perm.input) {
-                    let mut answers_map = serde_json::Map::new();
+                    let mut pa = PermissionAnswers::empty();
                     for (idx, answer) in answers.iter() {
                         if let Some(q) = parsed.questions.get(*idx) {
-                            answers_map.insert(
+                            pa.answers.insert(
                                 q.question.clone(),
                                 serde_json::Value::String(answer.clone()),
                             );
                         }
                     }
-                    serde_json::json!({ "answers": answers_map })
+                    serde_json::to_value(&pa).unwrap_or_default()
                 } else {
-                    serde_json::json!({ "answers": {} })
+                    serde_json::to_value(PermissionAnswers::empty()).unwrap_or_default()
                 };
 
                 let msg = ProxyMessage::PermissionResponse {

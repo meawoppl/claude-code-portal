@@ -7,6 +7,7 @@ use axum::{
 use diesel::prelude::*;
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
+use shared::api::{DeviceCodeRequest, DeviceFlowActionResponse, DeviceFlowPollRequest};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -111,11 +112,6 @@ pub struct DeviceCodeResponse {
     pub interval: u64,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct PollRequest {
-    pub device_code: String,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(tag = "status")]
 pub enum PollResponse {
@@ -139,15 +135,6 @@ pub enum PollResponse {
 #[derive(Debug, Deserialize)]
 pub struct VerifyQuery {
     pub user_code: Option<String>,
-}
-
-/// Request body for device code creation
-#[derive(Debug, Deserialize, Default)]
-pub struct DeviceCodeRequest {
-    /// Hostname of the machine requesting authorization
-    pub hostname: Option<String>,
-    /// Working directory / repository path
-    pub working_directory: Option<String>,
 }
 
 fn generate_user_code() -> String {
@@ -215,7 +202,7 @@ pub async fn device_code(
 // POST /auth/device/poll
 pub async fn device_poll(
     State(app_state): State<Arc<AppState>>,
-    Json(req): Json<PollRequest>,
+    Json(req): Json<DeviceFlowPollRequest>,
 ) -> Result<Json<PollResponse>, DeviceFlowApiError> {
     let store = app_state
         .device_flow_store
@@ -335,7 +322,7 @@ pub async fn device_approve(
     State(app_state): State<Arc<AppState>>,
     cookies: Cookies,
     Json(req): Json<ApproveRequest>,
-) -> Result<Json<serde_json::Value>, DeviceFlowApiError> {
+) -> Result<Json<DeviceFlowActionResponse>, DeviceFlowApiError> {
     // Verify user is logged in
     let cookie = cookies
         .signed(&app_state.cookie_key)
@@ -367,10 +354,10 @@ pub async fn device_approve(
         req.user_code, user_id
     );
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": "Device authorized successfully"
-    })))
+    Ok(Json(DeviceFlowActionResponse {
+        success: true,
+        message: "Device authorized successfully".to_string(),
+    }))
 }
 
 /// POST /auth/device/deny - Deny device authorization
@@ -378,7 +365,7 @@ pub async fn device_deny(
     State(app_state): State<Arc<AppState>>,
     cookies: Cookies,
     Json(req): Json<ApproveRequest>,
-) -> Result<Json<serde_json::Value>, DeviceFlowApiError> {
+) -> Result<Json<DeviceFlowActionResponse>, DeviceFlowApiError> {
     // Verify user is logged in
     let cookie = cookies
         .signed(&app_state.cookie_key)
@@ -410,10 +397,10 @@ pub async fn device_deny(
         info!("Device flow denied for user_code: {}", req.user_code);
     }
 
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "message": "Device authorization denied"
-    })))
+    Ok(Json(DeviceFlowActionResponse {
+        success: true,
+        message: "Device authorization denied".to_string(),
+    }))
 }
 
 fn render_approval_page(
@@ -1129,7 +1116,7 @@ mod tests {
     #[test]
     fn test_poll_request_deserialization() {
         let json = r#"{"device_code": "abc123def456"}"#;
-        let request: PollRequest = serde_json::from_str(json).unwrap();
+        let request: DeviceFlowPollRequest = serde_json::from_str(json).unwrap();
         assert_eq!(request.device_code, "abc123def456");
     }
 

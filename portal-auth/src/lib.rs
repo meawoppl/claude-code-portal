@@ -1,18 +1,10 @@
 use anyhow::{Context, Result};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
+use shared::api::{DeviceCodeRequest, DeviceCodeResponse, DeviceFlowPollRequest};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::info;
-
-#[derive(Debug, Serialize, Deserialize)]
-struct DeviceCodeResponse {
-    device_code: String,
-    user_code: String,
-    verification_uri: String,
-    expires_in: u64,
-    interval: u64,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "status")]
@@ -67,12 +59,13 @@ pub async fn device_flow_login(
 
     info!("Requesting device code from {}", device_code_url);
 
+    let body = DeviceCodeRequest {
+        hostname: Some(hostname),
+        working_directory: working_directory.map(|s| s.to_string()),
+    };
     let http_response = client
         .post(&device_code_url)
-        .json(&serde_json::json!({
-            "hostname": hostname,
-            "working_directory": working_directory
-        }))
+        .json(&body)
         .send()
         .await
         .context("Failed to request device code")?;
@@ -147,11 +140,12 @@ pub async fn device_flow_login(
 
         sleep(interval).await;
 
+        let poll_body = DeviceFlowPollRequest {
+            device_code: response.device_code.clone(),
+        };
         let poll_http_response = client
             .post(&poll_url)
-            .json(&serde_json::json!({
-                "device_code": response.device_code
-            }))
+            .json(&poll_body)
             .send()
             .await
             .context("Failed to poll for authentication")?;
