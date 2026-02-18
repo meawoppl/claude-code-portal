@@ -296,7 +296,13 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                 }
                 if let Some(el) = e.target_dyn_into::<HtmlElement>() {
                     let rect = el.get_bounding_client_rect();
-                    menu_pos.set((rect.left() as i32, rect.bottom() as i32 + 4));
+                    let vw = web_sys::window()
+                        .and_then(|w| w.inner_width().ok())
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(800.0) as i32;
+                    let menu_width = 160; // min-width from CSS
+                    let left = (rect.left() as i32).min(vw - menu_width - 8);
+                    menu_pos.set((left, rect.bottom() as i32 + 4));
                 }
                 menu_session.set(Some(session_id));
             })
