@@ -17,6 +17,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-width: 0;
 }
 
 .session-view-wrapper.hidden {
@@ -32,6 +33,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-width: 0; /* Prevent flex child from overflowing parent on rotation */
 }
 
 @keyframes slideIn {
@@ -128,5 +130,7 @@
 .session-view-messages {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 1rem 1.5rem;
+    min-width: 0; /* Allow flex child to shrink below content size */
 }
