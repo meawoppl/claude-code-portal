@@ -5,7 +5,8 @@ use axum::{
 };
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use shared::api::{AddMemberRequest, UpdateMemberRoleRequest};
 use std::sync::Arc;
 use tower_cookies::Cookies;
 use uuid::Uuid;
@@ -284,12 +285,6 @@ pub async fn list_session_members(
     }))
 }
 
-#[derive(Debug, Deserialize)]
-pub struct AddMemberRequest {
-    pub email: String,
-    pub role: String,
-}
-
 /// Add a member to a session (owner only)
 pub async fn add_session_member(
     State(app_state): State<Arc<AppState>>,
@@ -408,11 +403,6 @@ pub async fn remove_session_member(
     }
 
     Ok(StatusCode::NO_CONTENT)
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UpdateMemberRoleRequest {
-    pub role: String,
 }
 
 /// Update a member's role (owner only)

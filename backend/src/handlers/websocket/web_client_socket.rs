@@ -5,6 +5,7 @@ use crate::AppState;
 use axum::extract::ws::{Message, WebSocket};
 use diesel::prelude::*;
 use futures_util::{SinkExt, StreamExt};
+use shared::api::RawMessageFallback;
 use shared::{ProxyMessage, SendMode};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -233,10 +234,11 @@ fn replay_history(
         .into_iter()
         .map(|msg| {
             serde_json::from_str::<serde_json::Value>(&msg.content).unwrap_or_else(|_| {
-                serde_json::json!({
-                    "type": msg.role,
-                    "content": msg.content
-                })
+                let fallback = RawMessageFallback {
+                    message_type: msg.role,
+                    content: msg.content,
+                };
+                serde_json::to_value(&fallback).unwrap_or_default()
             })
         })
         .collect();

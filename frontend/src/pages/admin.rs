@@ -7,6 +7,7 @@ use crate::utils;
 use crate::Route;
 use gloo_net::http::Request;
 use serde::Deserialize;
+use shared::api::UpdateUserRequest;
 use uuid::Uuid;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::MouseEvent;
@@ -609,10 +610,12 @@ pub fn admin_page() -> Html {
                 let new_admin_status = !is_currently_admin;
                 spawn_local(async move {
                     let api_endpoint = utils::api_url(&format!("/api/admin/users/{}", user_id));
-                    let body = serde_json::json!({ "is_admin": new_admin_status });
+                    let body = UpdateUserRequest {
+                        is_admin: Some(new_admin_status),
+                        ..Default::default()
+                    };
                     match Request::patch(&api_endpoint)
-                        .header("Content-Type", "application/json")
-                        .body(body.to_string())
+                        .json(&body)
                         .unwrap()
                         .send()
                         .await
@@ -661,10 +664,13 @@ pub fn admin_page() -> Html {
                     let confirm = confirm_inner.clone();
                     spawn_local(async move {
                         let api_endpoint = utils::api_url(&format!("/api/admin/users/{}", user_id));
-                        let body = serde_json::json!({ "disabled": false, "ban_reason": null });
+                        let body = UpdateUserRequest {
+                            disabled: Some(false),
+                            ban_reason: Some(None),
+                            ..Default::default()
+                        };
                         match Request::patch(&api_endpoint)
-                            .header("Content-Type", "application/json")
-                            .body(body.to_string())
+                            .json(&body)
                             .unwrap()
                             .send()
                             .await
@@ -708,13 +714,17 @@ pub fn admin_page() -> Html {
             if let Some(user_id) = *ban_dialog {
                 spawn_local(async move {
                     let api_endpoint = utils::api_url(&format!("/api/admin/users/{}", user_id));
-                    let body = serde_json::json!({
-                        "disabled": true,
-                        "ban_reason": if reason.is_empty() { None::<String> } else { Some(reason) }
-                    });
+                    let body = UpdateUserRequest {
+                        disabled: Some(true),
+                        ban_reason: Some(if reason.is_empty() {
+                            None
+                        } else {
+                            Some(reason)
+                        }),
+                        ..Default::default()
+                    };
                     match Request::patch(&api_endpoint)
-                        .header("Content-Type", "application/json")
-                        .body(body.to_string())
+                        .json(&body)
                         .unwrap()
                         .send()
                         .await
@@ -780,10 +790,12 @@ pub fn admin_page() -> Html {
                 let new_voice_status = !is_currently_enabled;
                 spawn_local(async move {
                     let api_endpoint = utils::api_url(&format!("/api/admin/users/{}", user_id));
-                    let body = serde_json::json!({ "voice_enabled": new_voice_status });
+                    let body = UpdateUserRequest {
+                        voice_enabled: Some(new_voice_status),
+                        ..Default::default()
+                    };
                     match Request::patch(&api_endpoint)
-                        .header("Content-Type", "application/json")
-                        .body(body.to_string())
+                        .json(&body)
                         .unwrap()
                         .send()
                         .await
