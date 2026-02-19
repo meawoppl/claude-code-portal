@@ -39,6 +39,7 @@ pub fn dashboard_page() -> Html {
     // Track spend tier for timed animations
     let prev_spend_tier = use_state(|| 0u8);
     let spend_animating = use_state(|| false);
+    let spend_initialized = use_state(|| false);
 
     // UI state
     let show_new_session = use_state(|| false);
@@ -59,6 +60,7 @@ pub fn dashboard_page() -> Html {
     {
         let spend_animating = spend_animating.clone();
         let prev_spend_tier = prev_spend_tier.clone();
+        let spend_initialized = spend_initialized.clone();
         let current_tier = if total_user_spend >= 10000.0 {
             5u8
         } else if total_user_spend >= 1000.0 {
@@ -74,7 +76,11 @@ pub fn dashboard_page() -> Html {
         };
         use_effect_with(current_tier, move |tier| {
             let tier = *tier;
-            if tier > *prev_spend_tier {
+            if !*spend_initialized {
+                // First tier value from page load — record it, don't animate
+                spend_initialized.set(true);
+                prev_spend_tier.set(tier);
+            } else if tier > *prev_spend_tier {
                 spend_animating.set(true);
                 let duration_ms = match tier {
                     1 => 500,
