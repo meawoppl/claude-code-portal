@@ -14,7 +14,7 @@ use futures_util::{SinkExt, StreamExt};
 use shared::{ProxyMessage, SendMode};
 use tokio::sync::{mpsc, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 
 use crate::output_buffer::PendingOutputBuffer;
@@ -1397,7 +1397,7 @@ async fn handle_ws_text_message(
             }
         }
         ProxyMessage::Heartbeat => {
-            debug!("heartbeat");
+            trace!("heartbeat");
             heartbeat.received();
             let mut ws = ws_write.lock().await;
             if let Ok(json) = serde_json::to_string(&ProxyMessage::Heartbeat) {
