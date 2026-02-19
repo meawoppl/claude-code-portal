@@ -334,6 +334,15 @@
     color: var(--success);
 }
 
+a.pill-menu-option.pr-link {
+    text-decoration: none;
+    color: #7aa2f7;
+}
+
+a.pill-menu-option.pr-link:hover {
+    background: rgba(122, 162, 247, 0.15);
+}
+
 .pill-menu-option .option-hint {
     font-size: 0.7rem;
     font-weight: 400;
