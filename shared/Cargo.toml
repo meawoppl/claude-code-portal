@@ -17,3 +17,6 @@ chrono = { workspace = true, default-features = false, features = ["serde", "was
 
 # Claude Code types (WASM-compatible, no tokio)
 claude-codes = { version = "2.1.20", default-features = false, features = ["types"] }
+
+# Typed WebSocket endpoints (core traits only — WASM-safe, no features needed)
+ws-bridge = { workspace = true }

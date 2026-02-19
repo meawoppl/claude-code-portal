@@ -5,7 +5,7 @@ use axum::{
 };
 use serde::Deserialize;
 use shared::api::LaunchRequest;
-use shared::{DirectoryEntry, LauncherInfo, ProxyMessage};
+use shared::{DirectoryEntry, LauncherInfo, LauncherToServer, ServerToLauncher};
 use std::sync::Arc;
 use tower_cookies::Cookies;
 use tracing::{error, info, warn};
@@ -52,7 +52,7 @@ pub async fn launch_session(
     let auth_token = mint_launch_token(&app_state, user_id)?;
 
     let request_id = Uuid::new_v4();
-    let launch_msg = ProxyMessage::LaunchSession {
+    let launch_msg = ServerToLauncher::LaunchSession {
         request_id,
         user_id,
         auth_token,
@@ -113,7 +113,7 @@ pub async fn list_directories(
 
     let sent = app_state.session_manager.send_to_launcher(
         &launcher_id,
-        ProxyMessage::ListDirectories {
+        ServerToLauncher::ListDirectories {
             request_id,
             path: query.path.clone(),
         },
@@ -129,7 +129,7 @@ pub async fn list_directories(
     }
 
     match tokio::time::timeout(std::time::Duration::from_secs(5), rx).await {
-        Ok(Ok(ProxyMessage::ListDirectoriesResult {
+        Ok(Ok(LauncherToServer::ListDirectoriesResult {
             entries,
             error,
             resolved_path,

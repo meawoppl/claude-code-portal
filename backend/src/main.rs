@@ -14,6 +14,7 @@ use axum::{
 };
 use clap::Parser;
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
+use shared::WsEndpoint;
 use std::{env, sync::Arc};
 use tower_cookies::{CookieManagerLayer, Key};
 use tower_http::cors::{Any, CorsLayer};
@@ -374,13 +375,13 @@ async fn main() -> anyhow::Result<()> {
             "/api/auth/device/deny",
             post(handlers::device_flow::device_deny),
         )
-        // WebSocket routes
+        // WebSocket routes (paths from ws-bridge endpoint definitions)
         .route(
-            "/ws/session",
+            shared::SessionEndpoint::PATH,
             get(handlers::websocket::handle_session_websocket),
         )
         .route(
-            "/ws/client",
+            shared::ClientEndpoint::PATH,
             get(handlers::websocket::handle_web_client_websocket),
         )
         .route(
@@ -388,7 +389,7 @@ async fn main() -> anyhow::Result<()> {
             get(handlers::voice::handle_voice_websocket),
         )
         .route(
-            "/ws/launcher",
+            shared::LauncherEndpoint::PATH,
             get(handlers::websocket::handle_launcher_websocket),
         )
         // Launcher API routes
@@ -530,10 +531,7 @@ async fn shutdown_signal(app_state: Arc<AppState>) {
     tracing::info!("Broadcasting shutdown notification to all clients...");
     app_state
         .session_manager
-        .broadcast_to_all(shared::ProxyMessage::ServerShutdown {
-            reason: "Server is restarting".to_string(),
-            reconnect_delay_ms: 1000,
-        });
+        .broadcast_shutdown("Server is restarting".to_string(), 1000);
 
     // Give clients a moment to receive the message
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -544,7 +542,7 @@ async fn shutdown_signal(app_state: Arc<AppState>) {
 async fn broadcast_user_spend_updates(app_state: &Arc<AppState>) {
     use diesel::prelude::*;
     use schema::sessions::dsl::*;
-    use shared::{ProxyMessage, SessionCost};
+    use shared::{ServerToClient, SessionCost};
 
     let user_ids = app_state.session_manager.get_all_user_ids();
 
@@ -578,7 +576,7 @@ async fn broadcast_user_spend_updates(app_state: &Arc<AppState>) {
             if total_spend > 0.0 || !session_costs_vec.is_empty() {
                 app_state.session_manager.broadcast_to_user(
                     &user_id_val,
-                    ProxyMessage::UserSpendUpdate {
+                    ServerToClient::UserSpendUpdate {
                         total_spend_usd: total_spend,
                         session_costs: session_costs_vec,
                     },

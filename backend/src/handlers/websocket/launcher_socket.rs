@@ -1,93 +1,100 @@
-use axum::extract::ws::{Message, WebSocket};
-use futures_util::{SinkExt, StreamExt};
-use shared::ProxyMessage;
+use axum::extract::ws::WebSocket;
+use shared::{LauncherEndpoint, LauncherToServer, ServerToClient, ServerToLauncher};
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::LauncherConnection;
 use crate::AppState;
 
 pub async fn handle_launcher_socket(socket: WebSocket, app_state: Arc<AppState>) {
-    let (mut ws_write, mut ws_read) = socket.split();
+    let conn = ws_bridge::server::into_connection::<LauncherEndpoint>(socket);
+    let (mut ws_sender, mut ws_receiver) = conn.split();
 
     // Wait for LauncherRegister message
     let (launcher_id, launcher_name, hostname, user_id) = loop {
-        match ws_read.next().await {
-            Some(Ok(Message::Text(text))) => {
-                if let Ok(ProxyMessage::LauncherRegister {
-                    launcher_id,
-                    launcher_name,
-                    auth_token,
-                    hostname,
-                    ..
-                }) = serde_json::from_str(&text)
-                {
-                    // Authenticate
-                    let user_id = if let Some(ref token) = auth_token {
-                        match app_state.db_pool.get() {
-                            Ok(mut conn) => {
-                                match crate::handlers::proxy_tokens::verify_and_get_user(
-                                    &app_state, &mut conn, token,
-                                ) {
-                                    Ok((uid, email)) => {
-                                        info!("Launcher authenticated as {} ({})", email, uid);
-                                        uid
-                                    }
-                                    Err(_) => {
-                                        if app_state.dev_mode {
-                                            get_dev_user_id(&app_state)
-                                        } else {
-                                            send_register_ack(
-                                                &mut ws_write,
+        match ws_receiver.recv().await {
+            Some(Ok(LauncherToServer::LauncherRegister {
+                launcher_id,
+                launcher_name,
+                auth_token,
+                hostname,
+                ..
+            })) => {
+                // Authenticate
+                let user_id = if let Some(ref token) = auth_token {
+                    match app_state.db_pool.get() {
+                        Ok(mut conn) => {
+                            match crate::handlers::proxy_tokens::verify_and_get_user(
+                                &app_state, &mut conn, token,
+                            ) {
+                                Ok((uid, email)) => {
+                                    info!("Launcher authenticated as {} ({})", email, uid);
+                                    uid
+                                }
+                                Err(_) => {
+                                    if app_state.dev_mode {
+                                        get_dev_user_id(&app_state)
+                                    } else {
+                                        let _ = ws_sender
+                                            .send(ServerToLauncher::LauncherRegisterAck {
+                                                success: false,
                                                 launcher_id,
-                                                false,
-                                                Some("Authentication failed"),
-                                            )
+                                                error: Some("Authentication failed".to_string()),
+                                            })
                                             .await;
-                                            return;
-                                        }
+                                        return;
                                     }
                                 }
                             }
-                            Err(_) => {
-                                send_register_ack(
-                                    &mut ws_write,
-                                    launcher_id,
-                                    false,
-                                    Some("Database error"),
-                                )
-                                .await;
-                                return;
-                            }
                         }
-                    } else if app_state.dev_mode {
-                        get_dev_user_id(&app_state)
-                    } else {
-                        send_register_ack(
-                            &mut ws_write,
+                        Err(_) => {
+                            let _ = ws_sender
+                                .send(ServerToLauncher::LauncherRegisterAck {
+                                    success: false,
+                                    launcher_id,
+                                    error: Some("Database error".to_string()),
+                                })
+                                .await;
+                            return;
+                        }
+                    }
+                } else if app_state.dev_mode {
+                    get_dev_user_id(&app_state)
+                } else {
+                    let _ = ws_sender
+                        .send(ServerToLauncher::LauncherRegisterAck {
+                            success: false,
                             launcher_id,
-                            false,
-                            Some("No auth token provided"),
-                        )
+                            error: Some("No auth token provided".to_string()),
+                        })
                         .await;
-                        return;
-                    };
+                    return;
+                };
 
-                    break (launcher_id, launcher_name, hostname, user_id);
-                }
+                break (launcher_id, launcher_name, hostname, user_id);
             }
-            Some(Ok(Message::Close(_))) | None => return,
-            _ => continue,
+            Some(Ok(_)) => continue,
+            Some(Err(e)) => {
+                warn!("Launcher decode error during registration: {}", e);
+                continue;
+            }
+            None => return,
         }
     };
 
     // Send RegisterAck
-    send_register_ack(&mut ws_write, launcher_id, true, None).await;
+    let _ = ws_sender
+        .send(ServerToLauncher::LauncherRegisterAck {
+            success: true,
+            launcher_id,
+            error: None,
+        })
+        .await;
 
     // Create channel for sending messages to this launcher
-    let (tx, mut rx) = mpsc::unbounded_channel::<ProxyMessage>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<ServerToLauncher>();
 
     app_state.session_manager.register_launcher(
         launcher_id,
@@ -109,34 +116,31 @@ pub async fn handle_launcher_socket(socket: WebSocket, app_state: Arc<AppState>)
     loop {
         tokio::select! {
             // Messages from the launcher
-            msg = ws_read.next() => {
-                match msg {
-                    Some(Ok(Message::Text(text))) => {
+            result = ws_receiver.recv() => {
+                match result {
+                    Some(Ok(msg)) => {
                         handle_launcher_message(
-                            &text,
+                            msg,
                             launcher_id,
                             user_id,
                             &app_state,
                         );
                     }
-                    Some(Ok(Message::Close(_))) | None => {
+                    Some(Err(e)) => {
+                        warn!("Launcher decode error: {}", e);
+                        continue;
+                    }
+                    None => {
                         info!("Launcher '{}' disconnected", launcher_name);
                         break;
                     }
-                    Some(Err(e)) => {
-                        error!("Launcher WebSocket error: {}", e);
-                        break;
-                    }
-                    _ => {}
                 }
             }
 
             // Messages to forward to the launcher
             Some(msg) = rx.recv() => {
-                if let Ok(json) = serde_json::to_string(&msg) {
-                    if ws_write.send(Message::Text(json)).await.is_err() {
-                        break;
-                    }
+                if ws_sender.send(msg).await.is_err() {
+                    break;
                 }
             }
         }
@@ -145,14 +149,14 @@ pub async fn handle_launcher_socket(socket: WebSocket, app_state: Arc<AppState>)
     app_state.session_manager.unregister_launcher(&launcher_id);
 }
 
-fn handle_launcher_message(text: &str, launcher_id: Uuid, user_id: Uuid, app_state: &AppState) {
-    let msg: ProxyMessage = match serde_json::from_str(text) {
-        Ok(m) => m,
-        Err(_) => return,
-    };
-
+fn handle_launcher_message(
+    msg: LauncherToServer,
+    launcher_id: Uuid,
+    user_id: Uuid,
+    app_state: &AppState,
+) {
     match msg {
-        ProxyMessage::LaunchSessionResult {
+        LauncherToServer::LaunchSessionResult {
             request_id,
             success,
             session_id,
@@ -167,18 +171,26 @@ fn handle_launcher_message(text: &str, launcher_id: Uuid, user_id: Uuid, app_sta
             } else {
                 warn!("Launch failed: request={}, error={:?}", request_id, error);
             }
-            // Broadcast result to the user's web clients
-            app_state.session_manager.broadcast_to_user(&user_id, msg);
+            // Forward to web clients as ServerToClient
+            app_state.session_manager.broadcast_to_user(
+                &user_id,
+                ServerToClient::LaunchSessionResult {
+                    request_id,
+                    success,
+                    session_id,
+                    pid,
+                    error: error.clone(),
+                },
+            );
         }
-        ProxyMessage::LauncherHeartbeat {
+        LauncherToServer::LauncherHeartbeat {
             running_sessions, ..
         } => {
-            // Update the launcher's running sessions
             if let Some(mut launcher) = app_state.session_manager.launchers.get_mut(&launcher_id) {
                 launcher.running_sessions = running_sessions;
             }
         }
-        ProxyMessage::ProxyLog {
+        LauncherToServer::ProxyLog {
             session_id,
             level,
             ref message,
@@ -189,37 +201,25 @@ fn handle_launcher_message(text: &str, launcher_id: Uuid, user_id: Uuid, app_sta
             "debug" => tracing::debug!(session_id = %session_id, "[proxy] {}", message),
             _ => tracing::info!(session_id = %session_id, "[proxy] {}", message),
         },
-        ProxyMessage::SessionExited {
+        LauncherToServer::SessionExited {
             session_id,
             exit_code,
         } => {
             info!("Proxy exited: session={}, code={:?}", session_id, exit_code);
-            app_state.session_manager.broadcast_to_user(&user_id, msg);
+            app_state.session_manager.broadcast_to_user(
+                &user_id,
+                ServerToClient::SessionExited {
+                    session_id,
+                    exit_code,
+                },
+            );
         }
-        ProxyMessage::ListDirectoriesResult { request_id, .. } => {
+        LauncherToServer::ListDirectoriesResult { request_id, .. } => {
             app_state
                 .session_manager
                 .complete_dir_request(request_id, msg);
         }
-        _ => {}
-    }
-}
-
-type WsSink = futures_util::stream::SplitSink<WebSocket, Message>;
-
-async fn send_register_ack(
-    ws_write: &mut WsSink,
-    launcher_id: Uuid,
-    success: bool,
-    error: Option<&str>,
-) {
-    let ack = ProxyMessage::LauncherRegisterAck {
-        success,
-        launcher_id,
-        error: error.map(|s| s.to_string()),
-    };
-    if let Ok(json) = serde_json::to_string(&ack) {
-        let _ = ws_write.send(Message::Text(json)).await;
+        LauncherToServer::LauncherRegister { .. } => {}
     }
 }
 

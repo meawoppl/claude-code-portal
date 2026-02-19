@@ -5,7 +5,7 @@ use crate::utils;
 use gloo::timers::callback::Timeout;
 use gloo_net::http::Request;
 use shared::api::{ErrorMessage, PermissionAnswers};
-use shared::{ProxyMessage, SendMode, SessionInfo};
+use shared::{ClientToServer, SendMode, SessionInfo};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -547,7 +547,7 @@ impl SessionView {
         ctx.props().on_message_sent.emit(session_id);
 
         if let Some(ref sender) = self.ws_sender {
-            let msg = ProxyMessage::ClaudeInput {
+            let msg = ClientToServer::ClaudeInput {
                 content: serde_json::Value::String(input),
                 send_mode: if send_mode == SendMode::Normal {
                     None
@@ -654,7 +654,7 @@ impl SessionView {
     fn handle_approve_permission(&mut self, ctx: &Context<Self>, remember: bool) -> bool {
         if let Some(perm) = self.pending_permission.take() {
             if let Some(ref sender) = self.ws_sender {
-                let msg = ProxyMessage::PermissionResponse {
+                let msg = ClientToServer::PermissionResponse {
                     request_id: perm.request_id,
                     allow: true,
                     input: Some(perm.input),
@@ -678,7 +678,7 @@ impl SessionView {
     fn handle_deny_permission(&mut self, ctx: &Context<Self>) -> bool {
         if let Some(perm) = self.pending_permission.take() {
             if let Some(ref sender) = self.ws_sender {
-                let msg = ProxyMessage::PermissionResponse {
+                let msg = ClientToServer::PermissionResponse {
                     request_id: perm.request_id,
                     allow: false,
                     input: None,
@@ -753,7 +753,7 @@ impl SessionView {
                     serde_json::to_value(PermissionAnswers::empty()).unwrap_or_default()
                 };
 
-                let msg = ProxyMessage::PermissionResponse {
+                let msg = ClientToServer::PermissionResponse {
                     request_id: perm.request_id,
                     allow: true,
                     input: Some(answers_json),

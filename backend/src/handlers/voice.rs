@@ -16,7 +16,7 @@ use axum::{
 };
 use diesel::prelude::*;
 use futures_util::{SinkExt, StreamExt};
-use shared::ProxyMessage;
+use shared::VoiceMessage;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tower_cookies::Cookies;
@@ -158,7 +158,7 @@ async fn handle_voice_socket(
     );
 
     // Channel for sending messages back to the client
-    let (client_tx, mut client_rx) = mpsc::unbounded_channel::<ProxyMessage>();
+    let (client_tx, mut client_rx) = mpsc::unbounded_channel::<VoiceMessage>();
 
     // Spawn task to send messages to WebSocket
     let send_task = tokio::spawn(async move {
@@ -194,9 +194,9 @@ async fn handle_voice_socket(
             }
             Ok(Message::Text(text)) => {
                 // Handle control messages (JSON)
-                if let Ok(proxy_msg) = serde_json::from_str::<ProxyMessage>(&text) {
+                if let Ok(proxy_msg) = serde_json::from_str::<VoiceMessage>(&text) {
                     match proxy_msg {
-                        ProxyMessage::StartVoice {
+                        VoiceMessage::StartVoice {
                             session_id: msg_session_id,
                             language_code,
                         } => {
@@ -217,7 +217,7 @@ async fn handle_voice_socket(
                             let credentials = match &speech_credentials {
                                 Some(path) => path.clone(),
                                 None => {
-                                    let error_msg = ProxyMessage::VoiceError {
+                                    let error_msg = VoiceMessage::VoiceError {
                                         session_id,
                                         message: "Speech-to-text not configured on server"
                                             .to_string(),
@@ -249,7 +249,7 @@ async fn handle_voice_socket(
                                                 "Forwarding to WebSocket: is_final={}, transcript=\"{}\"",
                                                 result.is_final, result.transcript
                                             );
-                                            let msg = ProxyMessage::Transcription {
+                                            let msg = VoiceMessage::Transcription {
                                                 session_id,
                                                 transcript: result.transcript,
                                                 is_final: result.is_final,
@@ -263,7 +263,7 @@ async fn handle_voice_socket(
                                         // Recognition stream ended (e.g., single_utterance detected end of speech)
                                         // Signal the frontend to stop recording
                                         let _ = client_tx_clone
-                                            .send(ProxyMessage::VoiceEnded { session_id });
+                                            .send(VoiceMessage::VoiceEnded { session_id });
                                         info!(
                                             "Speech recognition stream ended for session {}",
                                             session_id
@@ -277,7 +277,7 @@ async fn handle_voice_socket(
                                         "Failed to start speech recognition for {}: {}",
                                         session_id, e
                                     );
-                                    let error_msg = ProxyMessage::VoiceError {
+                                    let error_msg = VoiceMessage::VoiceError {
                                         session_id,
                                         message: format!(
                                             "Failed to start speech recognition: {}",
@@ -288,7 +288,7 @@ async fn handle_voice_socket(
                                 }
                             }
                         }
-                        ProxyMessage::StopVoice {
+                        VoiceMessage::StopVoice {
                             session_id: msg_session_id,
                         } => {
                             if msg_session_id != session_id {

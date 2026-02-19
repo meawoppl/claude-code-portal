@@ -9,58 +9,21 @@ use anyhow::Result;
 use base64::Engine;
 use claude_codes::io::{ContentBlock, ControlRequestPayload, ToolUseBlock};
 use claude_codes::ClaudeOutput;
-use futures_util::stream::{SplitSink, SplitStream};
-use futures_util::{SinkExt, StreamExt};
-use shared::{ProxyMessage, SendMode};
+use shared::{ProxyToServer, SendMode, ServerToProxy, SessionEndpoint};
 use tokio::sync::{mpsc, Mutex};
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 
 use crate::output_buffer::PendingOutputBuffer;
 
-/// Type alias for the WebSocket stream
-type WsStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+/// Type alias for the native WebSocket connection
+type NativeConnection = ws_bridge::native_client::Connection<SessionEndpoint>;
 
 /// Type alias for the shared WebSocket write half
-type SharedWsWrite = Arc<tokio::sync::Mutex<SplitSink<WsStream, Message>>>;
+type SharedWsWrite = Arc<tokio::sync::Mutex<ws_bridge::WsSender<ProxyToServer>>>;
 
 /// Type alias for the WebSocket read half
-type WsRead = SplitStream<WsStream>;
-
-/// WebSocket connection wrapper that owns both read and write halves.
-/// Provides convenient methods for sending/receiving messages.
-pub struct WebSocketConnection {
-    write: SplitSink<WsStream, Message>,
-    read: SplitStream<WsStream>,
-}
-
-impl WebSocketConnection {
-    /// Create a new connection from a WebSocket stream
-    pub fn new(stream: WsStream) -> Self {
-        let (write, read) = stream.split();
-        Self { write, read }
-    }
-
-    /// Send a ProxyMessage
-    pub async fn send(&mut self, msg: &ProxyMessage) -> Result<(), String> {
-        let json = serde_json::to_string(msg).map_err(|e| e.to_string())?;
-        self.write
-            .send(Message::Text(json))
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    /// Receive the next message
-    pub async fn recv(&mut self) -> Option<Result<Message, tokio_tungstenite::tungstenite::Error>> {
-        self.read.next().await
-    }
-
-    /// Split into write and read halves for concurrent use
-    pub fn split(self) -> (SplitSink<WsStream, Message>, SplitStream<WsStream>) {
-        (self.write, self.read)
-    }
-}
+type WsRead = ws_bridge::WsReceiver<ServerToProxy>;
 
 /// Configuration for a proxy session
 #[derive(Clone)]
@@ -329,13 +292,13 @@ async fn run_single_connection(session: &mut SessionState<'_>) -> ConnectionResu
     if let Some(ref branch) = config_with_branch.git_branch {
         let pr_url = get_pr_url(&session.config.working_directory, branch);
         if pr_url.is_some() {
-            let update_msg = ProxyMessage::SessionUpdate {
+            let update_msg = ProxyToServer::SessionUpdate {
                 session_id: config_with_branch.session_id,
                 git_branch: config_with_branch.git_branch.clone(),
                 pr_url,
             };
-            if let Err(e) = conn.send(&update_msg).await {
-                error!("Failed to send initial PR URL update: {}", e);
+            if conn.send(update_msg).await.is_err() {
+                error!("Failed to send initial PR URL update");
             }
         }
     }
@@ -350,15 +313,12 @@ async fn run_single_connection(session: &mut SessionState<'_>) -> ConnectionResu
                 pending_count
             );
             for pending in buf.get_pending() {
-                let msg = ProxyMessage::SequencedOutput {
+                let msg = ProxyToServer::SequencedOutput {
                     seq: pending.seq,
                     content: pending.content.clone(),
                 };
-                if let Err(e) = conn.send(&msg).await {
-                    error!(
-                        "Failed to replay pending message seq={}: {}",
-                        pending.seq, e
-                    );
+                if conn.send(msg).await.is_err() {
+                    error!("Failed to replay pending message seq={}", pending.seq);
                     return ConnectionResult::Disconnected(Duration::ZERO);
                 }
             }
@@ -398,12 +358,12 @@ async fn run_single_connection(session: &mut SessionState<'_>) -> ConnectionResu
             let mut buf = session.output_buffer.lock().await;
             buf.push(portal_content.clone())
         };
-        let msg = ProxyMessage::SequencedOutput {
+        let msg = ProxyToServer::SequencedOutput {
             seq,
             content: portal_content,
         };
-        if let Err(e) = conn.send(&msg).await {
-            error!("Failed to send connection portal message: {}", e);
+        if conn.send(msg).await.is_err() {
+            error!("Failed to send connection portal message");
             return ConnectionResult::Disconnected(Duration::ZERO);
         }
     }
@@ -420,19 +380,17 @@ async fn run_single_connection(session: &mut SessionState<'_>) -> ConnectionResu
 async fn connect_to_backend(
     backend_url: &str,
     first_connection: bool,
-) -> Result<WebSocketConnection, Duration> {
-    let ws_url = format!("{}/ws/session", backend_url);
-
+) -> Result<NativeConnection, Duration> {
     if first_connection {
         info!("Connecting to backend...");
     } else {
         info!("Reconnecting to backend...");
     }
 
-    match connect_async(&ws_url).await {
-        Ok((stream, _)) => {
+    match ws_bridge::native_client::connect::<SessionEndpoint>(backend_url).await {
+        Ok(conn) => {
             info!("Connected to backend");
-            Ok(WebSocketConnection::new(stream))
+            Ok(conn)
         }
         Err(e) => {
             error!("Failed to connect to backend: {}", e);
@@ -443,7 +401,7 @@ async fn connect_to_backend(
 
 /// Register session with the backend and wait for acknowledgment
 async fn register_session(
-    conn: &mut WebSocketConnection,
+    conn: &mut NativeConnection,
     config: &ProxySessionConfig,
 ) -> Result<(), Duration> {
     info!("Registering session...");
@@ -453,7 +411,7 @@ async fn register_session(
         .and_then(|h| h.into_string().ok())
         .unwrap_or_else(|| "unknown".to_string());
 
-    let register_msg = ProxyMessage::Register {
+    let register_msg = ProxyToServer::Register {
         session_id: config.session_id,
         session_name: config.session_name.clone(),
         auth_token: config.auth_token.clone(),
@@ -467,28 +425,24 @@ async fn register_session(
         launcher_id: config.launcher_id,
     };
 
-    if let Err(e) = conn.send(&register_msg).await {
-        error!("Failed to send registration message: {}", e);
+    if conn.send(register_msg).await.is_err() {
+        error!("Failed to send registration message");
         return Err(Duration::ZERO);
     }
 
     // Wait for RegisterAck with timeout
     let ack_timeout = tokio::time::timeout(Duration::from_secs(10), async {
-        while let Some(msg) = conn.recv().await {
-            match msg {
-                Ok(Message::Text(text)) => {
-                    if let Ok(ProxyMessage::RegisterAck {
-                        success,
-                        session_id: _,
-                        error,
-                    }) = serde_json::from_str::<ProxyMessage>(&text)
-                    {
-                        return Some((success, error));
-                    }
+        while let Some(result) = conn.recv().await {
+            match result {
+                Ok(ServerToProxy::RegisterAck {
+                    success,
+                    session_id: _,
+                    error,
+                }) => {
+                    return Some((success, error));
                 }
-                Ok(Message::Close(_)) => return None,
+                Ok(_) => continue,
                 Err(_) => return None,
-                _ => continue,
             }
         }
         None
@@ -588,7 +542,7 @@ pub struct ConnectionState {
 async fn run_message_loop(
     session: &mut SessionState<'_>,
     config: &ProxySessionConfig,
-    conn: WebSocketConnection,
+    conn: NativeConnection,
 ) -> ConnectionResult {
     let connection_start = Instant::now();
     let session_id = config.session_id;
@@ -786,17 +740,15 @@ async fn check_and_send_branch_update(
         *current_pr_url.lock().await = new_pr_url.clone();
 
         // Send SessionUpdate to backend
-        let update_msg = ProxyMessage::SessionUpdate {
+        let update_msg = ProxyToServer::SessionUpdate {
             session_id,
             git_branch: new_branch,
             pr_url: new_pr_url,
         };
 
-        if let Ok(json) = serde_json::to_string(&update_msg) {
-            let mut ws = ws_write.lock().await;
-            if let Err(e) = ws.send(Message::Text(json)).await {
-                error!("Failed to send branch update: {}", e);
-            }
+        let mut ws = ws_write.lock().await;
+        if let Err(e) = ws.send(update_msg).await {
+            error!("Failed to send branch update: {}", e);
         }
     }
 }
@@ -960,12 +912,12 @@ fn spawn_output_forwarder(
             };
 
             // Send as sequenced output
-            let msg = ProxyMessage::SequencedOutput { seq, content };
+            let msg = ProxyToServer::SequencedOutput { seq, content };
 
-            if let Ok(json) = serde_json::to_string(&msg) {
+            {
                 let mut ws = ws_write.lock().await;
-                if let Err(e) = ws.send(Message::Text(json)).await {
-                    error!("Failed to send to backend: {}", e);
+                if ws.send(msg).await.is_err() {
+                    error!("Failed to send to backend");
                     break;
                 }
             }
@@ -977,16 +929,14 @@ fn spawn_output_forwarder(
                     let mut buf = output_buffer.lock().await;
                     buf.push(portal_content.clone())
                 };
-                let portal_ws_msg = ProxyMessage::SequencedOutput {
+                let portal_ws_msg = ProxyToServer::SequencedOutput {
                     seq: portal_seq,
                     content: portal_content,
                 };
-                if let Ok(json) = serde_json::to_string(&portal_ws_msg) {
-                    let mut ws = ws_write.lock().await;
-                    if let Err(e) = ws.send(Message::Text(json)).await {
-                        error!("Failed to send image portal message: {}", e);
-                        break;
-                    }
+                let mut ws = ws_write.lock().await;
+                if ws.send(portal_ws_msg).await.is_err() {
+                    error!("Failed to send image portal message");
+                    break;
                 }
             }
 
@@ -1243,11 +1193,11 @@ fn spawn_ws_reader(
     heartbeat: crate::heartbeat::HeartbeatTracker,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        while let Some(msg) = ws_read.next().await {
-            match msg {
-                Ok(Message::Text(text)) => {
-                    match handle_ws_text_message(
-                        &text, &input_tx, &perm_tx, &ack_tx, &ws_write, &wiggum_tx, &heartbeat,
+        while let Some(result) = ws_read.recv().await {
+            match result {
+                Ok(msg) => {
+                    match handle_ws_message(
+                        msg, &input_tx, &perm_tx, &ack_tx, &ws_write, &wiggum_tx, &heartbeat,
                     )
                     .await
                     {
@@ -1261,15 +1211,10 @@ fn spawn_ws_reader(
                         }
                     }
                 }
-                Ok(Message::Close(_)) => {
-                    info!("WebSocket closed by server");
-                    break;
-                }
                 Err(e) => {
                     error!("WebSocket error: {}", e);
                     break;
                 }
-                _ => {}
             }
         }
         debug!("WebSocket reader ended");
@@ -1277,9 +1222,9 @@ fn spawn_ws_reader(
     })
 }
 
-/// Handle a text message from the WebSocket
-async fn handle_ws_text_message(
-    text: &str,
+/// Handle a typed message from the WebSocket
+async fn handle_ws_message(
+    proxy_msg: ServerToProxy,
     input_tx: &mpsc::UnboundedSender<String>,
     perm_tx: &mpsc::UnboundedSender<PermissionResponseData>,
     ack_tx: &mpsc::UnboundedSender<u64>,
@@ -1287,17 +1232,12 @@ async fn handle_ws_text_message(
     wiggum_tx: &mpsc::UnboundedSender<String>,
     heartbeat: &crate::heartbeat::HeartbeatTracker,
 ) -> WsMessageResult {
-    let proxy_msg = match serde_json::from_str::<ProxyMessage>(text) {
-        Ok(msg) => msg,
-        Err(_) => return WsMessageResult::Continue, // Continue on parse error
-    };
-
-    if !matches!(proxy_msg, ProxyMessage::Heartbeat) {
-        debug!("ws recv: {}", truncate(text, 200));
+    if !matches!(proxy_msg, ServerToProxy::Heartbeat) {
+        debug!("ws recv: {:?}", proxy_msg);
     }
 
     match proxy_msg {
-        ProxyMessage::ClaudeInput { content, send_mode } => {
+        ServerToProxy::ClaudeInput { content, send_mode } => {
             let user_text = match &content {
                 serde_json::Value::String(s) => s.clone(),
                 other => other.to_string(),
@@ -1318,7 +1258,7 @@ async fn handle_ws_text_message(
                 }
             }
         }
-        ProxyMessage::SequencedInput {
+        ServerToProxy::SequencedInput {
             session_id,
             seq,
             content,
@@ -1349,18 +1289,16 @@ async fn handle_ws_text_message(
             }
 
             // Send InputAck back to backend
-            let ack = ProxyMessage::InputAck {
+            let ack = ProxyToServer::InputAck {
                 session_id,
                 ack_seq: seq,
             };
             let mut ws = ws_write.lock().await;
-            if let Ok(json) = serde_json::to_string(&ack) {
-                if let Err(e) = ws.send(Message::Text(json)).await {
-                    error!("Failed to send InputAck: {}", e);
-                }
+            if let Err(e) = ws.send(ack).await {
+                error!("Failed to send InputAck: {}", e);
             }
         }
-        ProxyMessage::PermissionResponse {
+        ServerToProxy::PermissionResponse {
             request_id,
             allow,
             input,
@@ -1388,7 +1326,7 @@ async fn handle_ws_text_message(
                 return WsMessageResult::Disconnect;
             }
         }
-        ProxyMessage::OutputAck {
+        ServerToProxy::OutputAck {
             session_id: _,
             ack_seq,
         } => {
@@ -1398,11 +1336,11 @@ async fn handle_ws_text_message(
                 return WsMessageResult::Disconnect;
             }
         }
-        ProxyMessage::Heartbeat => {
+        ServerToProxy::Heartbeat => {
             trace!("heartbeat");
             heartbeat.received();
         }
-        ProxyMessage::ServerShutdown {
+        ServerToProxy::ServerShutdown {
             reason,
             reconnect_delay_ms,
         } => {
@@ -1446,9 +1384,7 @@ async fn run_main_loop(
                     return ConnectionResult::Disconnected(state.connection_start.elapsed());
                 }
                 let mut ws = state.ws_write.lock().await;
-                if let Ok(json) = serde_json::to_string(&ProxyMessage::Heartbeat) {
-                    let _ = ws.send(Message::Text(json)).await;
-                }
+                let _ = ws.send(ProxyToServer::Heartbeat).await;
             }
 
             _ = &mut state.disconnect_rx => {
@@ -1623,18 +1559,16 @@ async fn handle_session_event_with_wiggum(
             permission_suggestions,
         }) => {
             // Send permission request directly to WebSocket
-            let msg = ProxyMessage::PermissionRequest {
+            let msg = ProxyToServer::PermissionRequest {
                 request_id,
                 tool_name,
                 input,
                 permission_suggestions,
             };
-            if let Ok(json) = serde_json::to_string(&msg) {
-                let mut ws = ws_write.lock().await;
-                if let Err(e) = ws.send(Message::Text(json)).await {
-                    error!("Failed to send permission request to backend: {}", e);
-                    return Some(ConnectionResult::Disconnected(connection_start.elapsed()));
-                }
+            let mut ws = ws_write.lock().await;
+            if let Err(e) = ws.send(msg).await {
+                error!("Failed to send permission request to backend: {}", e);
+                return Some(ConnectionResult::Disconnected(connection_start.elapsed()));
             }
             None
         }

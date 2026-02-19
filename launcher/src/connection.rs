@@ -1,9 +1,7 @@
 use crate::process_manager::{ProcessManager, SessionExited};
-use futures_util::{SinkExt, StreamExt};
-use shared::ProxyMessage;
+use shared::{LauncherEndpoint, LauncherToServer, ServerToLauncher};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -22,18 +20,17 @@ pub async fn run_launcher_loop(
     let mut backoff = Duration::from_secs(1);
 
     loop {
-        let ws_url = format!("{}/ws/launcher", backend_url);
-        info!("Connecting to backend: {}", ws_url);
+        info!("Connecting to backend: {}", backend_url);
 
-        match connect_async(&ws_url).await {
-            Ok((ws_stream, _)) => {
+        match ws_bridge::native_client::connect::<LauncherEndpoint>(backend_url).await {
+            Ok(conn) => {
                 info!("Connected to backend");
                 backoff = Duration::from_secs(1);
 
-                let (mut write, mut read) = ws_stream.split();
+                let (mut ws_sender, mut ws_receiver) = conn.split();
 
                 // Send registration
-                let register = ProxyMessage::LauncherRegister {
+                let register = LauncherToServer::LauncherRegister {
                     launcher_id,
                     launcher_name: launcher_name.to_string(),
                     auth_token: auth_token.map(|s| s.to_string()),
@@ -42,28 +39,33 @@ pub async fn run_launcher_loop(
                         .unwrap_or_default(),
                     version: Some(env!("CARGO_PKG_VERSION").to_string()),
                 };
-                let json = serde_json::to_string(&register)?;
-                write.send(Message::Text(json)).await?;
+                if ws_sender.send(register).await.is_err() {
+                    warn!("Failed to send registration");
+                    tokio::time::sleep(backoff).await;
+                    backoff = (backoff * 2).min(MAX_BACKOFF);
+                    continue;
+                }
 
                 // Wait for RegisterAck
                 let ack_ok = loop {
-                    match read.next().await {
-                        Some(Ok(Message::Text(text))) => {
-                            if let Ok(ProxyMessage::LauncherRegisterAck {
-                                success, error, ..
-                            }) = serde_json::from_str(&text)
-                            {
-                                if success {
-                                    info!("Registration successful");
-                                    break true;
-                                } else {
-                                    error!("Registration failed: {}", error.unwrap_or_default());
-                                    break false;
-                                }
+                    match ws_receiver.recv().await {
+                        Some(Ok(ServerToLauncher::LauncherRegisterAck {
+                            success, error, ..
+                        })) => {
+                            if success {
+                                info!("Registration successful");
+                                break true;
+                            } else {
+                                error!("Registration failed: {}", error.unwrap_or_default());
+                                break false;
                             }
                         }
-                        Some(Ok(Message::Close(_))) | None => break false,
-                        _ => continue,
+                        Some(Ok(_)) => continue,
+                        Some(Err(e)) => {
+                            warn!("Decode error during registration: {}", e);
+                            continue;
+                        }
+                        None => break false,
                     }
                 };
 
@@ -80,37 +82,34 @@ pub async fn run_launcher_loop(
 
                 loop {
                     tokio::select! {
-                        msg = read.next() => {
-                            match msg {
-                                Some(Ok(Message::Text(text))) => {
+                        result = ws_receiver.recv() => {
+                            match result {
+                                Some(Ok(msg)) => {
                                     handle_message(
-                                        &text,
-                                        &mut write,
+                                        msg,
+                                        &mut ws_sender,
                                         &mut process_manager,
                                     ).await;
                                 }
-                                Some(Ok(Message::Close(_))) | None => {
+                                Some(Err(e)) => {
+                                    warn!("Decode error: {}", e);
+                                    continue;
+                                }
+                                None => {
                                     info!("WebSocket closed by server");
                                     break;
                                 }
-                                Some(Err(e)) => {
-                                    error!("WebSocket error: {}", e);
-                                    break;
-                                }
-                                _ => {}
                             }
                         }
 
                         _ = heartbeat_timer.tick() => {
-                            let hb = ProxyMessage::LauncherHeartbeat {
+                            let hb = LauncherToServer::LauncherHeartbeat {
                                 launcher_id,
                                 running_sessions: process_manager.running_session_ids(),
                                 uptime_secs: start.elapsed().as_secs(),
                             };
-                            if let Ok(json) = serde_json::to_string(&hb) {
-                                if write.send(Message::Text(json)).await.is_err() {
-                                    break;
-                                }
+                            if ws_sender.send(hb).await.is_err() {
+                                break;
                             }
                         }
 
@@ -120,14 +119,12 @@ pub async fn run_launcher_loop(
                                 exited.session_id, exited.exit_code
                             );
                             process_manager.remove_finished(&exited.session_id);
-                            let msg = ProxyMessage::SessionExited {
+                            let msg = LauncherToServer::SessionExited {
                                 session_id: exited.session_id,
                                 exit_code: exited.exit_code,
                             };
-                            if let Ok(json) = serde_json::to_string(&msg) {
-                                if write.send(Message::Text(json)).await.is_err() {
-                                    break;
-                                }
+                            if ws_sender.send(msg).await.is_err() {
+                                break;
                             }
                         }
                     }
@@ -144,12 +141,7 @@ pub async fn run_launcher_loop(
     }
 }
 
-type WsWrite = futures_util::stream::SplitSink<
-    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-    Message,
->;
-
-fn list_directory(path: &str, request_id: Uuid) -> ProxyMessage {
+fn list_directory(path: &str, request_id: Uuid) -> LauncherToServer {
     // Resolve ~ to home directory
     let resolved = if path == "~" || path == "~/" {
         dirs::home_dir()
@@ -182,7 +174,7 @@ fn list_directory(path: &str, request_id: Uuid) -> ProxyMessage {
     let read_dir = match std::fs::read_dir(dir) {
         Ok(rd) => rd,
         Err(e) => {
-            return ProxyMessage::ListDirectoriesResult {
+            return LauncherToServer::ListDirectoriesResult {
                 request_id,
                 entries: vec![],
                 error: Some(e.to_string()),
@@ -215,7 +207,7 @@ fn list_directory(path: &str, request_id: Uuid) -> ProxyMessage {
         format!("{}/", dir_path)
     };
 
-    ProxyMessage::ListDirectoriesResult {
+    LauncherToServer::ListDirectoriesResult {
         request_id,
         entries,
         error: None,
@@ -223,14 +215,13 @@ fn list_directory(path: &str, request_id: Uuid) -> ProxyMessage {
     }
 }
 
-async fn handle_message(text: &str, write: &mut WsWrite, process_manager: &mut ProcessManager) {
-    let msg: ProxyMessage = match serde_json::from_str(text) {
-        Ok(m) => m,
-        Err(_) => return,
-    };
-
+async fn handle_message(
+    msg: ServerToLauncher,
+    ws_sender: &mut ws_bridge::WsSender<LauncherToServer>,
+    process_manager: &mut ProcessManager,
+) {
     match msg {
-        ProxyMessage::LaunchSession {
+        ServerToLauncher::LaunchSession {
             request_id,
             auth_token,
             working_directory,
@@ -253,7 +244,7 @@ async fn handle_message(text: &str, write: &mut WsWrite, process_manager: &mut P
                 .await;
 
             let response = match result {
-                Ok(spawn_result) => ProxyMessage::LaunchSessionResult {
+                Ok(spawn_result) => LauncherToServer::LaunchSessionResult {
                     request_id,
                     success: true,
                     session_id: Some(spawn_result.session_id),
@@ -262,7 +253,7 @@ async fn handle_message(text: &str, write: &mut WsWrite, process_manager: &mut P
                 },
                 Err(e) => {
                     error!("Failed to spawn: {}", e);
-                    ProxyMessage::LaunchSessionResult {
+                    LauncherToServer::LaunchSessionResult {
                         request_id,
                         success: false,
                         session_id: None,
@@ -272,21 +263,17 @@ async fn handle_message(text: &str, write: &mut WsWrite, process_manager: &mut P
                 }
             };
 
-            if let Ok(json) = serde_json::to_string(&response) {
-                let _ = write.send(Message::Text(json)).await;
-            }
+            let _ = ws_sender.send(response).await;
         }
-        ProxyMessage::StopSession { session_id } => {
+        ServerToLauncher::StopSession { session_id } => {
             info!("Stop request for session {}", session_id);
             process_manager.stop(&session_id).await;
         }
-        ProxyMessage::ListDirectories { request_id, path } => {
+        ServerToLauncher::ListDirectories { request_id, path } => {
             let response = list_directory(&path, request_id);
-            if let Ok(json) = serde_json::to_string(&response) {
-                let _ = write.send(Message::Text(json)).await;
-            }
+            let _ = ws_sender.send(response).await;
         }
-        ProxyMessage::ServerShutdown { reason, .. } => {
+        ServerToLauncher::ServerShutdown { reason, .. } => {
             info!("Server shutting down: {}", reason);
         }
         _ => {}

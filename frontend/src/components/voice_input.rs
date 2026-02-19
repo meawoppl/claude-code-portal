@@ -7,7 +7,7 @@
 use futures_util::{SinkExt, StreamExt};
 use gloo::utils::window;
 use gloo_net::websocket::{futures::WebSocket, Message};
-use shared::ProxyMessage;
+use shared::VoiceMessage;
 use std::cell::RefCell;
 use std::rc::Rc;
 use uuid::Uuid;
@@ -68,7 +68,7 @@ pub enum VoiceInputMsg {
     StartRecording,
     StopRecording,
     RecordingStarted(VoiceSession),
-    WebSocketMessage(ProxyMessage),
+    WebSocketMessage(VoiceMessage),
     VolumeLevel(f32),
     SilenceDetected,
     Error(String),
@@ -185,7 +185,7 @@ impl Component for VoiceInput {
             }
             VoiceInputMsg::WebSocketMessage(proxy_msg) => {
                 match proxy_msg {
-                    ProxyMessage::Transcription {
+                    VoiceMessage::Transcription {
                         transcript,
                         is_final,
                         ..
@@ -196,10 +196,10 @@ impl Component for VoiceInput {
                             callback.emit(transcript);
                         }
                     }
-                    ProxyMessage::VoiceError { message, .. } => {
+                    VoiceMessage::VoiceError { message, .. } => {
                         ctx.props().on_error.emit(message);
                     }
-                    ProxyMessage::VoiceEnded { .. } => {
+                    VoiceMessage::VoiceEnded { .. } => {
                         // Speech recognition detected end of speech - auto-stop recording
                         log::info!("Voice session ended by server (end of speech detected)");
                         ctx.link().send_message(VoiceInputMsg::StopRecording);
@@ -319,7 +319,7 @@ async fn start_voice_session(
     let (mut ws_sender, mut ws_receiver) = ws.split();
 
     // Send StartVoice message
-    let start_msg = ProxyMessage::StartVoice {
+    let start_msg = VoiceMessage::StartVoice {
         session_id,
         language_code: "en-US".to_string(),
     };
@@ -340,7 +340,7 @@ async fn start_voice_session(
         while let Some(msg) = ws_receiver.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
-                    if let Ok(proxy_msg) = serde_json::from_str::<ProxyMessage>(&text) {
+                    if let Ok(proxy_msg) = serde_json::from_str::<VoiceMessage>(&text) {
                         link_for_ws.send_message(VoiceInputMsg::WebSocketMessage(proxy_msg));
                     }
                 }
@@ -364,7 +364,7 @@ async fn start_voice_session(
             }
         }
         // Send StopVoice when audio channel closes
-        let stop_msg = ProxyMessage::StopVoice { session_id };
+        let stop_msg = VoiceMessage::StopVoice { session_id };
         if let Ok(json) = serde_json::to_string(&stop_msg) {
             let _ = ws_sender.send(Message::Text(json)).await;
         }

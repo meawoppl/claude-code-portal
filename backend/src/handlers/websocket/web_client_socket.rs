@@ -1,12 +1,11 @@
 use super::permissions::{handle_permission_response, replay_pending_permission};
-use super::{ClientSender, SessionId, SessionManager};
+use super::{SessionId, SessionManager, WebClientSender};
 use crate::models::NewPendingInput;
 use crate::AppState;
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::WebSocket;
 use diesel::prelude::*;
-use futures_util::{SinkExt, StreamExt};
 use shared::api::RawMessageFallback;
-use shared::{ProxyMessage, SendMode};
+use shared::{ClientEndpoint, ClientToServer, SendMode, ServerToClient, ServerToProxy};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
@@ -15,8 +14,9 @@ use uuid::Uuid;
 pub async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, user_id: Uuid) {
     let session_manager = app_state.session_manager.clone();
     let db_pool = app_state.db_pool.clone();
-    let (mut sender, mut receiver) = socket.split();
-    let (tx, mut rx) = mpsc::unbounded_channel::<ProxyMessage>();
+    let conn = ws_bridge::server::into_connection::<ClientEndpoint>(socket);
+    let (mut ws_sender, mut ws_receiver) = conn.split();
+    let (tx, mut rx) = mpsc::unbounded_channel::<ServerToClient>();
 
     let mut session_key: Option<SessionId> = None;
     let mut verified_session_id: Option<Uuid> = None;
@@ -25,42 +25,33 @@ pub async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState
 
     let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            if let Ok(json) = serde_json::to_string(&msg) {
-                if sender.send(Message::Text(json)).await.is_err() {
-                    break;
-                }
+            if ws_sender.send(msg).await.is_err() {
+                break;
             }
         }
     });
 
-    while let Some(msg) = receiver.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                if let Ok(proxy_msg) = serde_json::from_str::<ProxyMessage>(&text) {
-                    let should_break = handle_web_client_message(
-                        proxy_msg,
-                        &app_state,
-                        &session_manager,
-                        &db_pool,
-                        &tx,
-                        user_id,
-                        &mut session_key,
-                        &mut verified_session_id,
-                    );
-                    if should_break {
-                        break;
-                    }
+    while let Some(result) = ws_receiver.recv().await {
+        match result {
+            Ok(client_msg) => {
+                let should_break = handle_web_client_message(
+                    client_msg,
+                    &app_state,
+                    &session_manager,
+                    &db_pool,
+                    &tx,
+                    user_id,
+                    &mut session_key,
+                    &mut verified_session_id,
+                );
+                if should_break {
+                    break;
                 }
             }
-            Ok(Message::Close(_)) => {
-                info!("Web client WebSocket closed");
-                break;
-            }
             Err(e) => {
-                error!("Web client WebSocket error: {}", e);
-                break;
+                warn!("WebSocket decode error: {}", e);
+                continue;
             }
-            _ => {}
         }
     }
 
@@ -70,17 +61,17 @@ pub async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState
 /// Returns true if the connection should be closed
 #[allow(clippy::too_many_arguments)]
 fn handle_web_client_message(
-    proxy_msg: ProxyMessage,
+    client_msg: ClientToServer,
     app_state: &AppState,
     session_manager: &SessionManager,
     db_pool: &crate::db::DbPool,
-    tx: &ClientSender,
+    tx: &WebClientSender,
     user_id: Uuid,
     session_key: &mut Option<SessionId>,
     verified_session_id: &mut Option<Uuid>,
 ) -> bool {
-    match proxy_msg {
-        ProxyMessage::Register {
+    match client_msg {
+        ClientToServer::Register {
             session_id,
             session_name,
             replay_after,
@@ -97,7 +88,7 @@ fn handle_web_client_message(
             session_key,
             verified_session_id,
         ),
-        ProxyMessage::ClaudeInput { content, send_mode } => {
+        ClientToServer::ClaudeInput { content, send_mode } => {
             handle_web_input(
                 session_manager,
                 db_pool,
@@ -108,7 +99,7 @@ fn handle_web_client_message(
             );
             false
         }
-        ProxyMessage::PermissionResponse {
+        ClientToServer::PermissionResponse {
             request_id,
             allow,
             input,
@@ -132,7 +123,6 @@ fn handle_web_client_message(
             }
             false
         }
-        _ => false,
     }
 }
 
@@ -142,7 +132,7 @@ fn handle_web_register(
     app_state: &AppState,
     session_manager: &SessionManager,
     db_pool: &crate::db::DbPool,
-    tx: &ClientSender,
+    tx: &WebClientSender,
     user_id: Uuid,
     session_id: Uuid,
     session_name: &str,
@@ -171,7 +161,7 @@ fn handle_web_register(
                 "User {} attempted to access session {} they don't own",
                 user_id, session_id
             );
-            let _ = tx.send(ProxyMessage::Error {
+            let _ = tx.send(ServerToClient::Error {
                 message: "Access denied: you don't own this session".to_string(),
             });
             true // close connection
@@ -182,7 +172,7 @@ fn handle_web_register(
 /// Send historical messages from DB to a newly connected web client
 fn replay_history(
     db_pool: &crate::db::DbPool,
-    tx: &ClientSender,
+    tx: &WebClientSender,
     session_id: Uuid,
     replay_after: Option<String>,
 ) {
@@ -243,7 +233,7 @@ fn replay_history(
         })
         .collect();
 
-    let _ = tx.send(ProxyMessage::HistoryBatch { messages });
+    let _ = tx.send(ServerToClient::HistoryBatch { messages });
 }
 
 fn handle_web_input(
@@ -297,7 +287,7 @@ fn handle_web_input(
     if seq > 0 {
         if !session_manager.send_to_session(
             key,
-            ProxyMessage::SequencedInput {
+            ServerToProxy::SequencedInput {
                 session_id,
                 seq,
                 content,
@@ -310,7 +300,7 @@ fn handle_web_input(
             );
         }
     } else if !session_manager
-        .send_to_session(key, ProxyMessage::ClaudeInput { content, send_mode })
+        .send_to_session(key, ServerToProxy::ClaudeInput { content, send_mode })
     {
         warn!(
             "Failed to send to session '{}', session not found in SessionManager",
