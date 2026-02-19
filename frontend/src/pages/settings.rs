@@ -1,6 +1,5 @@
 use crate::audio::{self, EventSound, SoundConfig, SoundEvent, Waveform, STORAGE_KEY};
 use crate::components::ShareDialog;
-use crate::hooks::use_local_storage;
 use crate::utils;
 use crate::Route;
 use gloo_net::http::Request;
@@ -195,27 +194,119 @@ const ALL_EVENTS: [SoundEvent; 4] = [
     SoundEvent::AwaitingInput,
 ];
 
-#[derive(Properties, PartialEq)]
-struct SoundsPanelProps {
-    config: SoundConfig,
-    on_change: Callback<SoundConfig>,
-}
-
 #[function_component(SoundsPanel)]
-fn sounds_panel(props: &SoundsPanelProps) -> Html {
-    let config = &props.config;
-    let on_change = &props.on_change;
+fn sounds_panel() -> Html {
+    let config = use_state(SoundConfig::default);
+    let dirty = use_state(|| false);
+    let saving = use_state(|| false);
+    let save_feedback = use_state(|| None::<&'static str>);
+    let loading = use_state(|| true);
+
+    // Fetch from API on mount
+    {
+        let config = config.clone();
+        let loading = loading.clone();
+        use_effect_with((), move |_| {
+            spawn_local(async move {
+                let url = utils::api_url("/api/settings/sound");
+                if let Ok(resp) = Request::get(&url).send().await {
+                    if let Ok(data) = resp.json::<shared::SoundSettingsResponse>().await {
+                        if let Some(json) = data.sound_config {
+                            if let Ok(cfg) = serde_json::from_value::<SoundConfig>(json) {
+                                // Sync to localStorage for play_sound() runtime
+                                if let Ok(s) = serde_json::to_string(&cfg) {
+                                    if let Some(storage) = web_sys::window()
+                                        .and_then(|w| w.local_storage().ok())
+                                        .flatten()
+                                    {
+                                        let _ = storage.set_item(STORAGE_KEY, &s);
+                                    }
+                                }
+                                config.set(cfg);
+                            }
+                        }
+                    }
+                }
+                loading.set(false);
+            });
+        });
+    }
+
+    let on_change = {
+        let config = config.clone();
+        let dirty = dirty.clone();
+        let save_feedback = save_feedback.clone();
+        Callback::from(move |new_config: SoundConfig| {
+            config.set(new_config);
+            dirty.set(true);
+            save_feedback.set(None);
+        })
+    };
 
     let on_toggle = {
         let config = config.clone();
         let on_change = on_change.clone();
         Callback::from(move |e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            let mut cfg = config.clone();
+            let mut cfg = (*config).clone();
             cfg.enabled = input.checked();
             on_change.emit(cfg);
         })
     };
+
+    let on_save = {
+        let config = config.clone();
+        let dirty = dirty.clone();
+        let saving = saving.clone();
+        let save_feedback = save_feedback.clone();
+        Callback::from(move |_: MouseEvent| {
+            let config = config.clone();
+            let dirty = dirty.clone();
+            let saving = saving.clone();
+            let save_feedback = save_feedback.clone();
+            spawn_local(async move {
+                saving.set(true);
+                let cfg = (*config).clone();
+                let url = utils::api_url("/api/settings/sound");
+                let json = serde_json::to_value(&cfg).unwrap_or_default();
+                let result = Request::put(&url)
+                    .json(&json)
+                    .expect("json body")
+                    .send()
+                    .await;
+                match result {
+                    Ok(resp) if resp.ok() => {
+                        // Update localStorage so play_sound() uses new settings
+                        if let Ok(s) = serde_json::to_string(&cfg) {
+                            if let Some(storage) = web_sys::window()
+                                .and_then(|w| w.local_storage().ok())
+                                .flatten()
+                            {
+                                let _ = storage.set_item(STORAGE_KEY, &s);
+                            }
+                        }
+                        dirty.set(false);
+                        save_feedback.set(Some("Saved!"));
+                    }
+                    _ => {
+                        save_feedback.set(Some("Save failed"));
+                    }
+                }
+                saving.set(false);
+            });
+        })
+    };
+
+    if *loading {
+        return html! {
+            <section class="sounds-section">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>{ "Loading sound settings..." }</p>
+                </div>
+            </section>
+        };
+    }
 
     html! {
         <section class="sounds-section">
@@ -224,6 +315,22 @@ fn sounds_panel(props: &SoundsPanelProps) -> Html {
                 <p class="section-description">
                     { "Configure synthesized sounds for different events." }
                 </p>
+                <div class="sound-save-area">
+                    if let Some(msg) = *save_feedback {
+                        <span class={classes!(
+                            "save-feedback",
+                            (*dirty).then_some("unsaved"),
+                            (!*dirty).then_some("saved"),
+                        )}>{ msg }</span>
+                    }
+                    <button
+                        class={classes!("create-button", (!*dirty).then_some("disabled"))}
+                        onclick={on_save}
+                        disabled={!*dirty || *saving}
+                    >
+                        { if *saving { "Saving..." } else { "Save" } }
+                    </button>
+                </div>
             </div>
 
             <div class="sound-toggle">
@@ -243,7 +350,7 @@ fn sounds_panel(props: &SoundsPanelProps) -> Html {
                     let config = config.clone();
                     let on_change = on_change.clone();
                     let on_sound_change = Callback::from(move |new_sound: EventSound| {
-                        let mut cfg = config.clone();
+                        let mut cfg = (*config).clone();
                         cfg.set_sound(event, new_sound);
                         on_change.emit(cfg);
                     });
@@ -674,9 +781,6 @@ pub fn settings_page() -> Html {
         Callback::from(move |_| active_tab.set(SettingsTab::Sounds))
     };
 
-    // Sound config from localStorage
-    let sound_storage = use_local_storage::<SoundConfig>(STORAGE_KEY);
-
     // Toggle create form
     let toggle_create_form = {
         let show_create_form = show_create_form.clone();
@@ -869,10 +973,7 @@ pub fn settings_page() -> Html {
 
                 // Sounds Tab
                 if *active_tab == SettingsTab::Sounds {
-                    <SoundsPanel
-                        config={sound_storage.value.clone()}
-                        on_change={sound_storage.set.clone()}
-                    />
+                    <SoundsPanel />
                 }
 
                 // Session Management Tab

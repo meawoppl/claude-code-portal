@@ -484,6 +484,30 @@
     max-width: 900px;
 }
 
+.sound-save-area {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.save-feedback {
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.save-feedback.saved {
+    color: var(--success);
+}
+
+.save-feedback.unsaved {
+    color: var(--error);
+}
+
+.create-button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .sound-toggle {
     margin-bottom: 1.5rem;
 }

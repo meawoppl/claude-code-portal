@@ -194,6 +194,12 @@ pub struct RawMessageFallback {
     pub content: String,
 }
 
+/// Response for GET /api/settings/sound
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SoundSettingsResponse {
+    pub sound_config: Option<serde_json::Value>,
+}
+
 /// API endpoint definitions
 pub mod endpoints {
     pub const HEALTH: &str = "/";
@@ -203,6 +209,7 @@ pub mod endpoints {
     pub const PROXY_TOKENS: &str = "/api/proxy-tokens";
     pub const DEVICE_CODE: &str = "/auth/device/code";
     pub const DEVICE_POLL: &str = "/auth/device/poll";
+    pub const SOUND_SETTINGS: &str = "/api/settings/sound";
 
     pub fn session(id: &str) -> String {
         format!("/api/sessions/{}", id)

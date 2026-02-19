@@ -141,6 +141,7 @@ diesel::table! {
         disabled -> Bool,
         voice_enabled -> Bool,
         ban_reason -> Nullable<Text>,
+        sound_config -> Nullable<Jsonb>,
     }
 }
 
