@@ -204,6 +204,7 @@ pub fn dashboard_page() -> Html {
         let activated_sessions = activated_sessions.clone();
         let active_sessions = active_sessions.clone();
         Callback::from(move |index: usize| {
+            crate::audio::play_sound(crate::audio::SoundEvent::SessionSwap);
             focused_index.set(index);
             if let Some(session) = active_sessions.get(index) {
                 let mut activated = (*activated_sessions).clone();
@@ -344,6 +345,7 @@ pub fn dashboard_page() -> Html {
             let mut set = (*awaiting_sessions).clone();
             if is_awaiting {
                 set.insert(session_id);
+                crate::audio::play_sound(crate::audio::SoundEvent::AwaitingInput);
             } else {
                 set.remove(&session_id);
             }

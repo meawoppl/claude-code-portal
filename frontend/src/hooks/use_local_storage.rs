@@ -1,8 +1,4 @@
 //! Hook for typed localStorage persistence with automatic save on change.
-//!
-//! This hook is available for future use but not currently used in the codebase.
-
-#![allow(dead_code)]
 
 use serde::{de::DeserializeOwned, Serialize};
 use yew::prelude::*;
