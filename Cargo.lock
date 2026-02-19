@@ -438,6 +438,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "ws-bridge",
 ]
 
 [[package]]
@@ -696,18 +697,17 @@ dependencies = [
  "clap",
  "claude-session-lib",
  "dirs",
- "futures-util",
  "hostname",
  "portal-auth",
  "serde",
  "serde_json",
  "shared",
  "tokio",
- "tokio-tungstenite",
  "toml 1.0.1+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "ws-bridge",
 ]
 
 [[package]]
@@ -719,17 +719,16 @@ dependencies = [
  "chrono",
  "claude-codes",
  "directories",
- "futures-util",
  "hostname",
  "serde",
  "serde_json",
  "shared",
  "thiserror 1.0.69",
  "tokio",
- "tokio-tungstenite",
  "tracing",
  "uuid",
  "which 8.0.0",
+ "ws-bridge",
 ]
 
 [[package]]
@@ -1274,6 +1273,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-logger",
  "web-sys",
+ "ws-bridge",
  "yew",
  "yew-router",
 ]
@@ -3845,6 +3845,7 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
+ "ws-bridge",
 ]
 
 [[package]]
@@ -5325,6 +5326,23 @@ name = "writeable"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9edde0db4769d2dc68579893f2306b26c6ecfbe0ef499b013d731b7b9247e0b9"
+
+[[package]]
+name = "ws-bridge"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c734714c0599a9c58636018ec7fa85d0dd57d702d72cd331bd5eb31fcbd85d27"
+dependencies = [
+ "axum 0.7.9",
+ "futures-util",
+ "gloo-net 0.6.0",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
 
 [[package]]
 name = "yew"

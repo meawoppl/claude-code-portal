@@ -1,10 +1,8 @@
 //! WebSocket connection management for SessionView
 
 use crate::utils;
-use futures_util::{SinkExt, StreamExt};
-use gloo_net::websocket::{futures::WebSocket, Message};
 use shared::api::ErrorMessage;
-use shared::ProxyMessage;
+use shared::{ClientEndpoint, ClientToServer, ServerToClient, WsEndpoint};
 use uuid::Uuid;
 use wasm_bindgen_futures::spawn_local;
 use yew::Callback;
@@ -32,12 +30,12 @@ pub fn connect_websocket(
     on_event: Callback<WsEvent>,
 ) {
     spawn_local(async move {
-        let ws_endpoint = utils::ws_url("/ws/client");
-        match WebSocket::open(&ws_endpoint) {
-            Ok(ws) => {
-                let (mut sender, mut receiver) = ws.split();
+        let ws_endpoint = utils::ws_url(ClientEndpoint::PATH);
+        match ws_bridge::yew_client::connect_to::<ClientEndpoint>(&ws_endpoint) {
+            Ok(conn) => {
+                let (mut sender, mut receiver) = conn.split();
 
-                let register_msg = ProxyMessage::Register {
+                let register_msg = ClientToServer::Register {
                     session_id,
                     session_name: session_id.to_string(),
                     auth_token: None,
@@ -51,29 +49,24 @@ pub fn connect_websocket(
                     launcher_id: None,
                 };
 
-                if let Ok(json) = serde_json::to_string(&register_msg) {
-                    if sender.send(Message::Text(json)).await.is_err() {
-                        on_event.emit(WsEvent::Error("Failed to send registration".to_string()));
-                        return;
-                    }
+                if sender.send(register_msg).await.is_err() {
+                    on_event.emit(WsEvent::Error("Failed to send registration".to_string()));
+                    return;
                 }
 
                 let sender = Rc::new(RefCell::new(Some(sender)));
                 on_event.emit(WsEvent::Connected(sender));
 
-                while let Some(msg) = receiver.next().await {
-                    match msg {
-                        Ok(Message::Text(text)) => {
-                            if let Ok(proxy_msg) = serde_json::from_str::<ProxyMessage>(&text) {
-                                handle_proxy_message(proxy_msg, &on_event);
-                            }
+                while let Some(result) = receiver.recv().await {
+                    match result {
+                        Ok(msg) => {
+                            handle_proxy_message(msg, &on_event);
                         }
                         Err(e) => {
                             log::error!("WebSocket error: {:?}", e);
                             on_event.emit(WsEvent::Error(format!("{:?}", e)));
                             break;
                         }
-                        _ => {}
                     }
                 }
             }
@@ -85,17 +78,17 @@ pub fn connect_websocket(
     });
 }
 
-/// Handle incoming ProxyMessage and emit appropriate events
-fn handle_proxy_message(msg: ProxyMessage, on_event: &Callback<WsEvent>) {
+/// Handle incoming server message and emit appropriate events
+fn handle_proxy_message(msg: ServerToClient, on_event: &Callback<WsEvent>) {
     match msg {
-        ProxyMessage::ClaudeOutput { content } => {
+        ServerToClient::ClaudeOutput { content } => {
             on_event.emit(WsEvent::Output(content.to_string()));
         }
-        ProxyMessage::HistoryBatch { messages } => {
+        ServerToClient::HistoryBatch { messages } => {
             let strings: Vec<String> = messages.into_iter().map(|v| v.to_string()).collect();
             on_event.emit(WsEvent::HistoryBatch(strings));
         }
-        ProxyMessage::PermissionRequest {
+        ServerToClient::PermissionRequest {
             request_id,
             tool_name,
             input,
@@ -108,12 +101,12 @@ fn handle_proxy_message(msg: ProxyMessage, on_event: &Callback<WsEvent>) {
                 permission_suggestions,
             }));
         }
-        ProxyMessage::Error { message } => {
+        ServerToClient::Error { message } => {
             let error_msg = ErrorMessage::new(message);
             let error_json = serde_json::to_string(&error_msg).unwrap_or_default();
             on_event.emit(WsEvent::Output(error_json));
         }
-        ProxyMessage::SessionUpdate {
+        ServerToClient::SessionUpdate {
             session_id: _,
             git_branch,
             pr_url,
@@ -125,15 +118,13 @@ fn handle_proxy_message(msg: ProxyMessage, on_event: &Callback<WsEvent>) {
 }
 
 /// Send a message over WebSocket
-pub fn send_message(sender: &WsSender, msg: ProxyMessage) {
+pub fn send_message(sender: &WsSender, msg: ClientToServer) {
     let sender_rc = sender.clone();
     spawn_local(async move {
-        if let Ok(json) = serde_json::to_string(&msg) {
-            let maybe_sender = sender_rc.borrow_mut().take();
-            if let Some(mut sender) = maybe_sender {
-                let _ = sender.send(Message::Text(json)).await;
-                *sender_rc.borrow_mut() = Some(sender);
-            }
+        let maybe_sender = sender_rc.borrow_mut().take();
+        if let Some(mut sender) = maybe_sender {
+            let _ = sender.send(msg).await;
+            *sender_rc.borrow_mut() = Some(sender);
         }
     });
 }

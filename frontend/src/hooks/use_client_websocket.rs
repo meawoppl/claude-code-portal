@@ -1,9 +1,7 @@
 //! Hook for managing the client WebSocket connection with spend updates.
 
 use crate::utils;
-use futures_util::StreamExt;
-use gloo_net::websocket::{futures::WebSocket, Message};
-use shared::ProxyMessage;
+use shared::{ClientEndpoint, ServerToClient, WsEndpoint};
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 
@@ -26,7 +24,7 @@ fn calculate_backoff(attempt: u32) -> u32 {
 
 /// Hook for managing the client WebSocket connection.
 ///
-/// Connects to /ws/client and receives spend updates and server shutdown notifications.
+/// Connects to the client WebSocket endpoint and receives spend updates and server shutdown notifications.
 /// Automatically reconnects with exponential backoff on disconnection.
 ///
 /// # Returns
@@ -59,46 +57,39 @@ pub fn use_client_websocket() -> UseClientWebSocket {
                 const MAX_ATTEMPTS: u32 = 10;
 
                 loop {
-                    let ws_endpoint = utils::ws_url("/ws/client");
-                    match WebSocket::open(&ws_endpoint) {
-                        Ok(ws) => {
+                    let ws_endpoint = utils::ws_url(ClientEndpoint::PATH);
+                    match ws_bridge::yew_client::connect_to::<ClientEndpoint>(&ws_endpoint) {
+                        Ok(conn) => {
                             attempt = 0; // Reset on successful connection
                             shutdown_reason.set(None); // Clear shutdown banner
-                            let (_sender, mut receiver) = ws.split();
+                            let (_sender, mut receiver) = conn.split();
 
-                            while let Some(msg) = receiver.next().await {
-                                match msg {
-                                    Ok(Message::Text(text)) => {
-                                        if let Ok(proxy_msg) =
-                                            serde_json::from_str::<ProxyMessage>(&text)
-                                        {
-                                            match proxy_msg {
-                                                ProxyMessage::UserSpendUpdate {
-                                                    total_spend_usd,
-                                                    session_costs: _,
-                                                } => {
-                                                    total_spend.set(total_spend_usd);
-                                                }
-                                                ProxyMessage::ServerShutdown {
-                                                    reason,
-                                                    reconnect_delay_ms,
-                                                } => {
-                                                    log::info!(
-                                                        "Server shutdown: {} (reconnect in {}ms)",
-                                                        reason,
-                                                        reconnect_delay_ms
-                                                    );
-                                                    shutdown_reason.set(Some(reason));
-                                                }
-                                                _ => {}
-                                            }
+                            while let Some(result) = receiver.recv().await {
+                                match result {
+                                    Ok(msg) => match msg {
+                                        ServerToClient::UserSpendUpdate {
+                                            total_spend_usd,
+                                            session_costs: _,
+                                        } => {
+                                            total_spend.set(total_spend_usd);
                                         }
-                                    }
+                                        ServerToClient::ServerShutdown {
+                                            reason,
+                                            reconnect_delay_ms,
+                                        } => {
+                                            log::info!(
+                                                "Server shutdown: {} (reconnect in {}ms)",
+                                                reason,
+                                                reconnect_delay_ms
+                                            );
+                                            shutdown_reason.set(Some(reason));
+                                        }
+                                        _ => {}
+                                    },
                                     Err(e) => {
                                         log::error!("Client WebSocket error: {:?}", e);
                                         break;
                                     }
-                                    _ => {}
                                 }
                             }
                         }

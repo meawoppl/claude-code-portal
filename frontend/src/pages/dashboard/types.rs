@@ -20,16 +20,7 @@ pub const INACTIVE_HIDDEN_STORAGE_KEY: &str = "claude-portal-inactive-hidden";
 pub const MAX_MESSAGES_PER_SESSION: usize = 100;
 
 /// Type alias for WebSocket sender to reduce type complexity
-pub type WsSender = Rc<
-    RefCell<
-        Option<
-            futures_util::stream::SplitSink<
-                gloo_net::websocket::futures::WebSocket,
-                gloo_net::websocket::Message,
-            >,
-        >,
-    >,
->;
+pub type WsSender = Rc<RefCell<Option<ws_bridge::yew_client::Sender<shared::ClientEndpoint>>>>;
 
 /// Message data from the API
 #[derive(Clone, PartialEq, Deserialize)]

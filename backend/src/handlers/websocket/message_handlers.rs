@@ -1,7 +1,7 @@
-use super::{ClientSender, SessionManager};
+use super::{ProxySender, SessionManager};
 use crate::db::DbPool;
 use diesel::prelude::*;
-use shared::ProxyMessage;
+use shared::{ServerToClient, ServerToProxy};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -10,7 +10,7 @@ use uuid::Uuid;
 pub fn replay_pending_inputs_from_db(
     db_pool: &DbPool,
     session_id: Uuid,
-    sender: &ClientSender,
+    sender: &ProxySender,
 ) -> usize {
     use crate::schema::pending_inputs;
 
@@ -50,7 +50,7 @@ pub fn replay_pending_inputs_from_db(
             }
         };
 
-        let msg = ProxyMessage::SequencedInput {
+        let msg = ServerToProxy::SequencedInput {
             session_id,
             seq: input.seq_num,
             content,
@@ -83,7 +83,7 @@ pub fn handle_claude_output(
     session_key: &Option<String>,
     db_session_id: Option<Uuid>,
     db_pool: &DbPool,
-    tx: &ClientSender,
+    tx: &ProxySender,
     content: serde_json::Value,
     seq: Option<u64>,
 ) {
@@ -91,7 +91,7 @@ pub fn handle_claude_output(
     if let Some(ref key) = session_key {
         session_manager.broadcast_to_web_clients(
             key,
-            ProxyMessage::ClaudeOutput {
+            ServerToClient::ClaudeOutput {
                 content: content.clone(),
             },
         );
@@ -110,7 +110,7 @@ pub fn handle_claude_output(
                 "Skipping duplicate message seq={} (last_ack={})",
                 seq_num, last_ack
             );
-            let _ = tx.send(ProxyMessage::OutputAck {
+            let _ = tx.send(ServerToProxy::OutputAck {
                 session_id,
                 ack_seq: seq_num,
             });
@@ -171,7 +171,7 @@ pub fn handle_claude_output(
                 })
                 .or_insert(seq_num);
 
-            let _ = tx.send(ProxyMessage::OutputAck {
+            let _ = tx.send(ServerToProxy::OutputAck {
                 session_id,
                 ack_seq: seq_num,
             });

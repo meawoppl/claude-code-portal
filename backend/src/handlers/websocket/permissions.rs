@@ -1,7 +1,7 @@
-use super::{ClientSender, SessionId, SessionManager};
+use super::{SessionId, SessionManager, WebClientSender};
 use crate::db::DbPool;
 use diesel::prelude::*;
-use shared::ProxyMessage;
+use shared::{ServerToClient, ServerToProxy};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -72,7 +72,7 @@ pub fn handle_permission_request(
         );
         session_manager.broadcast_to_web_clients(
             key,
-            ProxyMessage::PermissionRequest {
+            ServerToClient::PermissionRequest {
                 request_id,
                 tool_name,
                 input,
@@ -126,7 +126,7 @@ pub fn handle_permission_response(
 
     if !session_manager.send_to_session(
         session_key,
-        ProxyMessage::PermissionResponse {
+        ServerToProxy::PermissionResponse {
             request_id,
             allow,
             input,
@@ -142,7 +142,7 @@ pub fn handle_permission_response(
 }
 
 /// Replay a pending permission request from the database to a newly connected web client.
-pub fn replay_pending_permission(db_pool: &DbPool, session_id: Uuid, tx: &ClientSender) {
+pub fn replay_pending_permission(db_pool: &DbPool, session_id: Uuid, tx: &WebClientSender) {
     let mut conn = match db_pool.get() {
         Ok(conn) => conn,
         Err(e) => {
@@ -169,7 +169,7 @@ pub fn replay_pending_permission(db_pool: &DbPool, session_id: Uuid, tx: &Client
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or_default();
 
-        let _ = tx.send(ProxyMessage::PermissionRequest {
+        let _ = tx.send(ServerToClient::PermissionRequest {
             request_id: pending.request_id,
             tool_name: pending.tool_name,
             input: pending.input,

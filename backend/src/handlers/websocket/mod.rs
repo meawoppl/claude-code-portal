@@ -12,7 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dashmap::{DashMap, DashSet};
-use shared::ProxyMessage;
+use shared::{LauncherToServer, ServerToClient, ServerToLauncher, ServerToProxy};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -30,16 +30,18 @@ const MAX_PENDING_MESSAGE_AGE: Duration = Duration::from_secs(MAX_PENDING_MESSAG
 /// A message queued for a disconnected proxy
 #[derive(Clone)]
 struct PendingMessage {
-    msg: ProxyMessage,
+    msg: ServerToProxy,
     queued_at: Instant,
 }
 
 pub type SessionId = String;
-pub type ClientSender = mpsc::UnboundedSender<ProxyMessage>;
+pub type ProxySender = mpsc::UnboundedSender<ServerToProxy>;
+pub type WebClientSender = mpsc::UnboundedSender<ServerToClient>;
+pub type LauncherSender = mpsc::UnboundedSender<ServerToLauncher>;
 
 /// A connected launcher daemon
 pub struct LauncherConnection {
-    pub sender: ClientSender,
+    pub sender: LauncherSender,
     pub launcher_name: String,
     pub hostname: String,
     pub user_id: Uuid,
@@ -48,14 +50,14 @@ pub struct LauncherConnection {
 
 #[derive(Clone)]
 pub struct SessionManager {
-    pub sessions: Arc<DashMap<SessionId, ClientSender>>,
-    pub web_clients: Arc<DashMap<SessionId, Vec<ClientSender>>>,
-    pub user_clients: Arc<DashMap<Uuid, Vec<ClientSender>>>,
+    pub sessions: Arc<DashMap<SessionId, ProxySender>>,
+    pub web_clients: Arc<DashMap<SessionId, Vec<WebClientSender>>>,
+    pub user_clients: Arc<DashMap<Uuid, Vec<WebClientSender>>>,
     pub last_ack_seq: Arc<DashMap<Uuid, u64>>,
     pending_messages: Arc<DashMap<SessionId, VecDeque<PendingMessage>>>,
     pub pending_truncations: Arc<DashSet<Uuid>>,
     pub launchers: Arc<DashMap<Uuid, LauncherConnection>>,
-    pub pending_dir_requests: Arc<DashMap<Uuid, oneshot::Sender<ProxyMessage>>>,
+    pub pending_dir_requests: Arc<DashMap<Uuid, oneshot::Sender<LauncherToServer>>>,
 }
 
 impl Default for SessionManager {
@@ -78,7 +80,7 @@ impl SessionManager {
         Self::default()
     }
 
-    pub fn register_session(&self, session_key: SessionId, sender: ClientSender) {
+    pub fn register_session(&self, session_key: SessionId, sender: ProxySender) {
         info!("Registering session: {}", session_key);
 
         let pending_count = self.replay_pending_messages(&session_key, &sender);
@@ -92,7 +94,7 @@ impl SessionManager {
         self.sessions.insert(session_key, sender);
     }
 
-    fn replay_pending_messages(&self, session_key: &SessionId, sender: &ClientSender) -> usize {
+    fn replay_pending_messages(&self, session_key: &SessionId, sender: &ProxySender) -> usize {
         let mut replayed = 0;
         let now = Instant::now();
 
@@ -123,7 +125,7 @@ impl SessionManager {
         self.sessions.remove(session_key);
     }
 
-    pub fn add_web_client(&self, session_key: SessionId, sender: ClientSender) {
+    pub fn add_web_client(&self, session_key: SessionId, sender: WebClientSender) {
         info!("Adding web client for session: {}", session_key);
         self.web_clients
             .entry(session_key)
@@ -131,13 +133,13 @@ impl SessionManager {
             .push(sender);
     }
 
-    pub fn broadcast_to_web_clients(&self, session_key: &SessionId, msg: ProxyMessage) {
+    pub fn broadcast_to_web_clients(&self, session_key: &SessionId, msg: ServerToClient) {
         if let Some(mut clients) = self.web_clients.get_mut(session_key) {
             clients.retain(|sender| sender.send(msg.clone()).is_ok());
         }
     }
 
-    pub fn send_to_session(&self, session_key: &SessionId, msg: ProxyMessage) -> bool {
+    pub fn send_to_session(&self, session_key: &SessionId, msg: ServerToProxy) -> bool {
         if let Some(sender) = self.sessions.get(session_key) {
             if sender.send(msg.clone()).is_ok() {
                 return true;
@@ -147,7 +149,7 @@ impl SessionManager {
         self.queue_pending_message(session_key, msg)
     }
 
-    fn queue_pending_message(&self, session_key: &SessionId, msg: ProxyMessage) -> bool {
+    fn queue_pending_message(&self, session_key: &SessionId, msg: ServerToProxy) -> bool {
         let mut queue = self
             .pending_messages
             .entry(session_key.clone())
@@ -177,12 +179,12 @@ impl SessionManager {
         true
     }
 
-    pub fn add_user_client(&self, user_id: Uuid, sender: ClientSender) {
+    pub fn add_user_client(&self, user_id: Uuid, sender: WebClientSender) {
         info!("Adding web client for user: {}", user_id);
         self.user_clients.entry(user_id).or_default().push(sender);
     }
 
-    pub fn broadcast_to_user(&self, user_id: &Uuid, msg: ProxyMessage) {
+    pub fn broadcast_to_user(&self, user_id: &Uuid, msg: ServerToClient) {
         if let Some(mut clients) = self.user_clients.get_mut(user_id) {
             clients.retain(|sender| sender.send(msg.clone()).is_ok());
         }
@@ -192,21 +194,37 @@ impl SessionManager {
         self.user_clients.iter().map(|r| *r.key()).collect()
     }
 
-    pub fn broadcast_to_all(&self, msg: ProxyMessage) {
+    /// Broadcast a shutdown message to all connected clients of every type.
+    pub fn broadcast_shutdown(&self, reason: String, reconnect_delay_ms: u64) {
+        let proxy_msg = ServerToProxy::ServerShutdown {
+            reason: reason.clone(),
+            reconnect_delay_ms,
+        };
         for entry in self.sessions.iter() {
-            let _ = entry.value().send(msg.clone());
+            let _ = entry.value().send(proxy_msg.clone());
         }
 
+        let client_msg = ServerToClient::ServerShutdown {
+            reason: reason.clone(),
+            reconnect_delay_ms,
+        };
         for mut entry in self.web_clients.iter_mut() {
             entry
                 .value_mut()
-                .retain(|sender| sender.send(msg.clone()).is_ok());
+                .retain(|sender| sender.send(client_msg.clone()).is_ok());
         }
-
         for mut entry in self.user_clients.iter_mut() {
             entry
                 .value_mut()
-                .retain(|sender| sender.send(msg.clone()).is_ok());
+                .retain(|sender| sender.send(client_msg.clone()).is_ok());
+        }
+
+        let launcher_msg = ServerToLauncher::ServerShutdown {
+            reason,
+            reconnect_delay_ms,
+        };
+        for entry in self.launchers.iter() {
+            let _ = entry.value().sender.send(launcher_msg.clone());
         }
     }
 
@@ -249,7 +267,7 @@ impl SessionManager {
             .collect()
     }
 
-    pub fn send_to_launcher(&self, launcher_id: &Uuid, msg: ProxyMessage) -> bool {
+    pub fn send_to_launcher(&self, launcher_id: &Uuid, msg: ServerToLauncher) -> bool {
         if let Some(launcher) = self.launchers.get(launcher_id) {
             launcher.sender.send(msg).is_ok()
         } else {
@@ -265,20 +283,20 @@ impl SessionManager {
                 return entry
                     .value()
                     .sender
-                    .send(ProxyMessage::StopSession { session_id })
+                    .send(ServerToLauncher::StopSession { session_id })
                     .is_ok();
             }
         }
         false
     }
 
-    pub fn register_dir_request(&self, request_id: Uuid) -> oneshot::Receiver<ProxyMessage> {
+    pub fn register_dir_request(&self, request_id: Uuid) -> oneshot::Receiver<LauncherToServer> {
         let (tx, rx) = oneshot::channel();
         self.pending_dir_requests.insert(request_id, tx);
         rx
     }
 
-    pub fn complete_dir_request(&self, request_id: Uuid, msg: ProxyMessage) {
+    pub fn complete_dir_request(&self, request_id: Uuid, msg: LauncherToServer) {
         if let Some((_, tx)) = self.pending_dir_requests.remove(&request_id) {
             let _ = tx.send(msg);
         }
@@ -322,15 +340,22 @@ pub async fn handle_web_client_websocket(
 mod tests {
     use super::*;
 
-    fn make_heartbeat() -> ProxyMessage {
-        ProxyMessage::Heartbeat
+    fn make_heartbeat() -> ServerToProxy {
+        ServerToProxy::Heartbeat
     }
 
-    fn make_output(n: u32) -> ProxyMessage {
-        let mut map = serde_json::Map::new();
-        map.insert("n".to_string(), serde_json::Value::from(n));
-        ProxyMessage::ClaudeOutput {
-            content: serde_json::Value::Object(map),
+    fn make_output(n: u32) -> ServerToProxy {
+        ServerToProxy::SequencedInput {
+            session_id: Uuid::nil(),
+            seq: n as i64,
+            content: serde_json::json!({"n": n}),
+            send_mode: None,
+        }
+    }
+
+    fn make_client_msg() -> ServerToClient {
+        ServerToClient::ClaudeOutput {
+            content: serde_json::json!({"text": "hello"}),
         }
     }
 
@@ -341,32 +366,27 @@ mod tests {
 
         mgr.register_session("s1".into(), tx);
 
-        // Sending to a registered session should succeed
         assert!(mgr.send_to_session(&"s1".into(), make_heartbeat()));
 
-        // Message should be receivable
         let msg = rx.try_recv().unwrap();
-        assert!(matches!(msg, ProxyMessage::Heartbeat));
+        assert!(matches!(msg, ServerToProxy::Heartbeat));
     }
 
     #[test]
     fn send_to_unregistered_queues_pending() {
         let mgr = SessionManager::new();
 
-        // No session registered, message should be queued
         assert!(mgr.send_to_session(&"s1".into(), make_output(1)));
         assert!(mgr.send_to_session(&"s1".into(), make_output(2)));
 
-        // Now register - pending messages should replay
         let (tx, mut rx) = mpsc::unbounded_channel();
         mgr.register_session("s1".into(), tx);
 
         let msg1 = rx.try_recv().unwrap();
         let msg2 = rx.try_recv().unwrap();
-        assert!(matches!(msg1, ProxyMessage::ClaudeOutput { .. }));
-        assert!(matches!(msg2, ProxyMessage::ClaudeOutput { .. }));
+        assert!(matches!(msg1, ServerToProxy::SequencedInput { .. }));
+        assert!(matches!(msg2, ServerToProxy::SequencedInput { .. }));
 
-        // Queue should be drained
         assert!(rx.try_recv().is_err());
     }
 
@@ -374,12 +394,10 @@ mod tests {
     fn pending_queue_overflow_drops_oldest() {
         let mgr = SessionManager::new();
 
-        // Fill the queue beyond MAX_PENDING_MESSAGES_PER_SESSION
         for i in 0..(MAX_PENDING_MESSAGES_PER_SESSION + 10) as u32 {
             mgr.send_to_session(&"s1".into(), make_output(i));
         }
 
-        // Register and collect all replayed messages
         let (tx, mut rx) = mpsc::unbounded_channel();
         mgr.register_session("s1".into(), tx);
 
@@ -390,11 +408,10 @@ mod tests {
 
         assert_eq!(received.len(), MAX_PENDING_MESSAGES_PER_SESSION);
 
-        // First received should be the 11th message (first 10 were dropped)
-        if let ProxyMessage::ClaudeOutput { content } = &received[0] {
+        if let ServerToProxy::SequencedInput { content, .. } = &received[0] {
             assert_eq!(content["n"], 10);
         } else {
-            panic!("Expected ClaudeOutput");
+            panic!("Expected SequencedInput");
         }
     }
 
@@ -419,10 +436,16 @@ mod tests {
         mgr.add_web_client("s1".into(), tx1);
         mgr.add_web_client("s1".into(), tx2);
 
-        mgr.broadcast_to_web_clients(&"s1".into(), make_heartbeat());
+        mgr.broadcast_to_web_clients(&"s1".into(), make_client_msg());
 
-        assert!(matches!(rx1.try_recv().unwrap(), ProxyMessage::Heartbeat));
-        assert!(matches!(rx2.try_recv().unwrap(), ProxyMessage::Heartbeat));
+        assert!(matches!(
+            rx1.try_recv().unwrap(),
+            ServerToClient::ClaudeOutput { .. }
+        ));
+        assert!(matches!(
+            rx2.try_recv().unwrap(),
+            ServerToClient::ClaudeOutput { .. }
+        ));
     }
 
     #[test]
@@ -434,15 +457,15 @@ mod tests {
         mgr.add_web_client("s1".into(), tx1);
         mgr.add_web_client("s1".into(), tx2);
 
-        // Drop rx1 to simulate a disconnected client
         drop(rx1);
 
-        mgr.broadcast_to_web_clients(&"s1".into(), make_heartbeat());
+        mgr.broadcast_to_web_clients(&"s1".into(), make_client_msg());
 
-        // tx2's client should still receive
-        assert!(matches!(rx2.try_recv().unwrap(), ProxyMessage::Heartbeat));
+        assert!(matches!(
+            rx2.try_recv().unwrap(),
+            ServerToClient::ClaudeOutput { .. }
+        ));
 
-        // The dead client (tx1) should have been removed
         let clients = mgr.web_clients.get("s1").unwrap();
         assert_eq!(clients.len(), 1);
     }
@@ -454,13 +477,16 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
 
         mgr.add_user_client(user_id, tx);
-        mgr.broadcast_to_user(&user_id, make_heartbeat());
+        mgr.broadcast_to_user(&user_id, make_client_msg());
 
-        assert!(matches!(rx.try_recv().unwrap(), ProxyMessage::Heartbeat));
+        assert!(matches!(
+            rx.try_recv().unwrap(),
+            ServerToClient::ClaudeOutput { .. }
+        ));
     }
 
     #[test]
-    fn broadcast_to_all() {
+    fn broadcast_shutdown_reaches_all() {
         let mgr = SessionManager::new();
         let (session_tx, mut session_rx) = mpsc::unbounded_channel();
         let (web_tx, mut web_rx) = mpsc::unbounded_channel();
@@ -470,19 +496,19 @@ mod tests {
         mgr.add_web_client("s1".into(), web_tx);
         mgr.add_user_client(Uuid::new_v4(), user_tx);
 
-        mgr.broadcast_to_all(make_heartbeat());
+        mgr.broadcast_shutdown("test".into(), 1000);
 
         assert!(matches!(
             session_rx.try_recv().unwrap(),
-            ProxyMessage::Heartbeat
+            ServerToProxy::ServerShutdown { .. }
         ));
         assert!(matches!(
             web_rx.try_recv().unwrap(),
-            ProxyMessage::Heartbeat
+            ServerToClient::ServerShutdown { .. }
         ));
         assert!(matches!(
             user_rx.try_recv().unwrap(),
-            ProxyMessage::Heartbeat
+            ServerToClient::ServerShutdown { .. }
         ));
     }
 
@@ -501,7 +527,6 @@ mod tests {
         assert!(drained.contains(&id1));
         assert!(drained.contains(&id2));
 
-        // After draining, should be empty
         let drained2 = mgr.drain_pending_truncations();
         assert!(drained2.is_empty());
     }
@@ -511,14 +536,11 @@ mod tests {
         let mgr = SessionManager::new();
         let session_id = Uuid::new_v4();
 
-        // Initially no ack tracked
         assert!(mgr.last_ack_seq.get(&session_id).is_none());
 
-        // Insert and verify
         mgr.last_ack_seq.insert(session_id, 5);
         assert_eq!(*mgr.last_ack_seq.get(&session_id).unwrap(), 5);
 
-        // Update with higher value
         mgr.last_ack_seq.entry(session_id).and_modify(|v| {
             if 10 > *v {
                 *v = 10;
@@ -526,7 +548,6 @@ mod tests {
         });
         assert_eq!(*mgr.last_ack_seq.get(&session_id).unwrap(), 10);
 
-        // Should not regress with lower value
         mgr.last_ack_seq.entry(session_id).and_modify(|v| {
             if 3 > *v {
                 *v = 3;
@@ -540,23 +561,19 @@ mod tests {
         let mgr = SessionManager::new();
         let (tx, _rx) = mpsc::unbounded_channel();
 
-        // Register then unregister to simulate disconnect
         mgr.register_session("s1".into(), tx);
         mgr.unregister_session(&"s1".into());
 
-        // Send while disconnected
         mgr.send_to_session(&"s1".into(), make_output(1));
         mgr.send_to_session(&"s1".into(), make_output(2));
 
-        // Reconnect
         let (tx2, mut rx2) = mpsc::unbounded_channel();
         mgr.register_session("s1".into(), tx2);
 
-        // Should receive the queued messages
         let msg1 = rx2.try_recv().unwrap();
         let msg2 = rx2.try_recv().unwrap();
-        assert!(matches!(msg1, ProxyMessage::ClaudeOutput { .. }));
-        assert!(matches!(msg2, ProxyMessage::ClaudeOutput { .. }));
+        assert!(matches!(msg1, ServerToProxy::SequencedInput { .. }));
+        assert!(matches!(msg2, ServerToProxy::SequencedInput { .. }));
     }
 
     #[test]

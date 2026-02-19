@@ -1,12 +1,11 @@
 use super::message_handlers::{handle_claude_output, replay_pending_inputs_from_db};
 use super::permissions::handle_permission_request;
 use super::registration::{register_or_update_session, RegistrationParams};
-use super::{ClientSender, SessionId, SessionManager};
+use super::{ProxySender, SessionId, SessionManager};
 use crate::AppState;
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::WebSocket;
 use diesel::prelude::*;
-use futures_util::{SinkExt, StreamExt};
-use shared::ProxyMessage;
+use shared::{ProxyToServer, ServerToProxy, SessionEndpoint};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
@@ -15,46 +14,38 @@ use uuid::Uuid;
 pub async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) {
     let session_manager = app_state.session_manager.clone();
     let db_pool = app_state.db_pool.clone();
-    let (mut sender, mut receiver) = socket.split();
-    let (tx, mut rx) = mpsc::unbounded_channel::<ProxyMessage>();
+    let conn = ws_bridge::server::into_connection::<SessionEndpoint>(socket);
+    let (mut ws_sender, mut ws_receiver) = conn.split();
+    let (tx, mut rx) = mpsc::unbounded_channel::<ServerToProxy>();
 
     let mut session_key: Option<SessionId> = None;
     let mut db_session_id: Option<Uuid> = None;
 
     let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            if let Ok(json) = serde_json::to_string(&msg) {
-                if sender.send(Message::Text(json)).await.is_err() {
-                    break;
-                }
+            if ws_sender.send(msg).await.is_err() {
+                break;
             }
         }
     });
 
-    while let Some(msg) = receiver.next().await {
-        match msg {
-            Ok(Message::Text(text)) => {
-                if let Ok(proxy_msg) = serde_json::from_str::<ProxyMessage>(&text) {
-                    handle_proxy_message(
-                        proxy_msg,
-                        &app_state,
-                        &session_manager,
-                        &db_pool,
-                        &tx,
-                        &mut session_key,
-                        &mut db_session_id,
-                    );
-                }
-            }
-            Ok(Message::Close(_)) => {
-                info!("WebSocket closed");
-                break;
+    while let Some(result) = ws_receiver.recv().await {
+        match result {
+            Ok(proxy_msg) => {
+                handle_proxy_message(
+                    proxy_msg,
+                    &app_state,
+                    &session_manager,
+                    &db_pool,
+                    &tx,
+                    &mut session_key,
+                    &mut db_session_id,
+                );
             }
             Err(e) => {
-                error!("WebSocket error: {}", e);
-                break;
+                warn!("WebSocket decode error: {}", e);
+                continue;
             }
-            _ => {}
         }
     }
 
@@ -85,16 +76,16 @@ pub async fn handle_session_socket(socket: WebSocket, app_state: Arc<AppState>) 
 
 #[allow(clippy::too_many_arguments)]
 fn handle_proxy_message(
-    proxy_msg: ProxyMessage,
+    proxy_msg: ProxyToServer,
     app_state: &AppState,
     session_manager: &SessionManager,
     db_pool: &crate::db::DbPool,
-    tx: &ClientSender,
+    tx: &ProxySender,
     session_key: &mut Option<SessionId>,
     db_session_id: &mut Option<Uuid>,
 ) {
     match proxy_msg {
-        ProxyMessage::Register {
+        ProxyToServer::Register {
             session_id: claude_session_id,
             session_name,
             auth_token,
@@ -129,7 +120,7 @@ fn handle_proxy_message(
 
             *db_session_id = result.session_id;
 
-            let _ = tx.send(ProxyMessage::RegisterAck {
+            let _ = tx.send(ServerToProxy::RegisterAck {
                 success: result.success,
                 session_id: claude_session_id,
                 error: result.error,
@@ -146,7 +137,7 @@ fn handle_proxy_message(
                 }
             }
         }
-        ProxyMessage::ClaudeOutput { content } => {
+        ProxyToServer::ClaudeOutput { content } => {
             handle_claude_output(
                 session_manager,
                 session_key,
@@ -157,7 +148,7 @@ fn handle_proxy_message(
                 None,
             );
         }
-        ProxyMessage::SequencedOutput { seq, content } => {
+        ProxyToServer::SequencedOutput { seq, content } => {
             handle_claude_output(
                 session_manager,
                 session_key,
@@ -168,10 +159,10 @@ fn handle_proxy_message(
                 Some(seq),
             );
         }
-        ProxyMessage::Heartbeat => {
-            let _ = tx.send(ProxyMessage::Heartbeat);
+        ProxyToServer::Heartbeat => {
+            let _ = tx.send(ServerToProxy::Heartbeat);
         }
-        ProxyMessage::PermissionRequest {
+        ProxyToServer::PermissionRequest {
             request_id,
             tool_name,
             input,
@@ -188,7 +179,7 @@ fn handle_proxy_message(
                 permission_suggestions,
             );
         }
-        ProxyMessage::SessionUpdate {
+        ProxyToServer::SessionUpdate {
             session_id: update_session_id,
             git_branch,
             pr_url,
@@ -203,13 +194,13 @@ fn handle_proxy_message(
                 pr_url,
             );
         }
-        ProxyMessage::InputAck {
+        ProxyToServer::InputAck {
             session_id: ack_session_id,
             ack_seq,
         } => {
             handle_input_ack(*db_session_id, db_pool, ack_session_id, ack_seq);
         }
-        _ => {}
+        ProxyToServer::SessionStatus { .. } => {}
     }
 }
 
@@ -262,7 +253,7 @@ fn handle_session_update(
         if let Some(ref key) = session_key {
             session_manager.broadcast_to_web_clients(
                 key,
-                ProxyMessage::SessionUpdate {
+                shared::ServerToClient::SessionUpdate {
                     session_id: current_session_id,
                     git_branch,
                     pr_url,
