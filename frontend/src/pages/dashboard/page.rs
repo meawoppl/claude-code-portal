@@ -500,7 +500,7 @@ pub fn dashboard_page() -> Html {
                             );
                             html! {
                                 <span class={spend_class} title="Total spend across all sessions">
-                                    { format!("${:.2}", total_user_spend) }
+                                    { utils::format_dollars(total_user_spend) }
                                 </span>
                             }
                         } else {

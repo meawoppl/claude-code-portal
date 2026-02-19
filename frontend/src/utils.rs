@@ -37,6 +37,20 @@ pub fn ws_url(path: &str) -> String {
     format!("{}{}", get_ws_url(), path)
 }
 
+/// Format a dollar amount with commas (e.g., 1234.56 -> "$1,234.56")
+pub fn format_dollars(amount: f64) -> String {
+    let formatted = format!("{:.2}", amount);
+    let (integer, decimal) = formatted.split_once('.').unwrap();
+    let with_commas: String = integer
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(|chunk| std::str::from_utf8(chunk).unwrap())
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("${}.{}", with_commas, decimal)
+}
+
 /// Extract folder name from path (last path component)
 pub fn extract_folder(path: &str) -> &str {
     let trimmed = path.trim_end_matches('/');
