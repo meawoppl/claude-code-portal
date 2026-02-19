@@ -1287,12 +1287,14 @@ async fn handle_ws_text_message(
     wiggum_tx: &mpsc::UnboundedSender<String>,
     heartbeat: &crate::heartbeat::HeartbeatTracker,
 ) -> WsMessageResult {
-    debug!("ws recv: {}", truncate(text, 200));
-
     let proxy_msg = match serde_json::from_str::<ProxyMessage>(text) {
         Ok(msg) => msg,
         Err(_) => return WsMessageResult::Continue, // Continue on parse error
     };
+
+    if !matches!(proxy_msg, ProxyMessage::Heartbeat) {
+        debug!("ws recv: {}", truncate(text, 200));
+    }
 
     match proxy_msg {
         ProxyMessage::ClaudeInput { content, send_mode } => {
