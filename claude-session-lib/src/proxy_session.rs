@@ -1401,10 +1401,6 @@ async fn handle_ws_text_message(
         ProxyMessage::Heartbeat => {
             trace!("heartbeat");
             heartbeat.received();
-            let mut ws = ws_write.lock().await;
-            if let Ok(json) = serde_json::to_string(&ProxyMessage::Heartbeat) {
-                let _ = ws.send(Message::Text(json)).await;
-            }
         }
         ProxyMessage::ServerShutdown {
             reason,
