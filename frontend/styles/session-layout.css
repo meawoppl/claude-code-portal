@@ -47,6 +47,8 @@
     font-size: 0.8rem;
     font-weight: 600;
     font-family: monospace;
+    transition: color 1.5s ease, background 1.5s ease, font-size 0.5s ease,
+        font-weight 0.3s ease, box-shadow 1s ease, text-shadow 1s ease, border 1s ease;
 }
 
 /* $1+ : gentle pulse (0.5s timer) */
@@ -55,48 +57,36 @@
 }
 
 /* $10+ : noticeable wobble */
-.total-spend-badge.spend-10 {
+.total-spend-badge.spend-10.spend-animating {
     background: rgba(224, 175, 104, 0.25);
     color: #e0af68;
-}
-
-.total-spend-badge.spend-10.spend-animating {
     animation: spend-wobble 0.5s ease-in-out infinite;
 }
 
 /* $100+ : shaking, warning colors */
-.total-spend-badge.spend-100 {
+.total-spend-badge.spend-100.spend-animating {
     background: rgba(247, 118, 142, 0.25);
     color: var(--error);
     font-size: 0.85rem;
-}
-
-.total-spend-badge.spend-100.spend-animating {
     animation: spend-shake 0.8s ease-in-out infinite;
 }
 
 /* $1000+ : violent vibration, large */
-.total-spend-badge.spend-1000 {
+.total-spend-badge.spend-1000.spend-animating {
     background: rgba(247, 118, 142, 0.4);
     color: #f46;
     font-size: 0.95rem;
     font-weight: 700;
-}
-
-.total-spend-badge.spend-1000.spend-animating {
     animation: spend-vibrate 0.3s linear infinite;
     box-shadow: 0 0 12px rgba(247, 118, 142, 0.5);
 }
 
 /* $10000+ : full chaos */
-.total-spend-badge.spend-10000 {
+.total-spend-badge.spend-10000.spend-animating {
     background: rgba(247, 50, 80, 0.6);
     color: #fff;
     font-size: 1.1rem;
     font-weight: 800;
-}
-
-.total-spend-badge.spend-10000.spend-animating {
     animation: spend-chaos 0.15s linear infinite;
     box-shadow: 0 0 20px rgba(247, 50, 80, 0.7), 0 0 40px rgba(247, 50, 80, 0.3);
     text-shadow: 0 0 8px rgba(255, 0, 0, 0.8);
