@@ -580,6 +580,8 @@ pub struct ConnectionState {
     pub wiggum_rx: mpsc::UnboundedReceiver<String>,
     /// Current wiggum state (if active)
     pub wiggum_state: Option<WiggumState>,
+    /// Heartbeat tracker for dead connection detection
+    pub heartbeat: crate::heartbeat::HeartbeatTracker,
 }
 
 /// Run the main message forwarding loop
@@ -613,6 +615,9 @@ async fn run_message_loop(
     // Wrap ws_write for sharing
     let ws_write = std::sync::Arc::new(tokio::sync::Mutex::new(ws_write));
 
+    // Heartbeat tracker for dead connection detection
+    let heartbeat = crate::heartbeat::HeartbeatTracker::new();
+
     // Channel to signal WebSocket disconnection
     let (disconnect_tx, disconnect_rx) = tokio::sync::oneshot::channel::<()>();
 
@@ -641,6 +646,7 @@ async fn run_message_loop(
         disconnect_tx,
         wiggum_tx,
         graceful_shutdown_tx,
+        heartbeat.clone(),
     );
 
     // Create connection state (per-connection channels and timing)
@@ -655,6 +661,7 @@ async fn run_message_loop(
         output_buffer: session.output_buffer.clone(),
         wiggum_rx,
         wiggum_state: None,
+        heartbeat,
     };
 
     // Main loop
@@ -1233,13 +1240,14 @@ fn spawn_ws_reader(
     disconnect_tx: tokio::sync::oneshot::Sender<()>,
     wiggum_tx: mpsc::UnboundedSender<String>,
     graceful_shutdown_tx: mpsc::UnboundedSender<GracefulShutdown>,
+    heartbeat: crate::heartbeat::HeartbeatTracker,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(msg) = ws_read.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
                     match handle_ws_text_message(
-                        &text, &input_tx, &perm_tx, &ack_tx, &ws_write, &wiggum_tx,
+                        &text, &input_tx, &perm_tx, &ack_tx, &ws_write, &wiggum_tx, &heartbeat,
                     )
                     .await
                     {
@@ -1277,6 +1285,7 @@ async fn handle_ws_text_message(
     ack_tx: &mpsc::UnboundedSender<u64>,
     ws_write: &SharedWsWrite,
     wiggum_tx: &mpsc::UnboundedSender<String>,
+    heartbeat: &crate::heartbeat::HeartbeatTracker,
 ) -> WsMessageResult {
     debug!("ws recv: {}", truncate(text, 200));
 
@@ -1389,6 +1398,7 @@ async fn handle_ws_text_message(
         }
         ProxyMessage::Heartbeat => {
             debug!("heartbeat");
+            heartbeat.received();
             let mut ws = ws_write.lock().await;
             if let Ok(json) = serde_json::to_string(&ProxyMessage::Heartbeat) {
                 let _ = ws.send(Message::Text(json)).await;
@@ -1425,8 +1435,24 @@ async fn run_main_loop(
     use crate::session::PermissionResponse as LibPermissionResponse;
     use crate::Permission;
 
+    let mut heartbeat_interval = tokio::time::interval(crate::heartbeat::HEARTBEAT_INTERVAL);
+
     loop {
         tokio::select! {
+            _ = heartbeat_interval.tick() => {
+                if state.heartbeat.is_expired() {
+                    warn!(
+                        "No heartbeat response in {}s, forcing reconnect",
+                        state.heartbeat.elapsed_secs()
+                    );
+                    return ConnectionResult::Disconnected(state.connection_start.elapsed());
+                }
+                let mut ws = state.ws_write.lock().await;
+                if let Ok(json) = serde_json::to_string(&ProxyMessage::Heartbeat) {
+                    let _ = ws.send(Message::Text(json)).await;
+                }
+            }
+
             _ = &mut state.disconnect_rx => {
                 info!("WebSocket disconnected");
                 return ConnectionResult::Disconnected(state.connection_start.elapsed());

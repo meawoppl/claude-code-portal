@@ -59,6 +59,7 @@
 
 pub mod buffer;
 pub mod error;
+pub mod heartbeat;
 pub mod output_buffer;
 pub mod proxy_session;
 pub mod session;
