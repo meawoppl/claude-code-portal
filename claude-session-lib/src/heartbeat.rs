@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
-pub const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(45);
+pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
+pub const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Tracks heartbeat round-trip timing for dead connection detection.
 ///
