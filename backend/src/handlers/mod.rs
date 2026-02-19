@@ -9,5 +9,6 @@ pub mod messages;
 pub mod proxy_tokens;
 pub mod retention;
 pub mod sessions;
+pub mod sound_settings;
 pub mod voice;
 pub mod websocket;

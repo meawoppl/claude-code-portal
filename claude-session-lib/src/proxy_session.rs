@@ -94,7 +94,7 @@ impl Backoff {
         Self {
             current: 1,
             initial: 1,
-            max: 30,
+            max: 2,
             multiplier: 2,
             stable_threshold: 30,
         }

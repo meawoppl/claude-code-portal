@@ -18,6 +18,7 @@ pub struct User {
     pub disabled: bool,
     pub voice_enabled: bool,
     pub ban_reason: Option<String>,
+    pub sound_config: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Insertable)]

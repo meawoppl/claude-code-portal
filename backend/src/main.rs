@@ -339,6 +339,12 @@ async fn main() -> anyhow::Result<()> {
             "/api/proxy-tokens/:id",
             axum::routing::delete(handlers::proxy_tokens::revoke_token_handler),
         )
+        // Sound settings
+        .route(
+            "/api/settings/sound",
+            get(handlers::sound_settings::get_sound_settings)
+                .put(handlers::sound_settings::save_sound_settings),
+        )
         // Auth routes (under /api/auth)
         .route("/api/auth/google", get(handlers::auth::login))
         .route("/api/auth/google/callback", get(handlers::auth::callback))
