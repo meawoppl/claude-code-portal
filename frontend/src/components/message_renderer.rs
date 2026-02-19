@@ -487,10 +487,14 @@ fn render_portal_content(content: &shared::PortalContent) -> Html {
                 media_type: media_type.clone(),
                 data: data.clone(),
             };
+            let filename = file_path
+                .as_deref()
+                .and_then(|p| p.rsplit('/').next())
+                .map(|s| s.to_string());
             html! {
                 <>
                     { render_portal_image_header(file_path.as_deref(), *file_size) }
-                    { render_image_source(&source) }
+                    { render_image_source(&source, filename) }
                 </>
             }
         }
@@ -797,7 +801,7 @@ fn render_content_blocks(blocks: &[ContentBlock]) -> Html {
                             }
                         }
                         ContentBlock::Image { source } => {
-                            render_image_source(source)
+                            render_image_source(source, None)
                         }
                         ContentBlock::Thinking { thinking } => {
                             html! {
@@ -827,7 +831,7 @@ const ALLOWED_IMAGE_MEDIA_TYPES: &[&str] = &[
 /// Base64 encodes at ~1.33x, so 2MB base64 ≈ 1.5MB raw image.
 const MAX_IMAGE_BASE64_BYTES: usize = 2 * 1024 * 1024;
 
-fn render_image_source(source: &ImageSource) -> Html {
+fn render_image_source(source: &ImageSource, filename: Option<String>) -> Html {
     if !ALLOWED_IMAGE_MEDIA_TYPES.contains(&source.media_type.as_str()) {
         return html! {
             <pre class="tool-result-content">
@@ -845,7 +849,7 @@ fn render_image_source(source: &ImageSource) -> Html {
     }
     let src = format!("data:{};base64,{}", source.media_type, source.data);
     html! {
-        <ImageViewer src={src} media_type={source.media_type.clone()} />
+        <ImageViewer src={src} media_type={source.media_type.clone()} {filename} />
     }
 }
 
@@ -853,6 +857,8 @@ fn render_image_source(source: &ImageSource) -> Html {
 struct ImageViewerProps {
     pub src: String,
     pub media_type: String,
+    #[prop_or_default]
+    pub filename: Option<String>,
 }
 
 #[function_component(ImageViewer)]
@@ -909,7 +915,10 @@ fn image_viewer(props: &ImageViewerProps) -> Html {
         _ => "bin",
     };
 
-    let download_name = format!("image.{ext}");
+    let download_name = props
+        .filename
+        .clone()
+        .unwrap_or_else(|| format!("image.{ext}"));
 
     html! {
         <>
