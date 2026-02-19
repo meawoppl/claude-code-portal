@@ -220,6 +220,25 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             html! {}
         };
 
+        let pr_option = if let Some(ref url) = session.pr_url {
+            let pr_number = url.rsplit('/').next().unwrap_or("").to_string();
+            let label = if pr_number.is_empty() {
+                "Open PR".to_string()
+            } else {
+                format!("Open PR #{}", pr_number)
+            };
+            let href = url.clone();
+            html! {
+                <a class="pill-menu-option pr-link" href={href} target="_blank"
+                   onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                    { label }
+                    <span class="option-hint">{ "GitHub" }</span>
+                </a>
+            }
+        } else {
+            html! {}
+        };
+
         let share_option = if session.my_role == "owner" {
             let share_session_id = share_session_id.clone();
             let session_id = session.id;
@@ -249,6 +268,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     <span class="option-hint">{ short_id }</span>
                 </button>
                 { share_option }
+                { pr_option }
                 <button
                     type="button"
                     class={classes!("pill-menu-option", "pause", is_paused.then_some("active"))}
