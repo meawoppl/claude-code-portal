@@ -218,7 +218,7 @@ fn user_row(props: &UserRowProps) -> Html {
             <td>{ user.name.as_deref().unwrap_or("-") }</td>
             <td class={status_class}>{ status_text }</td>
             <td class="numeric">{ user.session_count }</td>
-            <td class="numeric">{ format!("${:.2}", user.total_spend_usd) }</td>
+            <td class="numeric">{ utils::format_dollars(user.total_spend_usd) }</td>
             <td class="timestamp">{ format_timestamp(&user.created_at) }</td>
             <td class="actions">
                 <button
@@ -293,7 +293,7 @@ fn session_row(props: &SessionRowProps) -> Html {
             <td class="session-project">{ project_name }</td>
             <td class="session-branch">{ session.git_branch.as_deref().unwrap_or("-") }</td>
             <td class={status_class}>{ status_text }</td>
-            <td class="numeric">{ format!("${:.2}", session.total_cost_usd) }</td>
+            <td class="numeric">{ utils::format_dollars(session.total_cost_usd) }</td>
             <td class="timestamp">{ format_timestamp(&session.last_activity) }</td>
             <td class="actions">
                 <button class="delete-btn" onclick={on_delete} title="Delete session">
@@ -1033,7 +1033,7 @@ pub fn admin_page() -> Html {
                                                             />
                                                             <StatCard
                                                                 label="Total API Spend"
-                                                                value={format!("${:.2}", s.total_spend_usd)}
+                                                                value={utils::format_dollars(s.total_spend_usd)}
                                                                 class="spend-card"
                                                             />
                                                             <StatCard
