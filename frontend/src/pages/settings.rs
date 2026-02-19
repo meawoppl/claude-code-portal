@@ -1,4 +1,6 @@
+use crate::audio::{self, EventSound, SoundConfig, SoundEvent, Waveform, STORAGE_KEY};
 use crate::components::ShareDialog;
+use crate::hooks::use_local_storage;
 use crate::utils;
 use crate::Route;
 use gloo_net::http::Request;
@@ -16,6 +18,7 @@ use yew_router::prelude::*;
 enum SettingsTab {
     Sessions,
     Tokens,
+    Sounds,
 }
 
 /// Calculate days until expiration from ISO date string
@@ -182,6 +185,200 @@ fn session_row(props: &SessionRowProps) -> Html {
                 </button>
             </td>
         </tr>
+    }
+}
+
+const ALL_EVENTS: [SoundEvent; 4] = [
+    SoundEvent::Activity,
+    SoundEvent::Error,
+    SoundEvent::SessionSwap,
+    SoundEvent::AwaitingInput,
+];
+
+#[derive(Properties, PartialEq)]
+struct SoundsPanelProps {
+    config: SoundConfig,
+    on_change: Callback<SoundConfig>,
+}
+
+#[function_component(SoundsPanel)]
+fn sounds_panel(props: &SoundsPanelProps) -> Html {
+    let config = &props.config;
+    let on_change = &props.on_change;
+
+    let on_toggle = {
+        let config = config.clone();
+        let on_change = on_change.clone();
+        Callback::from(move |e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            let mut cfg = config.clone();
+            cfg.enabled = input.checked();
+            on_change.emit(cfg);
+        })
+    };
+
+    html! {
+        <section class="sounds-section">
+            <div class="section-header">
+                <h2>{ "Sound Notifications" }</h2>
+                <p class="section-description">
+                    { "Configure synthesized sounds for different events." }
+                </p>
+            </div>
+
+            <div class="sound-toggle">
+                <label class="toggle-label">
+                    <span>{ "Enable Sounds" }</span>
+                    <input
+                        type="checkbox"
+                        checked={config.enabled}
+                        onchange={on_toggle}
+                    />
+                </label>
+            </div>
+
+            <div class="sound-event-cards">
+                { for ALL_EVENTS.iter().map(|&event| {
+                    let sound = config.get_sound(event).clone();
+                    let config = config.clone();
+                    let on_change = on_change.clone();
+                    let on_sound_change = Callback::from(move |new_sound: EventSound| {
+                        let mut cfg = config.clone();
+                        cfg.set_sound(event, new_sound);
+                        on_change.emit(cfg);
+                    });
+                    html! {
+                        <EventCard
+                            key={event.label()}
+                            event={event}
+                            sound={sound}
+                            on_change={on_sound_change}
+                        />
+                    }
+                }) }
+            </div>
+        </section>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+struct EventCardProps {
+    event: SoundEvent,
+    sound: EventSound,
+    on_change: Callback<EventSound>,
+}
+
+#[function_component(EventCard)]
+fn event_card(props: &EventCardProps) -> Html {
+    let event = props.event;
+    let sound = &props.sound;
+    let on_change = &props.on_change;
+
+    let on_preview = {
+        let sound = sound.clone();
+        Callback::from(move |_: MouseEvent| {
+            audio::play_preview(&sound);
+        })
+    };
+
+    let on_waveform = {
+        let sound = sound.clone();
+        let on_change = on_change.clone();
+        Callback::from(move |e: Event| {
+            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+            let mut s = sound.clone();
+            s.waveform = match select.value().as_str() {
+                "Square" => Waveform::Square,
+                "Sawtooth" => Waveform::Sawtooth,
+                "Triangle" => Waveform::Triangle,
+                _ => Waveform::Sine,
+            };
+            on_change.emit(s);
+        })
+    };
+
+    // Macro-style helper to avoid repeating range slider code
+    let make_slider = |label: &str,
+                       value: f64,
+                       min: f64,
+                       max: f64,
+                       step: f64,
+                       unit: &str,
+                       field: &'static str|
+     -> Html {
+        let sound = sound.clone();
+        let on_change = on_change.clone();
+        let display = if unit == "Hz" {
+            format!("{:.0}{}", value, unit)
+        } else {
+            format!("{:.3}{}", value, unit)
+        };
+        let on_input = Callback::from(move |e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            let v: f64 = input.value().parse().unwrap_or(value);
+            let mut s = sound.clone();
+            match field {
+                "attack" => s.attack = v,
+                "decay" => s.decay = v,
+                "sustain" => s.sustain = v,
+                "release" => s.release = v,
+                "frequency" => s.frequency = v,
+                "volume" => s.volume = v,
+                _ => {}
+            }
+            on_change.emit(s);
+        });
+        html! {
+            <div class="sound-control">
+                <label>{ label }</label>
+                <input
+                    type="range"
+                    min={min.to_string()}
+                    max={max.to_string()}
+                    step={step.to_string()}
+                    value={value.to_string()}
+                    oninput={on_input}
+                />
+                <span class="sound-value">{ display }</span>
+            </div>
+        }
+    };
+
+    html! {
+        <div class="sound-event-card">
+            <div class="sound-card-header">
+                <div>
+                    <h3>{ event.label() }</h3>
+                    <p>{ event.description() }</p>
+                </div>
+                <button class="preview-button" onclick={on_preview}>
+                    { "Preview" }
+                </button>
+            </div>
+            <div class="sound-controls">
+                <div class="sound-control">
+                    <label>{ "Waveform" }</label>
+                    <select onchange={on_waveform}>
+                        { for Waveform::all().iter().map(|w| {
+                            html! {
+                                <option
+                                    value={w.label()}
+                                    selected={*w == sound.waveform}
+                                >
+                                    { w.label() }
+                                </option>
+                            }
+                        }) }
+                    </select>
+                </div>
+                { make_slider("Frequency", sound.frequency, 100.0, 2000.0, 10.0, "Hz", "frequency") }
+                { make_slider("Attack", sound.attack, 0.001, 1.0, 0.001, "s", "attack") }
+                { make_slider("Decay", sound.decay, 0.001, 1.0, 0.001, "s", "decay") }
+                { make_slider("Sustain", sound.sustain, 0.0, 1.0, 0.01, "", "sustain") }
+                { make_slider("Release", sound.release, 0.001, 2.0, 0.001, "s", "release") }
+                { make_slider("Volume", sound.volume, 0.0, 1.0, 0.01, "", "volume") }
+            </div>
+        </div>
     }
 }
 
@@ -472,6 +669,14 @@ pub fn settings_page() -> Html {
         Callback::from(move |_| active_tab.set(SettingsTab::Sessions))
     };
 
+    let on_sounds_tab = {
+        let active_tab = active_tab.clone();
+        Callback::from(move |_| active_tab.set(SettingsTab::Sounds))
+    };
+
+    // Sound config from localStorage
+    let sound_storage = use_local_storage::<SoundConfig>(STORAGE_KEY);
+
     // Toggle create form
     let toggle_create_form = {
         let show_create_form = show_create_form.clone();
@@ -546,6 +751,12 @@ pub fn settings_page() -> Html {
                     if expiring_count > 0 {
                         <span class="expiring-badge">{ expiring_count }</span>
                     }
+                </button>
+                <button
+                    class={classes!("tab-button", (*active_tab == SettingsTab::Sounds).then_some("active"))}
+                    onclick={on_sounds_tab}
+                >
+                    { "Sounds" }
                 </button>
             </nav>
 
@@ -654,6 +865,14 @@ pub fn settings_page() -> Html {
                             </div>
                         }
                     </section>
+                }
+
+                // Sounds Tab
+                if *active_tab == SettingsTab::Sounds {
+                    <SoundsPanel
+                        config={sound_storage.value.clone()}
+                        on_change={sound_storage.set.clone()}
+                    />
                 }
 
                 // Session Management Tab

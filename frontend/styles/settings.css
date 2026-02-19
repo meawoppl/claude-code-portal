@@ -476,6 +476,126 @@
     padding: 3rem;
 }
 
+/* =============================================================================
+   Sounds Tab
+   ============================================================================= */
+
+.sounds-section {
+    max-width: 900px;
+}
+
+.sound-toggle {
+    margin-bottom: 1.5rem;
+}
+
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--text-primary);
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.toggle-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.sound-event-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.sound-event-card {
+    background: var(--bg-darker);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+}
+
+.sound-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.sound-card-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.sound-card-header p {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.preview-button {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 0.3rem 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.preview-button:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+.sound-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+}
+
+.sound-control {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.sound-control label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.sound-control select {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.35rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.sound-control select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.sound-control input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.sound-value {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .settings-header {

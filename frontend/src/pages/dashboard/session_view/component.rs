@@ -580,6 +580,7 @@ impl SessionView {
                 }
             }
         }
+        crate::audio::play_sound(crate::audio::SoundEvent::Activity);
         self.messages.push(output);
         if self.messages.len() > MAX_MESSAGES_PER_SESSION {
             let excess = self.messages.len() - MAX_MESSAGES_PER_SESSION;
@@ -695,6 +696,7 @@ impl SessionView {
     }
 
     fn handle_ws_error(&mut self, ctx: &Context<Self>, err: String) -> bool {
+        crate::audio::play_sound(crate::audio::SoundEvent::Error);
         self.ws_connected = false;
         self.ws_sender = None;
         let session_id = ctx.props().session.id;

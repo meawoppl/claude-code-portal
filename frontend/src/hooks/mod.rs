@@ -11,6 +11,4 @@ pub use use_client_websocket::use_client_websocket;
 pub use use_keyboard_nav::{use_keyboard_nav, KeyboardNavConfig};
 pub use use_sessions::use_sessions;
 
-// Re-export for future use
-#[allow(unused_imports)]
-pub use use_local_storage::{use_local_storage, UseLocalStorage};
+pub use use_local_storage::use_local_storage;

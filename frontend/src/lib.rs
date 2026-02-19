@@ -1,3 +1,4 @@
+pub mod audio;
 mod components;
 mod hooks;
 mod pages;
