@@ -535,6 +535,7 @@ impl SessionView {
     }
 
     fn handle_send_input_with_mode(&mut self, ctx: &Context<Self>, send_mode: SendMode) -> bool {
+        crate::audio::ensure_audio_context();
         let input = self.input_value.trim().to_string();
         if input.is_empty() {
             return false;
