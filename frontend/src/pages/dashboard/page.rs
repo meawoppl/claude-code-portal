@@ -204,6 +204,7 @@ pub fn dashboard_page() -> Html {
         let activated_sessions = activated_sessions.clone();
         let active_sessions = active_sessions.clone();
         Callback::from(move |index: usize| {
+            crate::audio::ensure_audio_context();
             crate::audio::play_sound(crate::audio::SoundEvent::SessionSwap);
             focused_index.set(index);
             if let Some(session) = active_sessions.get(index) {

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use web_sys::{AudioContext, OscillatorType};
+use web_sys::{AudioContext, AudioContextState, OscillatorType};
 
 pub const STORAGE_KEY: &str = "claude-portal-sound-config";
 
@@ -168,14 +168,25 @@ fn load_config() -> Option<SoundConfig> {
     serde_json::from_str(&json).ok()
 }
 
-fn get_or_create_context() -> Option<AudioContext> {
+/// Ensure the AudioContext exists, creating it if needed.
+/// Call this from user-gesture handlers (clicks, key presses) to avoid
+/// the browser's autoplay policy blocking AudioContext creation.
+pub fn ensure_audio_context() {
     AUDIO_CTX.with(|ctx_cell| {
         let mut ctx_ref = ctx_cell.borrow_mut();
         if ctx_ref.is_none() {
-            *ctx_ref = AudioContext::new().ok();
+            ctx_ref.clone_from(&AudioContext::new().ok());
         }
-        ctx_ref.clone()
-    })
+        if let Some(ref ctx) = *ctx_ref {
+            if ctx.state() == AudioContextState::Suspended {
+                let _ = ctx.resume();
+            }
+        }
+    });
+}
+
+fn get_context() -> Option<AudioContext> {
+    AUDIO_CTX.with(|ctx_cell| ctx_cell.borrow().clone())
 }
 
 fn synthesize(ctx: &AudioContext, sound: &EventSound) {
@@ -232,9 +243,9 @@ pub fn play_sound(event: SoundEvent) {
         lp.borrow_mut().insert(event, now);
     });
 
-    let ctx = match get_or_create_context() {
+    let ctx = match get_context() {
         Some(c) => c,
-        None => return,
+        None => return, // No AudioContext yet (no user gesture)
     };
 
     let sound = config.get_sound(event);
@@ -242,7 +253,8 @@ pub fn play_sound(event: SoundEvent) {
 }
 
 pub fn play_preview(sound: &EventSound) {
-    let ctx = match get_or_create_context() {
+    ensure_audio_context();
+    let ctx = match get_context() {
         Some(c) => c,
         None => return,
     };
