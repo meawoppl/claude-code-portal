@@ -716,7 +716,7 @@ fn get_pr_url(cwd: &str, branch: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// Check and send git branch update if changed
+/// Check and send git branch or PR URL update if changed
 async fn check_and_send_branch_update(
     ws_write: &SharedWsWrite,
     session_id: Uuid,
@@ -725,21 +725,33 @@ async fn check_and_send_branch_update(
     current_pr_url: &Arc<Mutex<Option<String>>>,
 ) {
     let new_branch = get_git_branch(working_directory);
+    let new_pr_url = new_branch
+        .as_deref()
+        .and_then(|b| get_pr_url(working_directory, b));
+
     let mut branch_guard = current_branch.lock().await;
+    let mut pr_guard = current_pr_url.lock().await;
 
-    if *branch_guard != new_branch {
-        debug!(
-            "Git branch changed: {:?} -> {:?}",
-            *branch_guard, new_branch
-        );
+    let branch_changed = *branch_guard != new_branch;
+    let pr_changed = *pr_guard != new_pr_url;
+
+    if branch_changed || pr_changed {
+        if branch_changed {
+            debug!(
+                "Git branch changed: {:?} -> {:?}",
+                *branch_guard, new_branch
+            );
+        }
+        if pr_changed {
+            debug!("PR URL changed: {:?} -> {:?}", *pr_guard, new_pr_url);
+        }
         *branch_guard = new_branch.clone();
+        *pr_guard = new_pr_url.clone();
 
-        let new_pr_url = new_branch
-            .as_deref()
-            .and_then(|b| get_pr_url(working_directory, b));
-        *current_pr_url.lock().await = new_pr_url.clone();
+        // Drop locks before acquiring ws lock
+        drop(branch_guard);
+        drop(pr_guard);
 
-        // Send SessionUpdate to backend
         let update_msg = ProxyToServer::SessionUpdate {
             session_id,
             git_branch: new_branch,
@@ -890,7 +902,22 @@ fn spawn_output_forwarder(
             // Log detailed info about the message
             log_claude_output(&output);
 
-            // Check if this is a git-related bash command
+            // Check for branch/PR update from PREVIOUS git command (deferred so
+            // the command has finished executing before we query git/gh state)
+            let should_check_branch = pending_git_check || message_count.is_multiple_of(100);
+            if should_check_branch {
+                pending_git_check = false;
+                check_and_send_branch_update(
+                    &ws_write,
+                    session_id,
+                    &working_directory,
+                    &current_branch,
+                    &current_pr_url,
+                )
+                .await;
+            }
+
+            // Check if THIS message is a git-related bash command (for next iteration)
             if is_git_bash_command(&output) {
                 pending_git_check = true;
             }
@@ -938,20 +965,6 @@ fn spawn_output_forwarder(
                     error!("Failed to send image portal message");
                     break;
                 }
-            }
-
-            // Check for branch update after git commands or every 100 messages
-            let should_check_branch = pending_git_check || message_count.is_multiple_of(100);
-            if should_check_branch {
-                pending_git_check = false;
-                check_and_send_branch_update(
-                    &ws_write,
-                    session_id,
-                    &working_directory,
-                    &current_branch,
-                    &current_pr_url,
-                )
-                .await;
             }
         }
         debug!("Output forwarder ended - channel closed");
