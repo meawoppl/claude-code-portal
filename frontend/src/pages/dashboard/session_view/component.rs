@@ -298,21 +298,33 @@ impl Component for SessionView {
                 false
             }
             SessionViewMsg::CheckAwaiting => {
-                // Search backwards for the last message with a meaningful type
-                // ("result" or "assistant"). Late-arriving proxy messages or tool
-                // completions can land after a result, so checking only .last()
-                // would incorrectly show the session as still working.
-                let is_result_awaiting = self
-                    .messages
-                    .iter()
-                    .rev()
-                    .find_map(|msg| {
-                        serde_json::from_str::<serde_json::Value>(msg)
-                            .ok()
-                            .and_then(|p| p.get("type")?.as_str().map(String::from))
-                            .filter(|t| t == "result" || t == "assistant")
-                    })
-                    .is_some_and(|t| t == "result");
+                let is_codex = ctx.props().session.agent_type == shared::AgentType::Codex;
+                let is_result_awaiting = if is_codex {
+                    // For Codex: search backwards for terminal events
+                    // turn.completed / turn.failed = awaiting, item.* = working
+                    self.messages
+                        .iter()
+                        .rev()
+                        .find_map(|msg| {
+                            crate::components::codex_renderer::is_codex_terminal_event(msg)
+                        })
+                        .unwrap_or(false)
+                } else {
+                    // For Claude: search backwards for "result" or "assistant"
+                    // Late-arriving proxy messages or tool completions can land
+                    // after a result, so checking only .last() would incorrectly
+                    // show the session as still working.
+                    self.messages
+                        .iter()
+                        .rev()
+                        .find_map(|msg| {
+                            serde_json::from_str::<serde_json::Value>(msg)
+                                .ok()
+                                .and_then(|p| p.get("type")?.as_str().map(String::from))
+                                .filter(|t| t == "result" || t == "assistant")
+                        })
+                        .is_some_and(|t| t == "result")
+                };
                 let is_awaiting = is_result_awaiting || self.pending_permission.is_some();
                 let session_id = ctx.props().session.id;
                 ctx.props()
@@ -461,7 +473,7 @@ impl Component for SessionView {
                 <div class="session-view-messages" ref={self.messages_ref.clone()}>
                     {
                         group_messages(&self.messages).into_iter().map(|group| {
-                            html! { <MessageGroupRenderer group={group} session_id={Some(ctx.props().session.id)} /> }
+                            html! { <MessageGroupRenderer group={group} session_id={Some(ctx.props().session.id)} agent_type={ctx.props().session.agent_type} /> }
                         }).collect::<Html>()
                     }
                 </div>

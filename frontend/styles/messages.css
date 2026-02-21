@@ -309,3 +309,71 @@
     padding: 0.15rem 0.4rem;
     border-radius: 3px;
 }
+
+/* ==========================================================================
+   Codex-specific Renderers
+   ========================================================================== */
+
+.file-changes-list {
+    padding: 0.5rem 0;
+}
+
+.file-change-entry {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+}
+
+.file-change-kind {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+    min-width: 4em;
+    text-align: center;
+}
+
+.file-change-kind.add {
+    color: #9ece6a;
+    background: rgba(158, 206, 106, 0.15);
+}
+
+.file-change-kind.delete {
+    color: #f7768e;
+    background: rgba(247, 118, 142, 0.15);
+}
+
+.file-change-kind.update {
+    color: #7aa2f7;
+    background: rgba(122, 162, 247, 0.15);
+}
+
+.file-change-path {
+    color: var(--text-primary);
+}
+
+.codex-todo-list {
+    padding: 0.5rem 0;
+}
+
+.codex-todo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.85rem;
+}
+
+.codex-todo.done .codex-todo-text {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+
+.codex-todo-marker {
+    font-size: 1rem;
+    flex-shrink: 0;
+}

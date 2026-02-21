@@ -29,6 +29,7 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
     let dir_loading = use_state(|| false);
     let dir_error = use_state(|| None::<String>);
     let extra_args = use_state(String::new);
+    let agent_type = use_state(|| shared::AgentType::Claude);
     let skip_permissions = use_state(|| false);
     let launching = use_state(|| false);
     let error_msg = use_state(|| None::<String>);
@@ -111,6 +112,20 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
         })
     };
 
+    let on_agent_type_change = {
+        let agent_type = agent_type.clone();
+        Callback::from(move |e: Event| {
+            if let Some(select) = e.target_dyn_into::<web_sys::HtmlSelectElement>() {
+                let val = select.value();
+                agent_type.set(if val == "codex" {
+                    shared::AgentType::Codex
+                } else {
+                    shared::AgentType::Claude
+                });
+            }
+        })
+    };
+
     let on_skip_permissions = {
         let skip_permissions = skip_permissions.clone();
         Callback::from(move |e: Event| {
@@ -169,6 +184,7 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
     let on_launch = {
         let current_path = current_path.clone();
         let extra_args = extra_args.clone();
+        let agent_type = agent_type.clone();
         let skip_permissions = skip_permissions.clone();
         let selected_launcher = selected_launcher.clone();
         let launching = launching.clone();
@@ -190,6 +206,7 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
             }
 
             let launcher_id = *selected_launcher;
+            let selected_agent_type = *agent_type;
             let launching = launching.clone();
             let error_msg = error_msg.clone();
             let on_close = on_close.clone();
@@ -202,6 +219,7 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                     working_directory: dir,
                     launcher_id,
                     claude_args,
+                    agent_type: selected_agent_type,
                 };
 
                 match Request::post("/api/launch")
@@ -382,6 +400,19 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                         <div class="dir-browser">
                             { dir_listing_html }
                         </div>
+                    </div>
+
+                    // Agent type selector
+                    <div class="launch-field">
+                        <label>{ "Agent" }</label>
+                        <select class="agent-type-select" onchange={on_agent_type_change}>
+                            <option value="claude" selected={*agent_type == shared::AgentType::Claude}>
+                                { "Claude" }
+                            </option>
+                            <option value="codex" selected={*agent_type == shared::AgentType::Codex}>
+                                { "Codex" }
+                            </option>
+                        </select>
                     </div>
 
                     // Extra CLI arguments

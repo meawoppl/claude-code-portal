@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 shared = { path = "../shared" }
 claude-codes = { workspace = true }
+codex-codes = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

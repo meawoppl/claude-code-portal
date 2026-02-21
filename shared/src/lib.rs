@@ -32,6 +32,41 @@ pub use claude_codes::io::{
     ToolResultBlock, ToolResultContent, ToolUseBlock,
 };
 
+/// Which agent CLI backs a session
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentType {
+    #[default]
+    Claude,
+    Codex,
+}
+
+impl AgentType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            AgentType::Claude => "claude",
+            AgentType::Codex => "codex",
+        }
+    }
+}
+
+impl std::fmt::Display for AgentType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for AgentType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "claude" => Ok(AgentType::Claude),
+            "codex" => Ok(AgentType::Codex),
+            other => Err(format!("unknown agent type: {}", other)),
+        }
+    }
+}
+
 /// Voice WebSocket message types (frontend <-> backend via /ws/voice/:id).
 /// These are NOT part of the typed ws-bridge endpoints because voice mixes
 /// binary audio frames with JSON text messages.
@@ -155,6 +190,9 @@ pub struct SessionInfo {
     /// GitHub PR URL for the current branch
     #[serde(default)]
     pub pr_url: Option<String>,
+    /// Which agent CLI backs this session (claude or codex)
+    #[serde(default)]
+    pub agent_type: AgentType,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -79,6 +79,8 @@ pub struct LaunchRequest {
     pub launcher_id: Option<uuid::Uuid>,
     #[serde(default)]
     pub claude_args: Vec<String>,
+    #[serde(default)]
+    pub agent_type: crate::AgentType,
 }
 
 /// Request body for device code creation

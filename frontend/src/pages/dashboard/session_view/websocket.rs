@@ -47,6 +47,7 @@ pub fn connect_websocket(
                     replaces_session_id: None,
                     hostname: None,
                     launcher_id: None,
+                    agent_type: Default::default(),
                 };
 
                 if sender.send(register_msg).await.is_err() {

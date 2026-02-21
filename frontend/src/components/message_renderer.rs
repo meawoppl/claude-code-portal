@@ -260,10 +260,18 @@ pub struct MessageRendererProps {
     pub json: String,
     #[prop_or_default]
     pub session_id: Option<Uuid>,
+    #[prop_or_default]
+    pub agent_type: shared::AgentType,
 }
 
 #[function_component(MessageRenderer)]
 pub fn message_renderer(props: &MessageRendererProps) -> Html {
+    if props.agent_type == shared::AgentType::Codex {
+        return html! {
+            <super::codex_renderer::CodexMessageRenderer json={props.json.clone()} />
+        };
+    }
+
     let parsed: Result<ClaudeMessage, _> = serde_json::from_str(&props.json);
 
     match parsed {
@@ -285,13 +293,15 @@ pub struct MessageGroupRendererProps {
     pub group: MessageGroup,
     #[prop_or_default]
     pub session_id: Option<Uuid>,
+    #[prop_or_default]
+    pub agent_type: shared::AgentType,
 }
 
 #[function_component(MessageGroupRenderer)]
 pub fn message_group_renderer(props: &MessageGroupRendererProps) -> Html {
     match &props.group {
         MessageGroup::Single(json) => {
-            html! { <MessageRenderer json={json.clone()} session_id={props.session_id} /> }
+            html! { <MessageRenderer json={json.clone()} session_id={props.session_id} agent_type={props.agent_type} /> }
         }
         MessageGroup::AssistantGroup(messages) => render_assistant_group(messages),
     }

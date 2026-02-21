@@ -54,6 +54,7 @@ pub struct Session {
     pub hostname: String,
     pub launcher_id: Option<Uuid>,
     pub pr_url: Option<String>,
+    pub agent_type: String,
 }
 
 #[derive(Debug, Insertable)]
@@ -81,6 +82,7 @@ pub struct NewSessionWithId {
     pub client_version: Option<String>,
     pub hostname: String,
     pub launcher_id: Option<Uuid>,
+    pub agent_type: String,
 }
 
 #[derive(Debug, Queryable, Selectable, Serialize, Deserialize, Clone)]

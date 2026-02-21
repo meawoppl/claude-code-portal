@@ -23,6 +23,9 @@ pub struct SessionConfig {
     /// Extra arguments to pass to the claude CLI
     #[serde(default)]
     pub extra_args: Vec<String>,
+    /// Which agent CLI to use
+    #[serde(default)]
+    pub agent_type: shared::AgentType,
 }
 
 /// A pending permission request that hasn't been responded to
@@ -100,6 +103,7 @@ mod tests {
             resume: false,
             claude_path: None,
             extra_args: vec![],
+            agent_type: Default::default(),
         }
     }
 

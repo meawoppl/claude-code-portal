@@ -41,6 +41,8 @@ pub struct ProxySessionConfig {
     pub replaces_session_id: Option<Uuid>,
     /// Launcher ID if this session was started by a launcher
     pub launcher_id: Option<Uuid>,
+    /// Which agent CLI to use
+    pub agent_type: shared::AgentType,
 }
 
 /// Exponential backoff helper
@@ -424,6 +426,7 @@ async fn register_session(
         replaces_session_id: config.replaces_session_id,
         hostname: Some(hostname),
         launcher_id: config.launcher_id,
+        agent_type: config.agent_type,
     };
 
     if conn.send(register_msg).await.is_err() {
@@ -1479,6 +1482,25 @@ async fn run_main_loop(
             }
 
             event = claude_session.next_event() => {
+                // Handle raw output directly (Codex JSONL) — bypasses the
+                // ClaudeOutput-typed output forwarder
+                if let Some(SessionEvent::RawOutput(ref value)) = event {
+                    let seq = {
+                        let mut buf = state.output_buffer.lock().await;
+                        buf.push(value.clone())
+                    };
+                    let msg = ProxyToServer::SequencedOutput {
+                        seq,
+                        content: value.clone(),
+                    };
+                    let mut ws = state.ws_write.lock().await;
+                    if ws.send(msg).await.is_err() {
+                        error!("Failed to send raw output");
+                        return ConnectionResult::Disconnected(state.connection_start.elapsed());
+                    }
+                    continue;
+                }
+
                 match handle_session_event_with_wiggum(
                     event,
                     &state.output_tx,
@@ -1597,6 +1619,12 @@ async fn handle_session_event_with_wiggum(
         Some(SessionEvent::Exited { code }) => {
             info!("Claude session exited with code {}", code);
             Some(ConnectionResult::ClaudeExited)
+        }
+        Some(SessionEvent::RawOutput(_)) => {
+            // Handled in run_main_loop before calling this function
+            unreachable!(
+                "RawOutput should be handled before calling handle_session_event_with_wiggum"
+            );
         }
         Some(SessionEvent::Error(e)) => {
             let err_msg = e.to_string();

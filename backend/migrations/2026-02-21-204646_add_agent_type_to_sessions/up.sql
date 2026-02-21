@@ -1,0 +1,1 @@
+ALTER TABLE sessions ADD COLUMN agent_type VARCHAR(16) NOT NULL DEFAULT 'claude';

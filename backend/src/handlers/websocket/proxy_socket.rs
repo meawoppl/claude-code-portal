@@ -97,6 +97,7 @@ fn handle_proxy_message(
             replaces_session_id,
             hostname,
             launcher_id,
+            agent_type,
         } => {
             let key = claude_session_id.to_string();
             *session_key = Some(key.clone());
@@ -115,6 +116,7 @@ fn handle_proxy_message(
                 replaces_session_id,
                 hostname: hostname.as_deref().unwrap_or("unknown"),
                 launcher_id,
+                agent_type,
             };
             let result = register_or_update_session(app_state, &params);
 
