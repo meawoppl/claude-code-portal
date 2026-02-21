@@ -179,7 +179,9 @@ pub fn handle_claude_output(
     }
 }
 
-/// Extract and store cost and token usage from result messages
+/// Extract and store cost and token usage from result messages.
+/// Tries typed deserialization via `claude_codes::io::ResultMessage` first,
+/// falls back to manual JSON extraction for forward compatibility.
 fn store_result_metadata(
     conn: &mut diesel::PgConnection,
     session_id: Uuid,
@@ -187,6 +189,32 @@ fn store_result_metadata(
 ) {
     use crate::schema::sessions;
 
+    // Try typed deserialization first
+    if let Ok(result) = serde_json::from_value::<claude_codes::io::ResultMessage>(content.clone()) {
+        if let Err(e) = diesel::update(sessions::table.find(session_id))
+            .set(sessions::total_cost_usd.eq(result.total_cost_usd))
+            .execute(conn)
+        {
+            error!("Failed to update session cost: {}", e);
+        }
+
+        if let Some(usage) = &result.usage {
+            if let Err(e) = diesel::update(sessions::table.find(session_id))
+                .set((
+                    sessions::input_tokens.eq(usage.input_tokens as i64),
+                    sessions::output_tokens.eq(usage.output_tokens as i64),
+                    sessions::cache_creation_tokens.eq(usage.cache_creation_input_tokens as i64),
+                    sessions::cache_read_tokens.eq(usage.cache_read_input_tokens as i64),
+                ))
+                .execute(conn)
+            {
+                error!("Failed to update session tokens: {}", e);
+            }
+        }
+        return;
+    }
+
+    // Fallback: manual JSON extraction
     let cost = content.get("total_cost_usd").and_then(|c| c.as_f64());
     let usage = content.get("usage");
     let input_tokens = usage

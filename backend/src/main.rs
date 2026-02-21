@@ -551,10 +551,18 @@ async fn broadcast_user_spend_updates(app_state: &Arc<AppState>) {
             continue;
         };
 
-        // Query per-session costs for this user (active sessions only)
-        let result: Result<Vec<(uuid::Uuid, f64)>, _> = sessions
+        // Query per-session costs and token usage for this user (active sessions only)
+        type CostRow = (uuid::Uuid, f64, i64, i64, i64, i64);
+        let result: Result<Vec<CostRow>, _> = sessions
             .filter(user_id.eq(user_id_val))
-            .select((id, total_cost_usd))
+            .select((
+                id,
+                total_cost_usd,
+                input_tokens,
+                output_tokens,
+                cache_creation_tokens,
+                cache_read_tokens,
+            ))
             .load(&mut conn);
 
         // Get total spend including deleted sessions (matches admin dashboard)
@@ -565,11 +573,17 @@ async fn broadcast_user_spend_updates(app_state: &Arc<AppState>) {
         if let Ok(session_costs_data) = result {
             let session_costs_vec: Vec<SessionCost> = session_costs_data
                 .into_iter()
-                .filter(|(_, cost)| *cost > 0.0) // Only include sessions with costs
-                .map(|(sid, cost)| SessionCost {
-                    session_id: sid,
-                    total_cost_usd: cost,
-                })
+                .filter(|&(_, cost, ..)| cost > 0.0) // Only include sessions with costs
+                .map(
+                    |(sid, cost, inp, outp, cache_create, cache_read)| SessionCost {
+                        session_id: sid,
+                        total_cost_usd: cost,
+                        input_tokens: inp,
+                        output_tokens: outp,
+                        cache_creation_tokens: cache_create,
+                        cache_read_tokens: cache_read,
+                    },
+                )
                 .collect();
 
             // Only broadcast if there's any spend to report
