@@ -1,18 +1,15 @@
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-use anyhow::bail;
-use anyhow::{Context, Result};
-use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
-
-const SERVICE_NAME: &str = "claude-portal-launcher";
+use anyhow::Result;
 
 // --- Linux (systemd) ---
 
 #[cfg(target_os = "linux")]
-fn service_file_path() -> Result<PathBuf> {
+const SERVICE_NAME: &str = "claude-portal-launcher";
+
+#[cfg(target_os = "linux")]
+fn service_file_path() -> Result<std::path::PathBuf> {
+    use anyhow::Context;
     let home = std::env::var("HOME").context("HOME not set")?;
-    Ok(PathBuf::from(home)
+    Ok(std::path::PathBuf::from(home)
         .join(".config/systemd/user")
         .join(format!("{}.service", SERVICE_NAME)))
 }
@@ -39,7 +36,8 @@ WantedBy=default.target
 
 #[cfg(target_os = "linux")]
 fn systemctl(args: &[&str]) -> Result<std::process::Output> {
-    Command::new("systemctl")
+    use anyhow::Context;
+    std::process::Command::new("systemctl")
         .arg("--user")
         .args(args)
         .output()
@@ -48,6 +46,7 @@ fn systemctl(args: &[&str]) -> Result<std::process::Output> {
 
 #[cfg(target_os = "linux")]
 pub fn install() -> Result<()> {
+    use anyhow::Context;
     let binary_path = std::env::current_exe()
         .context("Failed to get current executable path")?
         .to_string_lossy()
@@ -61,13 +60,12 @@ pub fn install() -> Result<()> {
         return Ok(());
     }
 
-    // Ensure parent directory exists
     if let Some(parent) = service_path.parent() {
-        fs::create_dir_all(parent).context("Failed to create systemd user directory")?;
+        std::fs::create_dir_all(parent).context("Failed to create systemd user directory")?;
     }
 
     let unit = generate_unit(&binary_path);
-    fs::write(&service_path, unit)
+    std::fs::write(&service_path, unit)
         .with_context(|| format!("Failed to write {}", service_path.display()))?;
 
     println!("Wrote {}", service_path.display());
@@ -90,6 +88,7 @@ pub fn install() -> Result<()> {
 
 #[cfg(target_os = "linux")]
 pub fn uninstall() -> Result<()> {
+    use anyhow::Context;
     let service_path = service_file_path()?;
 
     if !service_path.exists() {
@@ -103,7 +102,7 @@ pub fn uninstall() -> Result<()> {
     let _ = systemctl(&["disable", SERVICE_NAME]);
     println!("Disabled {}", SERVICE_NAME);
 
-    fs::remove_file(&service_path)
+    std::fs::remove_file(&service_path)
         .with_context(|| format!("Failed to remove {}", service_path.display()))?;
     println!("Removed {}", service_path.display());
 
@@ -146,9 +145,10 @@ pub fn status() -> Result<()> {
 const PLIST_LABEL: &str = "com.claude-portal.launcher";
 
 #[cfg(target_os = "macos")]
-fn plist_path() -> Result<PathBuf> {
+fn plist_path() -> Result<std::path::PathBuf> {
+    use anyhow::Context;
     let home = std::env::var("HOME").context("HOME not set")?;
-    Ok(PathBuf::from(home)
+    Ok(std::path::PathBuf::from(home)
         .join("Library/LaunchAgents")
         .join(format!("{}.plist", PLIST_LABEL)))
 }
@@ -189,6 +189,7 @@ fn generate_plist(binary_path: &str) -> String {
 
 #[cfg(target_os = "macos")]
 pub fn install() -> Result<()> {
+    use anyhow::{bail, Context};
     let binary_path = std::env::current_exe()
         .context("Failed to get current executable path")?
         .to_string_lossy()
@@ -203,15 +204,16 @@ pub fn install() -> Result<()> {
     }
 
     if let Some(parent) = plist.parent() {
-        fs::create_dir_all(parent).context("Failed to create LaunchAgents directory")?;
+        std::fs::create_dir_all(parent).context("Failed to create LaunchAgents directory")?;
     }
 
     let content = generate_plist(&binary_path);
-    fs::write(&plist, content).with_context(|| format!("Failed to write {}", plist.display()))?;
+    std::fs::write(&plist, content)
+        .with_context(|| format!("Failed to write {}", plist.display()))?;
 
     println!("Wrote {}", plist.display());
 
-    let output = Command::new("launchctl")
+    let output = std::process::Command::new("launchctl")
         .args(["load", &plist.to_string_lossy()])
         .output()
         .context("Failed to run launchctl load")?;
@@ -231,6 +233,7 @@ pub fn install() -> Result<()> {
 
 #[cfg(target_os = "macos")]
 pub fn uninstall() -> Result<()> {
+    use anyhow::Context;
     let plist = plist_path()?;
 
     if !plist.exists() {
@@ -238,12 +241,13 @@ pub fn uninstall() -> Result<()> {
         return Ok(());
     }
 
-    let _ = Command::new("launchctl")
+    let _ = std::process::Command::new("launchctl")
         .args(["unload", &plist.to_string_lossy()])
         .output();
     println!("Unloaded {}", PLIST_LABEL);
 
-    fs::remove_file(&plist).with_context(|| format!("Failed to remove {}", plist.display()))?;
+    std::fs::remove_file(&plist)
+        .with_context(|| format!("Failed to remove {}", plist.display()))?;
     println!("Removed {}", plist.display());
 
     println!();
@@ -254,6 +258,7 @@ pub fn uninstall() -> Result<()> {
 
 #[cfg(target_os = "macos")]
 pub fn status() -> Result<()> {
+    use anyhow::Context;
     let plist = plist_path()?;
 
     if !plist.exists() {
@@ -262,7 +267,7 @@ pub fn status() -> Result<()> {
         return Ok(());
     }
 
-    let output = Command::new("launchctl")
+    let output = std::process::Command::new("launchctl")
         .args(["list"])
         .output()
         .context("Failed to run launchctl list")?;
@@ -289,15 +294,15 @@ pub fn status() -> Result<()> {
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn install() -> Result<()> {
-    bail!("Service installation is not supported on this platform")
+    anyhow::bail!("Service installation is not supported on this platform")
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn uninstall() -> Result<()> {
-    bail!("Service management is not supported on this platform")
+    anyhow::bail!("Service management is not supported on this platform")
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn status() -> Result<()> {
-    bail!("Service management is not supported on this platform")
+    anyhow::bail!("Service management is not supported on this platform")
 }
