@@ -298,16 +298,21 @@ impl Component for SessionView {
                 false
             }
             SessionViewMsg::CheckAwaiting => {
-                let is_result_awaiting = self.messages.last().is_some_and(|msg| {
-                    serde_json::from_str::<serde_json::Value>(msg)
-                        .ok()
-                        .and_then(|p| {
-                            p.get("type")
-                                .and_then(|t| t.as_str())
-                                .map(|t| t == "result")
-                        })
-                        .unwrap_or(false)
-                });
+                // Search backwards for the last message with a meaningful type
+                // ("result" or "assistant"). Late-arriving proxy messages or tool
+                // completions can land after a result, so checking only .last()
+                // would incorrectly show the session as still working.
+                let is_result_awaiting = self
+                    .messages
+                    .iter()
+                    .rev()
+                    .find_map(|msg| {
+                        serde_json::from_str::<serde_json::Value>(msg)
+                            .ok()
+                            .and_then(|p| p.get("type")?.as_str().map(String::from))
+                            .filter(|t| t == "result" || t == "assistant")
+                    })
+                    .is_some_and(|t| t == "result");
                 let is_awaiting = is_result_awaiting || self.pending_permission.is_some();
                 let session_id = ctx.props().session.id;
                 ctx.props()
