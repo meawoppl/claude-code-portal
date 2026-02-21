@@ -1,6 +1,7 @@
 use crate::models::{NewSessionMember, NewSessionWithId};
 use crate::AppState;
 use diesel::prelude::*;
+use shared::AgentType;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -24,6 +25,7 @@ pub struct RegistrationParams<'a> {
     pub replaces_session_id: Option<Uuid>,
     pub hostname: &'a str,
     pub launcher_id: Option<Uuid>,
+    pub agent_type: AgentType,
 }
 
 /// Register or update a session in the database.
@@ -143,6 +145,7 @@ fn create_new_session(
         client_version: params.client_version.clone(),
         hostname: params.hostname.to_string(),
         launcher_id: params.launcher_id,
+        agent_type: params.agent_type.as_str().to_string(),
     };
 
     match diesel::insert_into(sessions::table)
@@ -163,8 +166,8 @@ fn create_new_session(
             }
 
             info!(
-                "Session persisted to DB: {} ({}) branch: {:?}",
-                params.session_name, params.claude_session_id, params.git_branch
+                "Session persisted to DB: {} ({}) branch: {:?} agent: {}",
+                params.session_name, params.claude_session_id, params.git_branch, params.agent_type
             );
             RegistrationResult {
                 success: true,

@@ -227,11 +227,12 @@ async fn handle_message(
             working_directory,
             session_name,
             claude_args,
+            agent_type,
             ..
         } => {
             info!(
-                "Launch request: dir={}, name={:?}",
-                working_directory, session_name
+                "Launch request: dir={}, name={:?}, agent={}",
+                working_directory, session_name, agent_type
             );
 
             let result = process_manager
@@ -240,6 +241,7 @@ async fn handle_message(
                     &working_directory,
                     session_name.as_deref(),
                     &claude_args,
+                    agent_type,
                 )
                 .await;
 

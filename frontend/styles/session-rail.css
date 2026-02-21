@@ -233,6 +233,19 @@
     font-weight: 600;
 }
 
+.pill-agent-badge {
+    font-size: 0.6rem;
+    font-weight: 600;
+    padding: 0 0.3rem;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.pill-agent-badge.codex {
+    color: #0a4;
+    background: rgba(0, 170, 68, 0.15);
+}
+
 /* Pill menu toggle (▼ button) */
 .pill-menu-toggle {
     background: transparent;

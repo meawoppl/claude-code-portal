@@ -4,6 +4,7 @@ use chrono::Utc;
 use claude_codes::io::{ControlResponse, PermissionResult};
 use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
 use std::path::Path;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -17,6 +18,12 @@ use crate::snapshot::{PendingPermission, SessionConfig, SessionSnapshot};
 pub enum SessionEvent {
     /// Claude produced output (excluding permission requests, which have their own event)
     Output(ClaudeOutput),
+
+    /// Raw JSON output from a non-Claude agent (e.g. Codex JSONL).
+    ///
+    /// This bypasses Claude-specific processing (permission extraction, ControlResponse
+    /// filtering) and is forwarded directly to the backend/frontend.
+    RawOutput(serde_json::Value),
 
     /// Claude is requesting permission for a tool
     ///
@@ -139,8 +146,12 @@ enum IoCommand {
 /// Events received from the Claude I/O task
 enum IoEvent {
     Output(Box<ClaudeOutput>),
+    /// Raw JSON from a non-Claude agent (Codex JSONL)
+    RawOutput(serde_json::Value),
     Error(SessionError),
-    Exited { code: i32 },
+    Exited {
+        code: i32,
+    },
 }
 
 /// A managed Claude Code session
@@ -161,12 +172,34 @@ pub struct Session {
 }
 
 impl Session {
-    /// Create a new session (spawns Claude process)
+    /// Create a new session (spawns agent process)
     ///
-    /// Spawns a dedicated I/O task that owns the Claude process and handles both
-    /// reading stdout and writing stdin, preventing deadlocks and buffer overflow.
+    /// For Claude: spawns a persistent process with bidirectional streaming.
+    /// For Codex: starts idle, spawning a process per user message.
     pub async fn new(config: SessionConfig) -> Result<Self, SessionError> {
         let buffer = OutputBuffer::new(config.session_id);
+
+        if config.agent_type == shared::AgentType::Codex {
+            // Codex sessions start idle — a process is spawned per send_input()
+            let (event_tx, event_rx) = mpsc::unbounded_channel();
+            let (command_tx, command_rx) = mpsc::unbounded_channel();
+
+            let codex_config = config.clone();
+            tokio::spawn(async move {
+                Self::codex_io_task(codex_config, command_rx, event_tx).await;
+            });
+
+            return Ok(Self {
+                id: config.session_id,
+                config,
+                command_tx: Some(command_tx),
+                buffer,
+                state: SessionState::Running,
+                pending_permission: None,
+                event_rx: Some(event_rx),
+            });
+        }
+
         let client = Self::spawn_claude(&config).await?;
 
         // Spawn the I/O task that owns the client
@@ -419,6 +452,11 @@ impl Session {
 
                     return Some(SessionEvent::Output(output));
                 }
+                Some(IoEvent::RawOutput(value)) => {
+                    // Buffer the raw output
+                    self.buffer.push(value.clone());
+                    return Some(SessionEvent::RawOutput(value));
+                }
                 Some(IoEvent::Exited { code }) => {
                     self.state = SessionState::Exited { code };
                     self.command_tx = None;
@@ -553,6 +591,128 @@ impl Session {
     /// Get pending output count
     pub fn pending_output_count(&self) -> usize {
         self.buffer.pending_count()
+    }
+
+    /// Background task for Codex sessions.
+    ///
+    /// Codex is request/response: each user message spawns `codex --json --full-auto "prompt"`,
+    /// reads JSONL stdout until the process exits, then waits for the next message.
+    async fn codex_io_task(
+        config: SessionConfig,
+        mut command_rx: mpsc::UnboundedReceiver<IoCommand>,
+        event_tx: mpsc::UnboundedSender<IoEvent>,
+    ) {
+        while let Some(cmd) = command_rx.recv().await {
+            let prompt = match cmd {
+                IoCommand::SendInput(input) => {
+                    // Extract prompt text from ClaudeInput
+                    match &input {
+                        ClaudeInput::User(msg) => msg
+                            .message
+                            .content
+                            .iter()
+                            .filter_map(|block| {
+                                if let claude_codes::io::ContentBlock::Text(tb) = block {
+                                    Some(tb.text.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                        _ => continue,
+                    }
+                }
+                IoCommand::SendPermissionResponse(_) => {
+                    // Codex doesn't have permission flow
+                    continue;
+                }
+            };
+
+            if prompt.is_empty() {
+                continue;
+            }
+
+            // Spawn codex process for this prompt
+            match Self::spawn_codex(&config, &prompt).await {
+                Ok(mut child) => {
+                    let stdout = child.stdout.take();
+                    if let Some(stdout) = stdout {
+                        let mut reader = BufReader::new(stdout).lines();
+                        while let Ok(Some(line)) = reader.next_line().await {
+                            if line.trim().is_empty() {
+                                continue;
+                            }
+                            match serde_json::from_str::<serde_json::Value>(&line) {
+                                Ok(value) => {
+                                    // Forward as raw JSON — the frontend dispatches
+                                    // rendering based on session agent_type
+                                    if event_tx.send(IoEvent::RawOutput(value)).is_err() {
+                                        return;
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to parse Codex JSONL: {}", e);
+                                }
+                            }
+                        }
+                    }
+
+                    // Wait for process to exit
+                    match child.wait().await {
+                        Ok(status) => {
+                            let code = status.code().unwrap_or(1);
+                            if code != 0 {
+                                tracing::warn!("Codex process exited with code {}", code);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to wait for Codex process: {}", e);
+                        }
+                    }
+                    // Don't emit Exited — session stays alive for more messages
+                }
+                Err(e) => {
+                    if event_tx.send(IoEvent::Error(e)).is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+        // Command channel closed — session shutting down
+        let _ = event_tx.send(IoEvent::Exited { code: 0 });
+    }
+
+    /// Spawn a Codex process for a single prompt
+    async fn spawn_codex(
+        config: &SessionConfig,
+        prompt: &str,
+    ) -> Result<tokio::process::Child, SessionError> {
+        let codex_path = config.claude_path.as_deref().unwrap_or(Path::new("codex"));
+
+        let mut cmd = Command::new(codex_path);
+        cmd.arg("--json").arg("--full-auto");
+
+        // Add extra arguments
+        for arg in &config.extra_args {
+            cmd.arg(arg);
+        }
+
+        // Prompt is the last positional argument
+        cmd.arg(prompt);
+
+        cmd.current_dir(&config.working_directory);
+
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        tracing::info!(
+            "Spawning Codex: {} --json --full-auto [prompt]",
+            codex_path.display()
+        );
+
+        cmd.spawn().map_err(SessionError::SpawnFailed)
     }
 
     /// Log the resolved path and version of the claude binary for diagnostics.

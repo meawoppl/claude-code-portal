@@ -59,6 +59,7 @@ pub async fn launch_session(
         working_directory: req.working_directory.clone(),
         session_name: None,
         claude_args: req.claude_args,
+        agent_type: req.agent_type,
     };
 
     if !app_state

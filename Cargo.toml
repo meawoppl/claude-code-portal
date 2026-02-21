@@ -42,6 +42,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # Claude Code integration
 claude-codes = "2.1.46"
 
+# Codex CLI integration
+codex-codes = "0.100.0"
+
 # Frontend (Yew)
 yew = { version = "0.21", features = ["csr"] }
 yew-router = "0.18"

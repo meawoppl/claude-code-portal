@@ -62,6 +62,7 @@ impl ProcessManager {
         working_directory: &str,
         session_name: Option<&str>,
         claude_args: &[String],
+        agent_type: shared::AgentType,
     ) -> anyhow::Result<SpawnResult> {
         if self.tasks.len() >= self.max_sessions {
             anyhow::bail!(
@@ -100,6 +101,7 @@ impl ProcessManager {
             claude_args: claude_args.to_vec(),
             replaces_session_id: None,
             launcher_id: self.launcher_id,
+            agent_type,
         };
 
         let exit_tx = self.exit_tx.clone();
@@ -150,6 +152,7 @@ async fn run_session_task(mut config: ProxySessionConfig) -> Option<i32> {
             resume: config.resume,
             claude_path: None,
             extra_args: config.claude_args.clone(),
+            agent_type: config.agent_type,
         };
 
         let mut claude_session = match ClaudeSession::new(claude_config).await {

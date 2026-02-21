@@ -1,3 +1,4 @@
+pub mod codex_renderer;
 mod copy_command;
 mod diff;
 mod launch_dialog;

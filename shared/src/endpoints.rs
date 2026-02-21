@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 pub use ws_bridge::WsEndpoint;
 
-use crate::{DirectoryEntry, PermissionSuggestion, SendMode, SessionCost, SessionStatus};
+use crate::{
+    AgentType, DirectoryEntry, PermissionSuggestion, SendMode, SessionCost, SessionStatus,
+};
 
 // =============================================================================
 // Session endpoint: proxy <-> backend (/ws/session)
@@ -40,6 +42,8 @@ pub enum ProxyToServer {
         hostname: Option<String>,
         #[serde(default)]
         launcher_id: Option<Uuid>,
+        #[serde(default)]
+        agent_type: AgentType,
     },
 
     /// Raw output from Claude Code (unsequenced fallback)
@@ -168,6 +172,8 @@ pub enum ClientToServer {
         hostname: Option<String>,
         #[serde(default)]
         launcher_id: Option<Uuid>,
+        #[serde(default)]
+        agent_type: AgentType,
     },
 
     /// User sends input to Claude
@@ -347,6 +353,8 @@ pub enum ServerToLauncher {
         session_name: Option<String>,
         #[serde(default)]
         claude_args: Vec<String>,
+        #[serde(default)]
+        agent_type: AgentType,
     },
 
     /// Request to stop a running session
@@ -395,6 +403,7 @@ mod tests {
             replaces_session_id: None,
             hostname: None,
             launcher_id: None,
+            agent_type: AgentType::Claude,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains(r#""type":"Register""#));
@@ -488,6 +497,7 @@ mod tests {
             working_directory: "/home".into(),
             session_name: Some("my-session".into()),
             claude_args: vec!["--verbose".into()],
+            agent_type: AgentType::Claude,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains(r#""type":"LaunchSession""#));

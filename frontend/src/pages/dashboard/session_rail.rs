@@ -384,6 +384,13 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     }
                 </span>
                 {
+                    if session.agent_type == shared::AgentType::Codex {
+                        html! { <span class="pill-agent-badge codex">{ "Codex" }</span> }
+                    } else {
+                        html! {}
+                    }
+                }
+                {
                     if is_paused {
                         html! { <span class="pill-paused-badge">{ "ᴾ" }</span> }
                     } else {

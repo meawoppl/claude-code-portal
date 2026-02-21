@@ -129,6 +129,10 @@ struct Args {
     #[arg(long, value_name = "UUID", hide = true)]
     session_id_tag: Option<Uuid>,
 
+    /// Agent CLI to use: "claude" (default) or "codex".
+    #[arg(long, value_name = "AGENT", default_value = "claude")]
+    agent: String,
+
     /// Enable debug-level logging for troubleshooting.
     #[arg(long, short = 'v')]
     verbose: bool,
@@ -346,6 +350,10 @@ async fn main() -> Result<()> {
         info!("Detected git branch: {}", branch);
     }
 
+    // Parse agent type
+    let agent_type: shared::AgentType =
+        args.agent.parse().map_err(|e: String| anyhow::anyhow!(e))?;
+
     // Build session config
     let session_config = ProxySessionConfig {
         backend_url,
@@ -358,6 +366,7 @@ async fn main() -> Result<()> {
         claude_args: args.claude_args.clone(),
         replaces_session_id: None,
         launcher_id: None,
+        agent_type,
     };
 
     // Start Claude and run session
@@ -540,6 +549,7 @@ async fn create_claude_session(config: &ProxySessionConfig) -> Result<ClaudeSess
         resume: config.resume,
         claude_path: None,
         extra_args: config.claude_args.clone(),
+        agent_type: config.agent_type,
     };
 
     if config.resume {

@@ -122,6 +122,8 @@ diesel::table! {
         launcher_id -> Nullable<Uuid>,
         #[max_length = 512]
         pr_url -> Nullable<Varchar>,
+        #[max_length = 16]
+        agent_type -> Varchar,
     }
 }
 
