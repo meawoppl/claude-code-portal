@@ -67,11 +67,19 @@ fn default_language_code() -> String {
     "en-US".to_string()
 }
 
-/// Cost information for a single session
+/// Cost and token usage information for a single session
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionCost {
     pub session_id: Uuid,
     pub total_cost_usd: f64,
+    #[serde(default)]
+    pub input_tokens: i64,
+    #[serde(default)]
+    pub output_tokens: i64,
+    #[serde(default)]
+    pub cache_creation_tokens: i64,
+    #[serde(default)]
+    pub cache_read_tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
