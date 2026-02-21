@@ -232,7 +232,7 @@ pub async fn run_connection_loop(
                 return Ok(LoopResult::SessionNotFound);
             }
             ConnectionResult::Disconnected(duration) => {
-                session.disconnected_at = Some(Instant::now());
+                session.disconnected_at.get_or_insert(Instant::now());
                 session.last_disconnect_graceful = false;
                 session.backoff.reset_if_stable(duration);
                 session.persist_buffer().await;
@@ -248,7 +248,7 @@ pub async fn run_connection_loop(
                 session.backoff.advance();
             }
             ConnectionResult::ServerShutdown(delay) => {
-                session.disconnected_at = Some(Instant::now());
+                session.disconnected_at.get_or_insert(Instant::now());
                 session.last_disconnect_graceful = true;
                 // Graceful shutdown - reset backoff and use server's suggested delay
                 session.backoff.reset();
@@ -370,6 +370,7 @@ async fn run_single_connection(session: &mut SessionState<'_>) -> ConnectionResu
 
     if !session.first_connection {
         info!("Connection restored");
+        session.disconnected_at = None;
     }
 
     // Run the message loop - split connection for concurrent read/write
