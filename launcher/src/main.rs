@@ -1,8 +1,9 @@
 mod config;
 mod connection;
 mod process_manager;
+mod service;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
@@ -42,6 +43,28 @@ struct Args {
     /// Force update from GitHub releases
     #[arg(long)]
     update: bool,
+
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Manage the launcher as a system service
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ServiceAction {
+    /// Install and start the launcher as a persistent service
+    Install,
+    /// Stop and remove the launcher service
+    Uninstall,
+    /// Show the current service status
+    Status,
 }
 
 const BINARY_PREFIX: &str = "claude-portal-launcher";
@@ -56,6 +79,15 @@ async fn main() -> anyhow::Result<()> {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // Handle service subcommands before anything else
+    if let Some(Command::Service { action }) = args.command {
+        return match action {
+            ServiceAction::Install => service::install(),
+            ServiceAction::Uninstall => service::uninstall(),
+            ServiceAction::Status => service::status(),
+        };
+    }
 
     // Apply pending updates (Windows only)
     if let Ok(true) = portal_update::apply_pending_update() {
