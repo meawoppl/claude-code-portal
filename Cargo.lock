@@ -668,14 +668,13 @@ dependencies = [
  "directories",
  "dotenvy",
  "futures-util",
- "hex",
  "hostname",
  "libc",
  "portal-auth",
+ "portal-update",
  "reqwest 0.12.4",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "shared",
  "tempfile",
  "thiserror 2.0.17",
@@ -699,6 +698,7 @@ dependencies = [
  "dirs",
  "hostname",
  "portal-auth",
+ "portal-update",
  "serde",
  "serde_json",
  "shared",
@@ -2947,6 +2947,18 @@ dependencies = [
  "serde_json",
  "shared",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "portal-update"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "reqwest 0.12.4",
+ "serde",
+ "sha2 0.10.9",
  "tracing",
 ]
 

@@ -3,6 +3,7 @@ mod connection;
 mod process_manager;
 
 use clap::Parser;
+use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 
@@ -29,7 +30,21 @@ struct Args {
     /// Development mode (no auth required)
     #[arg(long)]
     dev: bool,
+
+    /// Skip the automatic update check on startup
+    #[arg(long)]
+    no_update: bool,
+
+    /// Check for updates without installing
+    #[arg(long)]
+    check_update: bool,
+
+    /// Force update from GitHub releases
+    #[arg(long)]
+    update: bool,
 }
+
+const BINARY_PREFIX: &str = "claude-portal-launcher";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -41,6 +56,67 @@ async fn main() -> anyhow::Result<()> {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // Apply pending updates (Windows only)
+    if let Ok(true) = portal_update::apply_pending_update() {
+        info!("Pending update applied successfully");
+    }
+
+    // Handle explicit update commands
+    if args.check_update {
+        match portal_update::check_for_update(BINARY_PREFIX, true).await {
+            Ok(portal_update::UpdateResult::UpToDate) => {
+                info!("Launcher is up to date");
+            }
+            Ok(portal_update::UpdateResult::UpdateAvailable {
+                version,
+                download_url,
+            }) => {
+                info!("Update available: {} ({})", version, download_url);
+            }
+            Ok(portal_update::UpdateResult::Updated) => {}
+            Err(e) => {
+                warn!("Update check failed: {}", e);
+            }
+        }
+        return Ok(());
+    }
+
+    if args.update {
+        match portal_update::check_for_update(BINARY_PREFIX, false).await {
+            Ok(portal_update::UpdateResult::UpToDate) => {
+                info!("Launcher is up to date");
+            }
+            Ok(portal_update::UpdateResult::Updated) => {
+                info!("Launcher updated successfully, please restart");
+                std::process::exit(0);
+            }
+            Ok(portal_update::UpdateResult::UpdateAvailable { .. }) => {}
+            Err(e) => {
+                warn!("Update failed: {}", e);
+                return Err(e);
+            }
+        }
+        return Ok(());
+    }
+
+    // Auto-update on startup (unless --no-update)
+    if !args.no_update {
+        match portal_update::check_for_update(BINARY_PREFIX, false).await {
+            Ok(portal_update::UpdateResult::UpToDate) => {}
+            Ok(portal_update::UpdateResult::Updated) => {
+                info!("Launcher updated, please restart");
+                std::process::exit(0);
+            }
+            Ok(portal_update::UpdateResult::UpdateAvailable { .. }) => {}
+            Err(e) => {
+                warn!(
+                    "Update check failed: {}. Continuing with current version.",
+                    e
+                );
+            }
+        }
+    }
 
     let config = config::load_config();
 
