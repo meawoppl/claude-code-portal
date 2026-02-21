@@ -12,13 +12,10 @@ claude-code-portal is a web-based proxy system for Claude Code sessions built wi
 
 ### Related Projects
 
-We maintain **[meawoppl/rust-claude-codes](https://github.com/meawoppl/rust-claude-codes)** - the `claude-codes` crate that provides Rust types for parsing Claude Code's JSON output. This crate is used by the proxy to deserialize Claude's stdout.
+We maintain **[meawoppl/rust-code-agent-sdks](https://github.com/meawoppl/rust-claude-codes)** — a workspace containing two Rust crates for parsing code agent CLI output:
 
-**Recent improvements** (claude-codes 2.1.15+):
-- ✅ `ResultMessage.errors` field for typed error access
-- ✅ `SystemMessage.as_init()` for typed init data
-- ✅ `ToolUseBlock.typed_input()` for typed tool inputs
-- ✅ Helper methods: `as_tool_use()`, `tool_uses()`, `session_id()`, etc.
+- **`claude-codes`** (v2.1.46) — Types for Claude Code's JSON protocol (`ClaudeOutput`, `ResultMessage`, `UsageInfo`, `RateLimitEvent`, etc.). Used by the proxy to deserialize Claude's stdout.
+- **`codex-codes`** (v0.100.0) — Types for OpenAI Codex CLI's JSONL protocol (`ThreadEvent`, `ThreadItem`, `Usage`, etc.). Not yet integrated; see [docs/CODEX_SUPPORT.md](docs/CODEX_SUPPORT.md) for the plan.
 
 ## Architecture Quick Reference
 
