@@ -124,16 +124,6 @@ pub fn proxy_token_setup() -> Html {
                             </p>
                         </>
                     }
-                } else if *selected_platform == Platform::MacOS {
-                    html! {
-                        <p class="note warning-note">
-                            <span class="note-icon">{ "!" }</span>
-                            { "macOS support is experimental and largely untested. " }
-                            <a href="https://github.com/meawoppl/claude-code-portal/issues" target="_blank">
-                                { "Please report issues!" }
-                            </a>
-                        </p>
-                    }
                 } else {
                     html! {}
                 }}
