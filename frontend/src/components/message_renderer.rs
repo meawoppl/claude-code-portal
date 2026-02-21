@@ -154,8 +154,11 @@ pub struct RateLimitInfo {
     pub resets_at: Option<u64>,
     #[serde(rename = "rateLimitType")]
     pub rate_limit_type: Option<String>,
+    pub utilization: Option<f64>,
     #[serde(rename = "overageStatus")]
     pub overage_status: Option<String>,
+    #[serde(rename = "overageDisabledReason")]
+    pub overage_disabled_reason: Option<String>,
     #[serde(rename = "isUsingOverage")]
     pub is_using_overage: Option<bool>,
 }
@@ -564,6 +567,7 @@ fn render_rate_limit_event(msg: &RateLimitEventMessage) -> Html {
         .unwrap_or("unknown");
     let resets_at = info.and_then(|i| i.resets_at).unwrap_or(0);
     let using_overage = info.and_then(|i| i.is_using_overage).unwrap_or(false);
+    let utilization = info.and_then(|i| i.utilization);
 
     let reset_text = if resets_at > 0 {
         let now = (js_sys::Date::now() / 1000.0) as u64;
@@ -597,6 +601,28 @@ fn render_rate_limit_event(msg: &RateLimitEventMessage) -> Html {
                             { &reset_text }
                             { if using_overage { " \u{b7} Using overage" } else { "" } }
                         </div>
+                        {
+                            if let Some(pct) = utilization {
+                                let pct_int = (pct * 100.0).round() as u32;
+                                let bar_class = if pct >= 0.9 {
+                                    "utilization-bar critical"
+                                } else if pct >= 0.7 {
+                                    "utilization-bar warning"
+                                } else {
+                                    "utilization-bar"
+                                };
+                                html! {
+                                    <div class="utilization-row">
+                                        <div class={bar_class}>
+                                            <div class="utilization-fill" style={format!("width: {}%", pct_int)}></div>
+                                        </div>
+                                        <span class="utilization-label">{ format!("{}%", pct_int) }</span>
+                                    </div>
+                                }
+                            } else {
+                                html! {}
+                            }
+                        }
                     </div>
                 </div>
             </div>

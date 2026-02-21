@@ -1,7 +1,7 @@
 //! Hook for managing the client WebSocket connection with spend updates.
 
 use crate::utils;
-use shared::{ClientEndpoint, ServerToClient, SessionCost, WsEndpoint};
+use shared::{ClientEndpoint, ServerToClient, WsEndpoint};
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 
@@ -9,8 +9,6 @@ use yew::prelude::*;
 pub struct UseClientWebSocket {
     /// Total user spend across all sessions
     pub total_spend: f64,
-    /// Per-session cost and token usage
-    pub session_costs: Vec<SessionCost>,
     /// Server shutdown reason (if server is shutting down)
     pub shutdown_reason: Option<String>,
 }
@@ -44,17 +42,14 @@ fn calculate_backoff(attempt: u32) -> u32 {
 #[hook]
 pub fn use_client_websocket() -> UseClientWebSocket {
     let total_spend = use_state(|| 0.0f64);
-    let session_costs = use_state(Vec::<SessionCost>::new);
     let shutdown_reason = use_state(|| None::<String>);
 
     {
         let total_spend = total_spend.clone();
-        let session_costs = session_costs.clone();
         let shutdown_reason = shutdown_reason.clone();
 
         use_effect_with((), move |_| {
             let total_spend = total_spend.clone();
-            let session_costs = session_costs.clone();
             let shutdown_reason = shutdown_reason.clone();
 
             spawn_local(async move {
@@ -74,10 +69,9 @@ pub fn use_client_websocket() -> UseClientWebSocket {
                                     Ok(msg) => match msg {
                                         ServerToClient::UserSpendUpdate {
                                             total_spend_usd,
-                                            session_costs: costs,
+                                            session_costs: _,
                                         } => {
                                             total_spend.set(total_spend_usd);
-                                            session_costs.set(costs);
                                         }
                                         ServerToClient::ServerShutdown {
                                             reason,
@@ -125,7 +119,6 @@ pub fn use_client_websocket() -> UseClientWebSocket {
 
     UseClientWebSocket {
         total_spend: *total_spend,
-        session_costs: (*session_costs).clone(),
         shutdown_reason: (*shutdown_reason).clone(),
     }
 }

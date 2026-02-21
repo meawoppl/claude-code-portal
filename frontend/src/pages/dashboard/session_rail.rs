@@ -7,7 +7,7 @@ use crate::components::ShareDialog;
 use crate::utils;
 use gloo::events::EventListener;
 use shared::SessionInfo;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlElement, WheelEvent};
@@ -22,8 +22,6 @@ pub struct SessionRailProps {
     pub paused_sessions: HashSet<Uuid>,
     pub inactive_hidden: bool,
     pub connected_sessions: HashSet<Uuid>,
-    #[prop_or_default]
-    pub session_costs: HashMap<Uuid, f64>,
     pub nav_mode: bool,
     pub on_select: Callback<usize>,
     pub on_leave: Callback<Uuid>,
@@ -385,13 +383,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                         }
                     }
                 </span>
-                {
-                    if let Some(&cost) = props.session_costs.get(&session.id) {
-                        html! { <span class="pill-cost">{ utils::format_dollars(cost) }</span> }
-                    } else {
-                        html! {}
-                    }
-                }
                 {
                     if is_paused {
                         html! { <span class="pill-paused-badge">{ "ᴾ" }</span> }

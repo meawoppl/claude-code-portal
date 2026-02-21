@@ -612,6 +612,44 @@
     color: #e0af68;
 }
 
+.utilization-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}
+
+.utilization-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.utilization-fill {
+    height: 100%;
+    background: #e0af68;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.utilization-bar.warning .utilization-fill {
+    background: #e0af68;
+}
+
+.utilization-bar.critical .utilization-fill {
+    background: #f7768e;
+}
+
+.utilization-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    min-width: 2.5em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
 /* Compaction/Summary Message */
 .compaction-message {
     border-left: 3px solid #7aa2f7;

@@ -34,11 +34,6 @@ pub fn dashboard_page() -> Html {
     // Use the client websocket hook for spend updates
     let ws_hook = use_client_websocket();
     let total_user_spend = ws_hook.total_spend;
-    let session_cost_map: std::collections::HashMap<uuid::Uuid, f64> = ws_hook
-        .session_costs
-        .iter()
-        .map(|c| (c.session_id, c.total_cost_usd))
-        .collect();
     let server_shutdown_reason = ws_hook.shutdown_reason.clone();
 
     // Track spend tier for timed animations
@@ -617,7 +612,6 @@ pub fn dashboard_page() -> Html {
                         paused_sessions={(*paused_sessions).clone()}
                         inactive_hidden={*inactive_hidden}
                         connected_sessions={(*connected_sessions).clone()}
-                        session_costs={session_cost_map.clone()}
                         nav_mode={keyboard_nav.nav_mode}
                         on_select={on_select_session.clone()}
                         on_leave={on_leave.clone()}
