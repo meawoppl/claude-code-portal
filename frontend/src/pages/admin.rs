@@ -865,43 +865,29 @@ pub fn admin_page() -> Html {
         })
     };
 
-    // Delete raw message handler
+    // Delete raw message handler (no confirmation needed)
     let on_delete_raw_message = {
         let raw_messages = raw_messages.clone();
-        let confirm_action = confirm_action.clone();
         Callback::from(move |msg_id: Uuid| {
-            let raw_messages_inner = raw_messages.clone();
-            let confirm_inner = confirm_action.clone();
-
-            let action = Callback::from(move |_: MouseEvent| {
-                let raw_messages = raw_messages_inner.clone();
-                let confirm = confirm_inner.clone();
-                spawn_local(async move {
-                    let api_endpoint =
-                        utils::api_url(&format!("/api/admin/raw-messages/{}", msg_id));
-                    match Request::delete(&api_endpoint).send().await {
-                        Ok(response) => {
-                            if response.status() == 204 {
-                                let updated: Vec<_> = (*raw_messages)
-                                    .iter()
-                                    .filter(|m| m.id != msg_id)
-                                    .cloned()
-                                    .collect();
-                                raw_messages.set(updated);
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Failed to delete raw message: {:?}", e);
+            let raw_messages = raw_messages.clone();
+            spawn_local(async move {
+                let api_endpoint = utils::api_url(&format!("/api/admin/raw-messages/{}", msg_id));
+                match Request::delete(&api_endpoint).send().await {
+                    Ok(response) => {
+                        if response.status() == 204 {
+                            let updated: Vec<_> = (*raw_messages)
+                                .iter()
+                                .filter(|m| m.id != msg_id)
+                                .cloned()
+                                .collect();
+                            raw_messages.set(updated);
                         }
                     }
-                    confirm.set(None);
-                });
+                    Err(e) => {
+                        log::error!("Failed to delete raw message: {:?}", e);
+                    }
+                }
             });
-
-            confirm_action.set(Some((
-                "Delete this raw message log entry?".to_string(),
-                action,
-            )));
         })
     };
 
