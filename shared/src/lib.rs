@@ -300,7 +300,7 @@ impl PortalMessage {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum PortalContent {
     Text {
@@ -314,6 +314,26 @@ pub enum PortalContent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         file_size: Option<u64>,
     },
+}
+
+impl std::fmt::Debug for PortalContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Text { text } => f.debug_struct("Text").field("text", text).finish(),
+            Self::Image {
+                media_type,
+                data,
+                file_path,
+                file_size,
+            } => f
+                .debug_struct("Image")
+                .field("media_type", media_type)
+                .field("data", &format_args!("<{} bytes base64>", data.len()))
+                .field("file_path", file_path)
+                .field("file_size", file_size)
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
