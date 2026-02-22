@@ -425,7 +425,7 @@ fn render_approval_page(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Approve Device - Claude Code Portal</title>
+    <title>Approve Device - Agent Portal</title>
     <style>
         :root {{
             --bg-dark: #1a1b26;
@@ -640,7 +640,7 @@ const DEVICE_CODE_FORM_HTML: &str = r#"<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Device Authentication - Claude Code Portal</title>
+    <title>Device Authentication - Agent Portal</title>
     <style>
         :root {
             --bg-dark: #1a1b26;
