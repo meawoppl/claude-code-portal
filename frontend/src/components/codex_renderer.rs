@@ -488,14 +488,18 @@ mod tests {
     fn item_agent_message_snake_case() {
         let json = r#"{"type":"agent_message","id":"m1","text":"hello"}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::AgentMessage { ref text, .. } if text.as_deref() == Some("hello")));
+        assert!(
+            matches!(item, CodexItem::AgentMessage { ref text, .. } if text.as_deref() == Some("hello"))
+        );
     }
 
     #[test]
     fn item_reasoning_snake_case() {
         let json = r#"{"type":"reasoning","id":"r1","text":"thinking..."}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::Reasoning { ref text, .. } if text.as_deref() == Some("thinking...")));
+        assert!(
+            matches!(item, CodexItem::Reasoning { ref text, .. } if text.as_deref() == Some("thinking..."))
+        );
     }
 
     #[test]
@@ -513,35 +517,46 @@ mod tests {
     fn item_file_change_snake_case() {
         let json = r#"{"type":"file_change","id":"f1","changes":[{"path":"a.rs","kind":"update"}],"status":"completed"}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::FileChange { ref changes, .. } if changes.as_ref().unwrap().len() == 1));
+        assert!(
+            matches!(item, CodexItem::FileChange { ref changes, .. } if changes.as_ref().unwrap().len() == 1)
+        );
     }
 
     #[test]
     fn item_mcp_tool_call_snake_case() {
         let json = r#"{"type":"mcp_tool_call","id":"mcp1","server":"srv","tool":"t","arguments":{},"status":"completed"}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::McpToolCall { ref server, ref tool, .. } if server.as_deref() == Some("srv") && tool.as_deref() == Some("t")));
+        assert!(
+            matches!(item, CodexItem::McpToolCall { ref server, ref tool, .. } if server.as_deref() == Some("srv") && tool.as_deref() == Some("t"))
+        );
     }
 
     #[test]
     fn item_web_search_snake_case() {
         let json = r#"{"type":"web_search","id":"w1","query":"rust serde"}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::WebSearch { ref query, .. } if query.as_deref() == Some("rust serde")));
+        assert!(
+            matches!(item, CodexItem::WebSearch { ref query, .. } if query.as_deref() == Some("rust serde"))
+        );
     }
 
     #[test]
     fn item_todo_list_snake_case() {
-        let json = r#"{"type":"todo_list","id":"t1","items":[{"text":"fix bug","completed":false}]}"#;
+        let json =
+            r#"{"type":"todo_list","id":"t1","items":[{"text":"fix bug","completed":false}]}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::TodoList { ref items, .. } if items.as_ref().unwrap().len() == 1));
+        assert!(
+            matches!(item, CodexItem::TodoList { ref items, .. } if items.as_ref().unwrap().len() == 1)
+        );
     }
 
     #[test]
     fn item_error_snake_case() {
         let json = r#"{"type":"error","id":"e1","message":"oops"}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::Error { ref message, .. } if message.as_deref() == Some("oops")));
+        assert!(
+            matches!(item, CodexItem::Error { ref message, .. } if message.as_deref() == Some("oops"))
+        );
     }
 
     // --- CodexItem camelCase deserialization ---
@@ -550,14 +565,18 @@ mod tests {
     fn item_agent_message_camel_case() {
         let json = r#"{"type":"agentMessage","id":"m1","text":"hello"}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::AgentMessage { ref text, .. } if text.as_deref() == Some("hello")));
+        assert!(
+            matches!(item, CodexItem::AgentMessage { ref text, .. } if text.as_deref() == Some("hello"))
+        );
     }
 
     #[test]
     fn item_reasoning_camel_case() {
         let json = r#"{"type":"reasoning","id":"r1","text":"thinking..."}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::Reasoning { ref text, .. } if text.as_deref() == Some("thinking...")));
+        assert!(
+            matches!(item, CodexItem::Reasoning { ref text, .. } if text.as_deref() == Some("thinking..."))
+        );
     }
 
     #[test]
@@ -575,39 +594,51 @@ mod tests {
     fn item_file_change_camel_case() {
         let json = r#"{"type":"fileChange","id":"f1","changes":[{"path":"a.rs","kind":"update"}],"status":"completed"}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::FileChange { ref changes, .. } if changes.as_ref().unwrap().len() == 1));
+        assert!(
+            matches!(item, CodexItem::FileChange { ref changes, .. } if changes.as_ref().unwrap().len() == 1)
+        );
     }
 
     #[test]
     fn item_mcp_tool_call_camel_case() {
         let json = r#"{"type":"mcpToolCall","id":"mcp1","server":"srv","tool":"t","arguments":{},"status":"completed"}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::McpToolCall { ref server, ref tool, .. } if server.as_deref() == Some("srv") && tool.as_deref() == Some("t")));
+        assert!(
+            matches!(item, CodexItem::McpToolCall { ref server, ref tool, .. } if server.as_deref() == Some("srv") && tool.as_deref() == Some("t"))
+        );
     }
 
     #[test]
     fn item_web_search_camel_case() {
         let json = r#"{"type":"webSearch","id":"w1","query":"rust serde"}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::WebSearch { ref query, .. } if query.as_deref() == Some("rust serde")));
+        assert!(
+            matches!(item, CodexItem::WebSearch { ref query, .. } if query.as_deref() == Some("rust serde"))
+        );
     }
 
     #[test]
     fn item_todo_list_camel_case() {
-        let json = r#"{"type":"todoList","id":"t1","items":[{"text":"fix bug","completed":false}]}"#;
+        let json =
+            r#"{"type":"todoList","id":"t1","items":[{"text":"fix bug","completed":false}]}"#;
         let item: CodexItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, CodexItem::TodoList { ref items, .. } if items.as_ref().unwrap().len() == 1));
+        assert!(
+            matches!(item, CodexItem::TodoList { ref items, .. } if items.as_ref().unwrap().len() == 1)
+        );
     }
 
     // --- CodexEvent deserialization ---
 
     #[test]
     fn event_item_completed_with_camel_case_item() {
-        let json = r#"{"type":"item.completed","item":{"type":"agentMessage","id":"m1","text":"done"}}"#;
+        let json =
+            r#"{"type":"item.completed","item":{"type":"agentMessage","id":"m1","text":"done"}}"#;
         let event: CodexEvent = serde_json::from_str(json).unwrap();
         assert!(matches!(
             event,
-            CodexEvent::ItemCompleted { item: Some(CodexItem::AgentMessage { .. }) }
+            CodexEvent::ItemCompleted {
+                item: Some(CodexItem::AgentMessage { .. })
+            }
         ));
     }
 
@@ -617,7 +648,12 @@ mod tests {
         let event: CodexEvent = serde_json::from_str(json).unwrap();
         assert!(matches!(
             event,
-            CodexEvent::ItemUpdated { item: Some(CodexItem::CommandExecution { exit_code: Some(1), .. }) }
+            CodexEvent::ItemUpdated {
+                item: Some(CodexItem::CommandExecution {
+                    exit_code: Some(1),
+                    ..
+                })
+            }
         ));
     }
 
@@ -645,7 +681,9 @@ mod tests {
         };
         let json = serde_json::to_string(&item).unwrap();
         let back: CodexItem = serde_json::from_str(&json).unwrap();
-        assert!(matches!(back, CodexItem::AgentMessage { ref text, .. } if text.as_deref() == Some("hello")));
+        assert!(
+            matches!(back, CodexItem::AgentMessage { ref text, .. } if text.as_deref() == Some("hello"))
+        );
     }
 
     #[test]
@@ -659,7 +697,13 @@ mod tests {
         };
         let json = serde_json::to_string(&item).unwrap();
         let back: CodexItem = serde_json::from_str(&json).unwrap();
-        assert!(matches!(back, CodexItem::CommandExecution { exit_code: Some(0), .. }));
+        assert!(matches!(
+            back,
+            CodexItem::CommandExecution {
+                exit_code: Some(0),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -673,7 +717,9 @@ mod tests {
         };
         let json = serde_json::to_string(&event).unwrap();
         let back: CodexEvent = serde_json::from_str(&json).unwrap();
-        assert!(matches!(back, CodexEvent::TurnCompleted { usage: Some(ref u) } if u.output_tokens == Some(200)));
+        assert!(
+            matches!(back, CodexEvent::TurnCompleted { usage: Some(ref u) } if u.output_tokens == Some(200))
+        );
     }
 
     // --- Terminal event detection ---
@@ -692,7 +738,8 @@ mod tests {
 
     #[test]
     fn terminal_event_item_completed_is_not_terminal() {
-        let json = r#"{"type":"item.completed","item":{"type":"agent_message","id":"m1","text":"hi"}}"#;
+        let json =
+            r#"{"type":"item.completed","item":{"type":"agent_message","id":"m1","text":"hi"}}"#;
         assert_eq!(is_codex_terminal_event(json), Some(false));
     }
 
