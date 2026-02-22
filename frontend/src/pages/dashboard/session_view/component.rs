@@ -13,7 +13,7 @@ use uuid::Uuid;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{Element, HtmlTextAreaElement, KeyboardEvent};
+use web_sys::{ClipboardEvent, DragEvent, Element, HtmlTextAreaElement, KeyboardEvent};
 use yew::prelude::*;
 
 use super::history::CommandHistory;
@@ -84,6 +84,10 @@ pub enum SessionViewMsg {
     FileUploaded(String),
     /// File upload failed
     FileUploadError(String),
+    /// User dragged files over the input area
+    DragEnter,
+    /// User dragged files out of the input area
+    DragLeave,
 }
 
 /// SessionView - Main terminal view for a single session
@@ -116,6 +120,7 @@ pub struct SessionView {
     send_mode_dropdown_open: bool,
     file_input_ref: NodeRef,
     upload_progress: Option<f32>,
+    drag_hover: bool,
 }
 
 impl Component for SessionView {
@@ -192,6 +197,7 @@ impl Component for SessionView {
             send_mode_dropdown_open: false,
             file_input_ref: NodeRef::default(),
             upload_progress: None,
+            drag_hover: false,
         }
     }
 
@@ -585,6 +591,14 @@ impl Component for SessionView {
                 gloo::console::error!("File upload error:", &err);
                 true
             }
+            SessionViewMsg::DragEnter => {
+                self.drag_hover = true;
+                true
+            }
+            SessionViewMsg::DragLeave => {
+                self.drag_hover = false;
+                true
+            }
         }
     }
 
@@ -631,6 +645,53 @@ impl Component for SessionView {
 
         let close_dropdown = link.callback(|_| SessionViewMsg::CloseSendModeDropdown);
 
+        let handle_paste = link.callback(|e: Event| {
+            let e: ClipboardEvent = e.unchecked_into();
+            if let Some(data) = e.clipboard_data() {
+                let items = data.items();
+                let files: Vec<web_sys::File> = (0..items.length())
+                    .filter_map(|i: u32| items.get(i))
+                    .filter(|item: &web_sys::DataTransferItem| item.kind() == "file")
+                    .filter_map(|item: web_sys::DataTransferItem| item.get_as_file().ok().flatten())
+                    .collect();
+                if !files.is_empty() {
+                    e.prevent_default();
+                    return SessionViewMsg::FilesSelected(files);
+                }
+            }
+            SessionViewMsg::CheckAwaiting
+        });
+
+        let handle_dragover = link.callback(|e: DragEvent| {
+            e.prevent_default();
+            SessionViewMsg::DragEnter
+        });
+
+        let handle_dragleave = link.callback(|e: DragEvent| {
+            e.prevent_default();
+            SessionViewMsg::DragLeave
+        });
+
+        let handle_drop = link.callback(|e: DragEvent| {
+            e.prevent_default();
+            let files: Vec<web_sys::File> = e
+                .data_transfer()
+                .and_then(|dt| dt.files())
+                .map(|fl| (0..fl.length()).filter_map(|i: u32| fl.get(i)).collect())
+                .unwrap_or_default();
+            if !files.is_empty() {
+                SessionViewMsg::FilesSelected(files)
+            } else {
+                SessionViewMsg::DragLeave
+            }
+        });
+
+        let drag_hint = if self.drag_hover {
+            "session-view-input drag-hover"
+        } else {
+            "session-view-input"
+        };
+
         html! {
             <div class="session-view" onclick={close_dropdown}>
                 <div class="session-view-messages" ref={self.messages_ref.clone()}>
@@ -643,7 +704,13 @@ impl Component for SessionView {
 
                 { self.render_permission_dialog(ctx) }
 
-                <form class="session-view-input" onsubmit={handle_submit}>
+                <form
+                    class={drag_hint}
+                    onsubmit={handle_submit}
+                    ondragover={handle_dragover}
+                    ondragleave={handle_dragleave}
+                    ondrop={handle_drop}
+                >
                     <span class="input-prompt">{ ">" }</span>
                     { self.render_interim_transcription() }
                     <textarea
@@ -656,11 +723,13 @@ impl Component for SessionView {
                         value={self.input_value.clone()}
                         oninput={handle_input}
                         onkeydown={handle_keydown}
+                        onpaste={handle_paste}
                         disabled={!self.ws_connected}
                         rows="1"
                     />
                     { self.render_voice_input(ctx) }
                     { self.render_send_button(ctx) }
+                    <div class="drop-hint">{ "Drop files here to upload" }</div>
                 </form>
             </div>
         }

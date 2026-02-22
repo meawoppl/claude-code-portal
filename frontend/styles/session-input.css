@@ -343,6 +343,36 @@
     color: var(--bg-dark);
 }
 
+/* Drop hint — shown as subtle static label, prominent on drag-hover */
+.session-view-input .drop-hint {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    opacity: 0.4;
+    pointer-events: none;
+    white-space: nowrap;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.session-view-input.drag-hover .drop-hint {
+    opacity: 1;
+    color: var(--accent);
+}
+
+/* Drag-hover: highlight the input area */
+.session-view-input.drag-hover {
+    border-top-color: var(--accent);
+    background: rgba(122, 162, 247, 0.06);
+}
+
+.session-view-input.drag-hover .message-input {
+    border-color: var(--accent);
+    border-style: dashed;
+}
+
 /* Nav mode: dim the input area to indicate it's not active */
 .session-views-container.nav-mode .session-view-input {
     opacity: 0.5;
