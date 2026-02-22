@@ -203,12 +203,20 @@ pub enum ClientToServer {
         reason: Option<String>,
     },
 
-    /// File uploaded by user, to be written to session working directory
-    FileUpload {
+    /// Start a chunked file upload
+    FileUploadStart {
+        upload_id: String,
         filename: String,
-        /// File content as base64-encoded string
-        data: String,
         content_type: String,
+        total_chunks: u32,
+    },
+
+    /// A single chunk of a file upload
+    FileUploadChunk {
+        upload_id: String,
+        chunk_index: u32,
+        /// Base64-encoded chunk data (~1KB decoded per chunk)
+        data: String,
     },
 }
 
