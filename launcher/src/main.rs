@@ -9,7 +9,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 
 #[derive(Parser, Debug)]
-#[command(name = "claude-portal-launcher")]
+#[command(name = "agent-launcher")]
 #[command(about = "Persistent daemon that launches claude-portal sessions as in-process tasks")]
 struct Args {
     /// Backend WebSocket URL (default: wss://txcl.io in release, ws://localhost:3000 in debug)
@@ -67,7 +67,7 @@ enum ServiceAction {
     Status,
 }
 
-const BINARY_PREFIX: &str = "claude-portal-launcher";
+const BINARY_PREFIX: &str = "agent-launcher";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

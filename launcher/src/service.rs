@@ -3,7 +3,7 @@ use anyhow::Result;
 // --- Linux (systemd) ---
 
 #[cfg(target_os = "linux")]
-const SERVICE_NAME: &str = "claude-portal-launcher";
+const SERVICE_NAME: &str = "agent-launcher";
 
 #[cfg(target_os = "linux")]
 fn service_file_path() -> Result<std::path::PathBuf> {
@@ -18,7 +18,7 @@ fn service_file_path() -> Result<std::path::PathBuf> {
 fn generate_unit(binary_path: &str) -> String {
     format!(
         r#"[Unit]
-Description=Claude Portal Launcher
+Description=Agent Launcher
 After=network-online.target
 Wants=network-online.target
 
@@ -121,7 +121,7 @@ pub fn status() -> Result<()> {
 
     if !service_path.exists() {
         println!("Service is not installed.");
-        println!("  Run 'claude-portal-launcher service install' to set it up.");
+        println!("  Run 'agent-launcher service install' to set it up.");
         return Ok(());
     }
 
@@ -142,7 +142,7 @@ pub fn status() -> Result<()> {
 // --- macOS (launchd) ---
 
 #[cfg(target_os = "macos")]
-const PLIST_LABEL: &str = "com.claude-portal.launcher";
+const PLIST_LABEL: &str = "com.agent-portal.launcher";
 
 #[cfg(target_os = "macos")]
 fn plist_path() -> Result<std::path::PathBuf> {
@@ -175,9 +175,9 @@ fn generate_plist(binary_path: &str) -> String {
         <false/>
     </dict>
     <key>StandardOutPath</key>
-    <string>/tmp/claude-portal-launcher.stdout.log</string>
+    <string>/tmp/agent-launcher.stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/claude-portal-launcher.stderr.log</string>
+    <string>/tmp/agent-launcher.stderr.log</string>
     <key>ThrottleInterval</key>
     <integer>5</integer>
 </dict>
@@ -226,7 +226,7 @@ pub fn install() -> Result<()> {
     println!("Loaded {}", PLIST_LABEL);
     println!();
     println!("Launcher is installed and running.");
-    println!("  Logs: tail -f /tmp/claude-portal-launcher.stdout.log");
+    println!("  Logs: tail -f /tmp/agent-launcher.stdout.log");
 
     Ok(())
 }
@@ -263,7 +263,7 @@ pub fn status() -> Result<()> {
 
     if !plist.exists() {
         println!("Service is not installed.");
-        println!("  Run 'claude-portal-launcher service install' to set it up.");
+        println!("  Run 'agent-launcher service install' to set it up.");
         return Ok(());
     }
 
@@ -284,7 +284,7 @@ pub fn status() -> Result<()> {
         }
         println!();
         println!("Service is installed and running.");
-        println!("  Logs: tail -f /tmp/claude-portal-launcher.stdout.log");
+        println!("  Logs: tail -f /tmp/agent-launcher.stdout.log");
     }
 
     Ok(())

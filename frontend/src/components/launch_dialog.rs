@@ -339,7 +339,7 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
                 if launchers.is_empty() {
                     <p class="launch-no-launchers">
                         { "No launchers connected. Run " }
-                        <code>{ "claude-portal-launcher" }</code>
+                        <code>{ "agent-launcher" }</code>
                         { " on your machine." }
                     </p>
                 } else {
