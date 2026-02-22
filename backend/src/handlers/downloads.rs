@@ -34,7 +34,7 @@ pub async fn install_script(
 
     let script = format!(
         r##"#!/bin/bash
-# Claude Code Portal Installer
+# Agent Portal Installer
 # Downloads and installs the claude-portal binary, then configures backend URL
 
 set -e
@@ -46,7 +46,7 @@ CONFIG_FILE="${{CONFIG_DIR}}/config.json"
 GITHUB_RELEASE_URL="https://github.com/meawoppl/claude-code-portal/releases/download/latest"
 BACKEND_URL="{backend_url}"
 
-echo "Claude Code Portal Installer"
+echo "Agent Portal Installer"
 echo "============================"
 echo ""
 
@@ -153,7 +153,7 @@ add_to_path() {{
     if [ -f "${{rc_file}}" ]; then
         if ! grep -q "claude-code-portal" "${{rc_file}}" 2>/dev/null; then
             echo "" >> "${{rc_file}}"
-            echo "# Claude Code Portal binary path" >> "${{rc_file}}"
+            echo "# Agent Portal binary path" >> "${{rc_file}}"
             echo "${{path_line}}" >> "${{rc_file}}"
             echo "Updated: ${{rc_file}}"
             return 0

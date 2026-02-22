@@ -12,7 +12,7 @@ pub fn print_startup_banner() {
     );
     println!(
         "{}",
-        "│      Claude Code Portal Starting     │".bright_blue()
+        "│        Agent Portal Starting         │".bright_blue()
     );
     println!(
         "{}",

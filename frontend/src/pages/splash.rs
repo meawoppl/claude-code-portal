@@ -17,9 +17,9 @@ pub fn splash_page() -> Html {
         <div class="splash-container">
             <div class="splash-content">
                 <div class="splash-header">
-                    <h1>{ "Claude Code Portal" }</h1>
+                    <h1>{ "Agent Portal" }</h1>
                     <p class="tagline">
-                        { "Access your remote Claude Code sessions from anywhere" }
+                        { "Access your remote agent sessions from anywhere" }
                     </p>
                 </div>
 
@@ -43,7 +43,7 @@ pub fn splash_page() -> Html {
                                 <span class="output blue">{ "╭──────────────────────────────────────╮" }</span>
                             </div>
                             <div class="terminal-line">
-                                <span class="output blue">{ "│      Claude Code Portal Starting     │" }</span>
+                                <span class="output blue">{ "│        Agent Portal Starting         │" }</span>
                             </div>
                             <div class="terminal-line">
                                 <span class="output blue">{ "╰──────────────────────────────────────╯" }</span>
@@ -100,11 +100,11 @@ pub fn splash_page() -> Html {
                     </div>
                     <div class="feature">
                         <h3>{ "🔄 Multiple Sessions" }</h3>
-                        <p>{ "Manage and switch between multiple Claude Code sessions" }</p>
+                        <p>{ "Manage and switch between multiple agent sessions" }</p>
                     </div>
                     <div class="feature">
                         <h3>{ "🚀 Fire & Forget" }</h3>
-                        <p>{ "Start Claude tasks and walk away. Check results later from any device" }</p>
+                        <p>{ "Start agent tasks and walk away. Check results later from any device" }</p>
                     </div>
                     <div class="feature">
                         <h3>{ "🔒 Secure" }</h3>
