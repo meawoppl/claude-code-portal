@@ -80,3 +80,4 @@ md5 = "0.8.0"
 rust-embed = { version = "8.11.0", features = ["axum", "mime-guess"] }
 mime_guess = "2.0.5"
 ws-bridge = { workspace = true, features = ["server"] }
+base64 = "0.22"

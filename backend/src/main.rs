@@ -330,6 +330,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/sessions/:id/messages",
             get(handlers::messages::list_messages).post(handlers::messages::create_message),
         )
+        .route(
+            "/api/sessions/:id/upload",
+            post(handlers::upload::upload_file),
+        )
         // Proxy token management endpoints
         .route(
             "/api/proxy-tokens",

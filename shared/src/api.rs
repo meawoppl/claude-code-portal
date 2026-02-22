@@ -196,6 +196,14 @@ pub struct RawMessageFallback {
     pub content: String,
 }
 
+/// Response from file upload endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileUploadResponse {
+    pub success: bool,
+    pub filename: String,
+    pub size: u64,
+}
+
 /// Response for GET /api/settings/sound
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SoundSettingsResponse {
