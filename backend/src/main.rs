@@ -275,11 +275,7 @@ async fn main() -> anyhow::Result<()> {
         db_pool: pool.clone(),
         session_manager: session_manager.clone(),
         oauth_basic_client,
-        device_flow_store: if args.dev_mode {
-            None
-        } else {
-            Some(device_flow_store.clone())
-        },
+        device_flow_store: Some(device_flow_store.clone()),
         public_url: public_url.clone(),
         cookie_key,
         jwt_secret,
