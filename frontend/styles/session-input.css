@@ -339,10 +339,6 @@
     color: var(--bg-dark);
 }
 
-.send-button-container .send-button {
-    border-radius: 0;
-}
-
 /* Nav mode: dim the input area to indicate it's not active */
 .session-views-container.nav-mode .session-view-input {
     opacity: 0.5;
