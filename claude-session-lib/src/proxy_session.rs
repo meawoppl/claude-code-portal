@@ -504,6 +504,35 @@ pub struct GracefulShutdown {
     pub reconnect_delay_ms: u64,
 }
 
+/// Events sent through the file upload channel from the WS reader to the main loop
+pub enum FileUploadEvent {
+    /// A new file upload is starting
+    Start {
+        upload_id: String,
+        filename: String,
+        total_chunks: u32,
+        total_size: u64,
+    },
+    /// A chunk of file data (base64-encoded)
+    Chunk {
+        upload_id: String,
+        chunk_index: u32,
+        data: String,
+    },
+}
+
+/// Tracks state for a file being received in chunks
+pub(crate) struct FileReceiveState {
+    filename: String,
+    total_chunks: u32,
+    total_size: u64,
+    received_chunks: u32,
+    received_bytes: u64,
+    file_handle: Option<tokio::fs::File>,
+    start_time: Instant,
+    last_log_percent: u32,
+}
+
 /// Result from handling a WebSocket text message
 enum WsMessageResult {
     /// Continue processing messages
@@ -540,10 +569,12 @@ pub struct ConnectionState {
     pub wiggum_state: Option<WiggumState>,
     /// Heartbeat tracker for dead connection detection
     pub heartbeat: crate::heartbeat::HeartbeatTracker,
-    /// Receiver for file uploads from backend
-    pub file_upload_rx: mpsc::UnboundedReceiver<(String, String)>,
+    /// Receiver for file upload events from backend
+    pub file_upload_rx: mpsc::UnboundedReceiver<FileUploadEvent>,
     /// Working directory for file uploads
     pub working_directory: String,
+    /// Active file uploads being received in chunks
+    pub(crate) active_uploads: std::collections::HashMap<String, FileReceiveState>,
 }
 
 /// Run the main message forwarding loop
@@ -574,8 +605,8 @@ async fn run_message_loop(
     let (graceful_shutdown_tx, graceful_shutdown_rx) =
         mpsc::unbounded_channel::<GracefulShutdown>();
 
-    // Channel for file uploads from backend
-    let (file_upload_tx, file_upload_rx) = mpsc::unbounded_channel::<(String, String)>();
+    // Channel for file upload events from backend
+    let (file_upload_tx, file_upload_rx) = mpsc::unbounded_channel::<FileUploadEvent>();
 
     // Wrap ws_write for sharing
     let ws_write = std::sync::Arc::new(tokio::sync::Mutex::new(ws_write));
@@ -630,6 +661,7 @@ async fn run_message_loop(
         heartbeat,
         file_upload_rx,
         working_directory: config.working_directory.clone(),
+        active_uploads: std::collections::HashMap::new(),
     };
 
     // Main loop
@@ -1222,7 +1254,7 @@ fn spawn_ws_reader(
     wiggum_tx: mpsc::UnboundedSender<String>,
     graceful_shutdown_tx: mpsc::UnboundedSender<GracefulShutdown>,
     heartbeat: crate::heartbeat::HeartbeatTracker,
-    file_upload_tx: mpsc::UnboundedSender<(String, String)>,
+    file_upload_tx: mpsc::UnboundedSender<FileUploadEvent>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(result) = ws_read.recv().await {
@@ -1271,7 +1303,7 @@ async fn handle_ws_message(
     ws_write: &SharedWsWrite,
     wiggum_tx: &mpsc::UnboundedSender<String>,
     heartbeat: &crate::heartbeat::HeartbeatTracker,
-    file_upload_tx: &mpsc::UnboundedSender<(String, String)>,
+    file_upload_tx: &mpsc::UnboundedSender<FileUploadEvent>,
 ) -> WsMessageResult {
     if !matches!(proxy_msg, ServerToProxy::Heartbeat) {
         debug!("ws recv: {:?}", proxy_msg);
@@ -1391,14 +1423,47 @@ async fn handle_ws_message(
             );
             return WsMessageResult::GracefulShutdown(reconnect_delay_ms);
         }
-        ServerToProxy::FileUpload {
+        ServerToProxy::FileUploadStart {
+            upload_id,
             filename,
-            data,
             content_type: _,
+            total_chunks,
+            total_size,
         } => {
-            info!("Received file upload: {}", filename);
-            if file_upload_tx.send((filename, data)).is_err() {
-                error!("Failed to send file upload to main loop");
+            info!(
+                "[upload {}] Starting: {} ({} bytes, {} chunks)",
+                &upload_id[..8.min(upload_id.len())],
+                filename,
+                total_size,
+                total_chunks
+            );
+            if file_upload_tx
+                .send(FileUploadEvent::Start {
+                    upload_id,
+                    filename,
+                    total_chunks,
+                    total_size,
+                })
+                .is_err()
+            {
+                error!("Failed to send file upload start to main loop");
+                return WsMessageResult::Disconnect;
+            }
+        }
+        ServerToProxy::FileUploadChunk {
+            upload_id,
+            chunk_index,
+            data,
+        } => {
+            if file_upload_tx
+                .send(FileUploadEvent::Chunk {
+                    upload_id,
+                    chunk_index,
+                    data,
+                })
+                .is_err()
+            {
+                error!("Failed to send file upload chunk to main loop");
                 return WsMessageResult::Disconnect;
             }
         }
@@ -1475,31 +1540,118 @@ async fn run_main_loop(
                 }
             }
 
-            Some((filename, data)) = state.file_upload_rx.recv() => {
-                let bytes = match base64::engine::general_purpose::STANDARD.decode(&data) {
-                    Ok(b) => b,
-                    Err(e) => {
-                        error!("Failed to decode uploaded file {}: {}", filename, e);
-                        continue;
-                    }
-                };
+            Some(upload_event) = state.file_upload_rx.recv() => {
+                match upload_event {
+                    FileUploadEvent::Start { upload_id, filename, total_chunks, total_size } => {
+                        // Sanitize filename
+                        let safe_name: String = filename
+                            .rsplit('/').next()
+                            .or_else(|| filename.rsplit('\\').next())
+                            .unwrap_or(&filename)
+                            .chars()
+                            .filter(|c| *c != '/' && *c != '\\' && *c != '\0')
+                            .collect();
+                        let safe_name = if safe_name.is_empty() || safe_name == "." || safe_name == ".." {
+                            "uploaded_file".to_string()
+                        } else {
+                            safe_name
+                        };
 
-                let file_path = std::path::Path::new(&state.working_directory).join(&filename);
-                match tokio::fs::write(&file_path, &bytes).await {
-                    Ok(_) => {
-                        info!("Wrote uploaded file: {} ({} bytes)", file_path.display(), bytes.len());
-
-                        let notify_msg = format!(
-                            "The user uploaded a file: {}",
-                            filename,
-                        );
-                        if let Err(e) = claude_session.send_input(serde_json::Value::String(notify_msg)).await {
-                            error!("Failed to notify session about file upload: {}", e);
-                            return ConnectionResult::ClaudeExited;
+                        let file_path = std::path::Path::new(&state.working_directory).join(&safe_name);
+                        match tokio::fs::File::create(&file_path).await {
+                            Ok(fh) => {
+                                state.active_uploads.insert(upload_id, FileReceiveState {
+                                    filename: safe_name,
+                                    total_chunks,
+                                    total_size,
+                                    received_chunks: 0,
+                                    received_bytes: 0,
+                                    file_handle: Some(fh),
+                                    start_time: Instant::now(),
+                                    last_log_percent: 0,
+                                });
+                            }
+                            Err(e) => {
+                                error!("Failed to create file {}: {}", file_path.display(), e);
+                            }
                         }
                     }
-                    Err(e) => {
-                        error!("Failed to write uploaded file {}: {}", file_path.display(), e);
+                    FileUploadEvent::Chunk { upload_id, chunk_index: _, data } => {
+                        use tokio::io::AsyncWriteExt;
+
+                        let upload_id_short = &upload_id[..8.min(upload_id.len())];
+                        let Some(recv_state) = state.active_uploads.get_mut(&upload_id) else {
+                            warn!("[upload {}] Chunk for unknown upload", upload_id_short);
+                            continue;
+                        };
+
+                        let decoded = match base64::engine::general_purpose::STANDARD.decode(&data) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                error!("[upload {}] Base64 decode error: {}", upload_id_short, e);
+                                continue;
+                            }
+                        };
+
+                        if let Some(ref mut fh) = recv_state.file_handle {
+                            if let Err(e) = fh.write_all(&decoded).await {
+                                error!("[upload {}] Write error: {}", upload_id_short, e);
+                                continue;
+                            }
+                        }
+
+                        recv_state.received_chunks += 1;
+                        recv_state.received_bytes += decoded.len() as u64;
+
+                        // Log every 10% milestone
+                        let percent = if recv_state.total_size > 0 {
+                            ((recv_state.received_bytes as f64 / recv_state.total_size as f64) * 100.0) as u32
+                        } else {
+                            100
+                        };
+                        let log_threshold = (percent / 10) * 10;
+                        if log_threshold > recv_state.last_log_percent {
+                            let elapsed = recv_state.start_time.elapsed().as_secs_f64();
+                            let rate_kb = if elapsed > 0.0 {
+                                recv_state.received_bytes as f64 / elapsed / 1024.0
+                            } else {
+                                0.0
+                            };
+                            info!(
+                                "[upload {}] {} - {}% ({}/{} bytes) - {:.1} KB/s",
+                                upload_id_short,
+                                recv_state.filename,
+                                log_threshold.min(100),
+                                recv_state.received_bytes,
+                                recv_state.total_size,
+                                rate_kb
+                            );
+                            recv_state.last_log_percent = log_threshold;
+                        }
+
+                        // Check if complete
+                        if recv_state.received_chunks >= recv_state.total_chunks {
+                            use tokio::io::AsyncWriteExt;
+
+                            let elapsed = recv_state.start_time.elapsed().as_secs_f64();
+                            let rate_kb = if elapsed > 0.0 {
+                                recv_state.received_bytes as f64 / elapsed / 1024.0
+                            } else {
+                                0.0
+                            };
+
+                            // Flush and close file
+                            if let Some(mut fh) = recv_state.file_handle.take() {
+                                let _ = fh.flush().await;
+                            }
+
+                            let filename = recv_state.filename.clone();
+                            info!(
+                                "[upload {}] Complete: {} ({} bytes in {:.1}s, avg {:.1} KB/s)",
+                                upload_id_short, filename, recv_state.received_bytes, elapsed, rate_kb
+                            );
+                            state.active_uploads.remove(&upload_id);
+                        }
                     }
                 }
             }
