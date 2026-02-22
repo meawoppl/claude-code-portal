@@ -57,26 +57,33 @@ pub struct CodexError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CodexItem {
+    #[serde(alias = "agentMessage")]
     AgentMessage {
         id: Option<String>,
         text: Option<String>,
     },
+    #[serde(alias = "reasoning")]
     Reasoning {
         id: Option<String>,
         text: Option<String>,
     },
+    #[serde(alias = "commandExecution")]
     CommandExecution {
         id: Option<String>,
         command: Option<String>,
+        #[serde(alias = "aggregatedOutput")]
         aggregated_output: Option<String>,
+        #[serde(alias = "exitCode")]
         exit_code: Option<i32>,
         status: Option<String>,
     },
+    #[serde(alias = "fileChange")]
     FileChange {
         id: Option<String>,
         changes: Option<Vec<FileChange>>,
         status: Option<String>,
     },
+    #[serde(alias = "mcpToolCall")]
     McpToolCall {
         id: Option<String>,
         server: Option<String>,
@@ -84,14 +91,17 @@ pub enum CodexItem {
         arguments: Option<Value>,
         status: Option<String>,
     },
+    #[serde(alias = "webSearch")]
     WebSearch {
         id: Option<String>,
         query: Option<String>,
     },
+    #[serde(alias = "todoList")]
     TodoList {
         id: Option<String>,
         items: Option<Vec<TodoEntry>>,
     },
+    #[serde(alias = "error")]
     Error {
         id: Option<String>,
         message: Option<String>,
@@ -465,5 +475,277 @@ pub fn is_codex_terminal_event(json: &str) -> Option<bool> {
             Some(false)
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- CodexItem snake_case deserialization ---
+
+    #[test]
+    fn item_agent_message_snake_case() {
+        let json = r#"{"type":"agent_message","id":"m1","text":"hello"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::AgentMessage { ref text, .. } if text.as_deref() == Some("hello"))
+        );
+    }
+
+    #[test]
+    fn item_reasoning_snake_case() {
+        let json = r#"{"type":"reasoning","id":"r1","text":"thinking..."}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::Reasoning { ref text, .. } if text.as_deref() == Some("thinking..."))
+        );
+    }
+
+    #[test]
+    fn item_command_execution_snake_case() {
+        let json = r#"{"type":"command_execution","id":"c1","command":"ls","aggregated_output":"foo","exit_code":0,"status":"completed"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            item,
+            CodexItem::CommandExecution { ref command, ref aggregated_output, exit_code: Some(0), .. }
+            if command.as_deref() == Some("ls") && aggregated_output.as_deref() == Some("foo")
+        ));
+    }
+
+    #[test]
+    fn item_file_change_snake_case() {
+        let json = r#"{"type":"file_change","id":"f1","changes":[{"path":"a.rs","kind":"update"}],"status":"completed"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::FileChange { ref changes, .. } if changes.as_ref().unwrap().len() == 1)
+        );
+    }
+
+    #[test]
+    fn item_mcp_tool_call_snake_case() {
+        let json = r#"{"type":"mcp_tool_call","id":"mcp1","server":"srv","tool":"t","arguments":{},"status":"completed"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::McpToolCall { ref server, ref tool, .. } if server.as_deref() == Some("srv") && tool.as_deref() == Some("t"))
+        );
+    }
+
+    #[test]
+    fn item_web_search_snake_case() {
+        let json = r#"{"type":"web_search","id":"w1","query":"rust serde"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::WebSearch { ref query, .. } if query.as_deref() == Some("rust serde"))
+        );
+    }
+
+    #[test]
+    fn item_todo_list_snake_case() {
+        let json =
+            r#"{"type":"todo_list","id":"t1","items":[{"text":"fix bug","completed":false}]}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::TodoList { ref items, .. } if items.as_ref().unwrap().len() == 1)
+        );
+    }
+
+    #[test]
+    fn item_error_snake_case() {
+        let json = r#"{"type":"error","id":"e1","message":"oops"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::Error { ref message, .. } if message.as_deref() == Some("oops"))
+        );
+    }
+
+    // --- CodexItem camelCase deserialization ---
+
+    #[test]
+    fn item_agent_message_camel_case() {
+        let json = r#"{"type":"agentMessage","id":"m1","text":"hello"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::AgentMessage { ref text, .. } if text.as_deref() == Some("hello"))
+        );
+    }
+
+    #[test]
+    fn item_reasoning_camel_case() {
+        let json = r#"{"type":"reasoning","id":"r1","text":"thinking..."}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::Reasoning { ref text, .. } if text.as_deref() == Some("thinking..."))
+        );
+    }
+
+    #[test]
+    fn item_command_execution_camel_case() {
+        let json = r#"{"type":"commandExecution","id":"c1","command":"ls","aggregatedOutput":"foo","exitCode":0,"status":"completed"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            item,
+            CodexItem::CommandExecution { ref command, ref aggregated_output, exit_code: Some(0), .. }
+            if command.as_deref() == Some("ls") && aggregated_output.as_deref() == Some("foo")
+        ));
+    }
+
+    #[test]
+    fn item_file_change_camel_case() {
+        let json = r#"{"type":"fileChange","id":"f1","changes":[{"path":"a.rs","kind":"update"}],"status":"completed"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::FileChange { ref changes, .. } if changes.as_ref().unwrap().len() == 1)
+        );
+    }
+
+    #[test]
+    fn item_mcp_tool_call_camel_case() {
+        let json = r#"{"type":"mcpToolCall","id":"mcp1","server":"srv","tool":"t","arguments":{},"status":"completed"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::McpToolCall { ref server, ref tool, .. } if server.as_deref() == Some("srv") && tool.as_deref() == Some("t"))
+        );
+    }
+
+    #[test]
+    fn item_web_search_camel_case() {
+        let json = r#"{"type":"webSearch","id":"w1","query":"rust serde"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::WebSearch { ref query, .. } if query.as_deref() == Some("rust serde"))
+        );
+    }
+
+    #[test]
+    fn item_todo_list_camel_case() {
+        let json =
+            r#"{"type":"todoList","id":"t1","items":[{"text":"fix bug","completed":false}]}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(item, CodexItem::TodoList { ref items, .. } if items.as_ref().unwrap().len() == 1)
+        );
+    }
+
+    // --- CodexEvent deserialization ---
+
+    #[test]
+    fn event_item_completed_with_camel_case_item() {
+        let json =
+            r#"{"type":"item.completed","item":{"type":"agentMessage","id":"m1","text":"done"}}"#;
+        let event: CodexEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            event,
+            CodexEvent::ItemCompleted {
+                item: Some(CodexItem::AgentMessage { .. })
+            }
+        ));
+    }
+
+    #[test]
+    fn event_item_updated_with_camel_case_command() {
+        let json = r#"{"type":"item.updated","item":{"type":"commandExecution","id":"c1","command":"ls","aggregatedOutput":"out","exitCode":1,"status":"failed"}}"#;
+        let event: CodexEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            event,
+            CodexEvent::ItemUpdated {
+                item: Some(CodexItem::CommandExecution {
+                    exit_code: Some(1),
+                    ..
+                })
+            }
+        ));
+    }
+
+    #[test]
+    fn event_unknown_type_falls_through() {
+        let json = r#"{"type":"some.future.event","data":123}"#;
+        let event: CodexEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(event, CodexEvent::Unknown));
+    }
+
+    #[test]
+    fn item_unknown_type_falls_through() {
+        let json = r#"{"type":"some_new_item_type","id":"x"}"#;
+        let item: CodexItem = serde_json::from_str(json).unwrap();
+        assert!(matches!(item, CodexItem::Unknown));
+    }
+
+    // --- Round-trip: serialize then deserialize ---
+
+    #[test]
+    fn round_trip_agent_message() {
+        let item = CodexItem::AgentMessage {
+            id: Some("m1".into()),
+            text: Some("hello".into()),
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        let back: CodexItem = serde_json::from_str(&json).unwrap();
+        assert!(
+            matches!(back, CodexItem::AgentMessage { ref text, .. } if text.as_deref() == Some("hello"))
+        );
+    }
+
+    #[test]
+    fn round_trip_command_execution() {
+        let item = CodexItem::CommandExecution {
+            id: Some("c1".into()),
+            command: Some("echo hi".into()),
+            aggregated_output: Some("hi\n".into()),
+            exit_code: Some(0),
+            status: Some("completed".into()),
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        let back: CodexItem = serde_json::from_str(&json).unwrap();
+        assert!(matches!(
+            back,
+            CodexItem::CommandExecution {
+                exit_code: Some(0),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn round_trip_codex_event() {
+        let event = CodexEvent::TurnCompleted {
+            usage: Some(CodexUsage {
+                input_tokens: Some(100),
+                cached_input_tokens: Some(50),
+                output_tokens: Some(200),
+            }),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let back: CodexEvent = serde_json::from_str(&json).unwrap();
+        assert!(
+            matches!(back, CodexEvent::TurnCompleted { usage: Some(ref u) } if u.output_tokens == Some(200))
+        );
+    }
+
+    // --- Terminal event detection ---
+
+    #[test]
+    fn terminal_event_turn_completed() {
+        let json = r#"{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":20}}"#;
+        assert_eq!(is_codex_terminal_event(json), Some(true));
+    }
+
+    #[test]
+    fn terminal_event_turn_failed() {
+        let json = r#"{"type":"turn.failed","error":{"message":"oops"}}"#;
+        assert_eq!(is_codex_terminal_event(json), Some(true));
+    }
+
+    #[test]
+    fn terminal_event_item_completed_is_not_terminal() {
+        let json =
+            r#"{"type":"item.completed","item":{"type":"agent_message","id":"m1","text":"hi"}}"#;
+        assert_eq!(is_codex_terminal_event(json), Some(false));
+    }
+
+    #[test]
+    fn terminal_event_unknown_returns_none() {
+        let json = r#"{"type":"something.else"}"#;
+        assert_eq!(is_codex_terminal_event(json), None);
     }
 }
