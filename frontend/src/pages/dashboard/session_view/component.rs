@@ -76,8 +76,8 @@ pub enum SessionViewMsg {
     CloseSendModeDropdown,
     /// Send with wiggum mode
     SendWiggum,
-    /// User selected a file to upload
-    FileSelected(web_sys::File),
+    /// User selected files via "Send with attachment(s)" dropdown
+    FilesSelected(Vec<web_sys::File>),
     /// File upload progress (0.0-1.0)
     FileUploadProgress(f32),
     /// File upload completed — sends follow-up message
@@ -116,7 +116,6 @@ pub struct SessionView {
     send_mode_dropdown_open: bool,
     file_input_ref: NodeRef,
     upload_progress: Option<f32>,
-    attached_file: Option<web_sys::File>,
 }
 
 impl Component for SessionView {
@@ -193,7 +192,6 @@ impl Component for SessionView {
             send_mode_dropdown_open: false,
             file_input_ref: NodeRef::default(),
             upload_progress: None,
-            attached_file: None,
         }
     }
 
@@ -436,29 +434,150 @@ impl Component for SessionView {
                 self.send_mode_dropdown_open = false;
                 self.handle_send_input_with_mode(ctx, SendMode::Wiggum)
             }
-            SessionViewMsg::FileSelected(file) => {
-                self.attached_file = Some(file);
+            SessionViewMsg::FilesSelected(files) => {
+                // Close dropdown and start uploading all files, then send combined message
+                self.send_mode_dropdown_open = false;
+                self.upload_progress = Some(0.0);
+                let link = ctx.link().clone();
+                let sender = self.ws_sender.clone();
+                let user_input = self.input_value.trim().to_string();
+                self.input_value.clear();
+                if !user_input.is_empty() {
+                    self.command_history.push(user_input.clone());
+                }
+                let session_id = ctx.props().session.id;
+                ctx.props().on_message_sent.emit(session_id);
+
+                spawn_local(async move {
+                    let Some(ref ws) = sender else {
+                        link.send_message(SessionViewMsg::FileUploadError(
+                            "WebSocket not connected".into(),
+                        ));
+                        return;
+                    };
+
+                    let mut uploaded_files: Vec<(String, u64)> = Vec::new();
+                    let total_files = files.len();
+
+                    for (file_idx, file) in files.iter().enumerate() {
+                        let file_name = file.name();
+                        let file_size = file.size() as u64;
+                        let content_type = file.type_();
+
+                        let array_buffer =
+                            match wasm_bindgen_futures::JsFuture::from(file.array_buffer()).await {
+                                Ok(buf) => buf,
+                                Err(_) => {
+                                    link.send_message(SessionViewMsg::FileUploadError(format!(
+                                        "Failed to read file: {}",
+                                        file_name
+                                    )));
+                                    return;
+                                }
+                            };
+                        let uint8_array = js_sys::Uint8Array::new(&array_buffer);
+                        let bytes = uint8_array.to_vec();
+
+                        const CHUNK_SIZE: usize = 1024;
+                        let total_chunks = bytes.len().div_ceil(CHUNK_SIZE).max(1) as u32;
+                        let upload_id = Uuid::new_v4().to_string();
+
+                        let ct = if content_type.is_empty() {
+                            "application/octet-stream".to_string()
+                        } else {
+                            content_type
+                        };
+
+                        send_message(
+                            ws,
+                            ClientToServer::FileUploadStart {
+                                upload_id: upload_id.clone(),
+                                filename: file_name.clone(),
+                                content_type: ct,
+                                total_chunks,
+                                total_size: file_size,
+                            },
+                        );
+
+                        for i in 0..total_chunks {
+                            let start = i as usize * CHUNK_SIZE;
+                            let end = ((i as usize + 1) * CHUNK_SIZE).min(bytes.len());
+                            let chunk = &bytes[start..end];
+                            let encoded = base64::Engine::encode(
+                                &base64::engine::general_purpose::STANDARD,
+                                chunk,
+                            );
+
+                            send_message(
+                                ws,
+                                ClientToServer::FileUploadChunk {
+                                    upload_id: upload_id.clone(),
+                                    chunk_index: i,
+                                    data: encoded,
+                                },
+                            );
+                        }
+
+                        uploaded_files.push((file_name, file_size));
+
+                        // Update progress across all files
+                        let overall_progress = (file_idx + 1) as f32 / total_files as f32;
+                        link.send_message(SessionViewMsg::FileUploadProgress(overall_progress));
+                    }
+
+                    // Build the combined message: user text + formatted file list
+                    let file_list: Vec<String> = uploaded_files
+                        .iter()
+                        .map(|(name, size)| {
+                            let human_size = if *size < 1024 {
+                                format!("{} B", size)
+                            } else if *size < 1024 * 1024 {
+                                format!("{:.1} KB", *size as f64 / 1024.0)
+                            } else {
+                                format!("{:.1} MB", *size as f64 / (1024.0 * 1024.0))
+                            };
+                            format!("- {} ({})", name, human_size)
+                        })
+                        .collect();
+
+                    let combined = if user_input.is_empty() {
+                        format!(
+                            "I've uploaded the following files to your working directory:\n{}",
+                            file_list.join("\n")
+                        )
+                    } else {
+                        format!(
+                            "{}\n\nI've uploaded the following files to your working directory:\n{}",
+                            user_input,
+                            file_list.join("\n")
+                        )
+                    };
+
+                    send_message(
+                        ws,
+                        ClientToServer::ClaudeInput {
+                            content: serde_json::Value::String(combined),
+                            send_mode: None,
+                        },
+                    );
+
+                    link.send_message(SessionViewMsg::FileUploaded(
+                        uploaded_files
+                            .iter()
+                            .map(|(n, _)| n.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    ));
+                });
+
                 true
             }
             SessionViewMsg::FileUploadProgress(progress) => {
                 self.upload_progress = Some(progress);
                 true
             }
-            SessionViewMsg::FileUploaded(filename) => {
+            SessionViewMsg::FileUploaded(_filename) => {
                 self.upload_progress = None;
-                self.attached_file = None;
-
-                // Send a follow-up message notifying the proxy about the uploaded file
-                if let Some(ref sender) = self.ws_sender {
-                    let msg = ClientToServer::ClaudeInput {
-                        content: serde_json::Value::String(format!(
-                            "I've uploaded a file: {}",
-                            filename
-                        )),
-                        send_mode: None,
-                    };
-                    send_message(sender, msg);
-                }
                 true
             }
             SessionViewMsg::FileUploadError(err) => {
@@ -523,8 +642,6 @@ impl Component for SessionView {
                 </div>
 
                 { self.render_permission_dialog(ctx) }
-
-                { self.render_attachment_indicator(ctx) }
 
                 <form class="session-view-input" onsubmit={handle_submit}>
                     <span class="input-prompt">{ ">" }</span>
@@ -600,118 +717,18 @@ impl SessionView {
     fn handle_send_input_with_mode(&mut self, ctx: &Context<Self>, send_mode: SendMode) -> bool {
         crate::audio::ensure_audio_context();
         let input = self.input_value.trim().to_string();
-        let has_attachment = self.attached_file.is_some();
 
-        if input.is_empty() && !has_attachment {
+        if input.is_empty() {
             return false;
         }
 
-        if !input.is_empty() {
-            self.command_history.push(input.clone());
-        }
+        self.command_history.push(input.clone());
         self.input_value.clear();
 
         let session_id = ctx.props().session.id;
         ctx.props().on_message_sent.emit(session_id);
 
-        // If there's an attached file, upload it first (chunked), then send input
-        if let Some(file) = self.attached_file.take() {
-            self.upload_progress = Some(0.0);
-            let link = ctx.link().clone();
-            let sender = self.ws_sender.clone();
-            let file_name = file.name();
-            let content_type = file.type_();
-            let user_input = if input.is_empty() {
-                None
-            } else {
-                Some((input, send_mode))
-            };
-
-            spawn_local(async move {
-                let array_buffer =
-                    match wasm_bindgen_futures::JsFuture::from(file.array_buffer()).await {
-                        Ok(buf) => buf,
-                        Err(_) => {
-                            link.send_message(SessionViewMsg::FileUploadError(
-                                "Failed to read file".into(),
-                            ));
-                            return;
-                        }
-                    };
-                let uint8_array = js_sys::Uint8Array::new(&array_buffer);
-                let bytes = uint8_array.to_vec();
-
-                let Some(ref ws) = sender else {
-                    link.send_message(SessionViewMsg::FileUploadError(
-                        "WebSocket not connected".into(),
-                    ));
-                    return;
-                };
-
-                const CHUNK_SIZE: usize = 1024;
-                let total_chunks = bytes.len().div_ceil(CHUNK_SIZE).max(1) as u32;
-                let upload_id = Uuid::new_v4().to_string();
-
-                let ct = if content_type.is_empty() {
-                    "application/octet-stream".to_string()
-                } else {
-                    content_type
-                };
-
-                // Send start message
-                send_message(
-                    ws,
-                    ClientToServer::FileUploadStart {
-                        upload_id: upload_id.clone(),
-                        filename: file_name.clone(),
-                        content_type: ct,
-                        total_chunks,
-                    },
-                );
-
-                // Send chunks
-                for i in 0..total_chunks {
-                    let start = i as usize * CHUNK_SIZE;
-                    let end = ((i as usize + 1) * CHUNK_SIZE).min(bytes.len());
-                    let chunk = &bytes[start..end];
-                    let encoded =
-                        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, chunk);
-
-                    send_message(
-                        ws,
-                        ClientToServer::FileUploadChunk {
-                            upload_id: upload_id.clone(),
-                            chunk_index: i,
-                            data: encoded,
-                        },
-                    );
-
-                    let progress = (i + 1) as f32 / total_chunks as f32;
-                    link.send_message(SessionViewMsg::FileUploadProgress(progress));
-                }
-
-                // If user typed a message, send it after upload
-                if let Some((text, mode)) = user_input {
-                    send_message(
-                        ws,
-                        ClientToServer::ClaudeInput {
-                            content: serde_json::Value::String(text),
-                            send_mode: if mode == SendMode::Normal {
-                                None
-                            } else {
-                                Some(mode)
-                            },
-                        },
-                    );
-                }
-
-                link.send_message(SessionViewMsg::FileUploaded(file_name));
-            });
-
-            return true;
-        }
-
-        // No attachment — just send the text
+        // Send the text
         if let Some(ref sender) = self.ws_sender {
             let msg = ClientToServer::ClaudeInput {
                 content: serde_json::Value::String(input),
@@ -1013,28 +1030,6 @@ impl SessionView {
         }
     }
 
-    fn render_attachment_indicator(&self, ctx: &Context<Self>) -> Html {
-        if let Some(ref file) = self.attached_file {
-            let link = ctx.link().clone();
-            let on_remove = Callback::from(move |e: MouseEvent| {
-                e.prevent_default();
-                e.stop_propagation();
-                link.send_message(SessionViewMsg::FileUploadError("Attachment removed".into()));
-            });
-
-            html! {
-                <div class="attachment-indicator">
-                    <span class="attachment-name">{ &file.name() }</span>
-                    <button type="button" class="attachment-remove" onclick={on_remove}>
-                        { "\u{2715}" }
-                    </button>
-                </div>
-            }
-        } else {
-            html! {}
-        }
-    }
-
     fn render_send_button(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
         let on_send = link.callback(|_| SessionViewMsg::SendInput);
@@ -1045,7 +1040,7 @@ impl SessionView {
         let on_wiggum = link.callback(|_| SessionViewMsg::SendWiggum);
 
         let file_input_ref = self.file_input_ref.clone();
-        let on_attach = Callback::from(move |_: MouseEvent| {
+        let on_attach_dropdown = Callback::from(move |_: MouseEvent| {
             if let Some(input) = file_input_ref.cast::<web_sys::HtmlInputElement>() {
                 input.click();
             }
@@ -1053,12 +1048,20 @@ impl SessionView {
         let on_file_change = link.callback(|e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             if let Some(files) = input.files() {
-                if let Some(file) = files.get(0) {
+                if files.length() > 0 {
+                    let mut file_list = Vec::new();
+                    for i in 0..files.length() {
+                        if let Some(file) = files.get(i) {
+                            file_list.push(file);
+                        }
+                    }
                     input.set_value("");
-                    return SessionViewMsg::FileSelected(file);
+                    if !file_list.is_empty() {
+                        return SessionViewMsg::FilesSelected(file_list);
+                    }
                 }
             }
-            SessionViewMsg::FileUploadError("No file selected".into())
+            SessionViewMsg::FileUploadError("No files selected".into())
         });
 
         let dropdown_class = if self.send_mode_dropdown_open {
@@ -1068,42 +1071,23 @@ impl SessionView {
         };
 
         let is_uploading = self.upload_progress.is_some();
-        let upload_pct = self.upload_progress.unwrap_or(0.0);
-        let progress_style = format!("--upload-progress: {};", (upload_pct * 360.0) as i32);
-
-        let attach_class = if is_uploading {
-            "attach-button uploading"
-        } else if self.attached_file.is_some() {
-            "attach-button has-file"
-        } else {
-            "attach-button"
-        };
 
         html! {
             <div class="send-button-container">
                 <input
                     ref={self.file_input_ref.clone()}
                     type="file"
+                    multiple=true
                     class="hidden-file-input"
                     onchange={on_file_change}
                 />
-                <button
-                    type="button"
-                    class={attach_class}
-                    style={progress_style}
-                    disabled={!self.ws_connected || is_uploading}
-                    onclick={on_attach}
-                    title="Attach file"
-                >
-                    { "\u{1f4ce}" }
-                </button>
                 <button
                     type="submit"
                     class="send-button"
                     disabled={!self.ws_connected || is_uploading}
                     onclick={on_send}
                 >
-                    { if self.attached_file.is_some() { "Send with file" } else { "Send" } }
+                    { "Send" }
                 </button>
                 <button
                     type="button"
@@ -1132,6 +1116,14 @@ impl SessionView {
                             { "Wiggum" }
                         </span>
                         <span class="option-hint">{ "Loop until DONE" }</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="dropdown-option attachment"
+                        onclick={on_attach_dropdown}
+                    >
+                        { "Send with attachment(s)" }
+                        <span class="option-hint">{ "Upload files + message" }</span>
                     </button>
                 </div>
             </div>

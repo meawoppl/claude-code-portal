@@ -129,12 +129,22 @@ pub enum ServerToProxy {
     /// Acknowledge receipt of output messages
     OutputAck { session_id: Uuid, ack_seq: u64 },
 
-    /// File uploaded by user, to be written to working directory
-    FileUpload {
+    /// Start a chunked file upload to the proxy's working directory
+    FileUploadStart {
+        upload_id: String,
         filename: String,
-        /// File content as base64-encoded string
-        data: String,
         content_type: String,
+        total_chunks: u32,
+        /// Total decoded file size in bytes (for progress tracking)
+        total_size: u64,
+    },
+
+    /// A single chunk of a file upload (base64-encoded, ~1KB decoded)
+    FileUploadChunk {
+        upload_id: String,
+        chunk_index: u32,
+        /// Base64-encoded chunk data
+        data: String,
     },
 
     /// Server is shutting down
@@ -209,6 +219,9 @@ pub enum ClientToServer {
         filename: String,
         content_type: String,
         total_chunks: u32,
+        /// Total decoded file size in bytes (for progress tracking)
+        #[serde(default)]
+        total_size: u64,
     },
 
     /// A single chunk of a file upload

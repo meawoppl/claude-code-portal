@@ -15,11 +15,9 @@ use uuid::Uuid;
 /// Maximum total upload size: 50 MB decoded (~68 MB base64)
 const MAX_TOTAL_CHUNKS: u32 = 51_200; // 50 MB / 1 KB
 
+/// Tracks metadata for an in-progress upload so we can validate chunks
 struct PendingUpload {
-    filename: String,
-    content_type: String,
     total_chunks: u32,
-    chunks: Vec<Option<String>>,
     received_count: u32,
 }
 
@@ -119,13 +117,17 @@ fn handle_web_client_message(
             filename,
             content_type,
             total_chunks,
+            total_size,
         } => {
             handle_file_upload_start(
+                session_manager,
+                session_key,
                 pending_uploads,
                 upload_id,
                 filename,
                 content_type,
                 total_chunks,
+                total_size,
             );
             false
         }
@@ -354,12 +356,16 @@ fn handle_web_input(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_file_upload_start(
+    session_manager: &SessionManager,
+    session_key: &Option<SessionId>,
     pending_uploads: &mut HashMap<String, PendingUpload>,
     upload_id: String,
     filename: String,
     content_type: String,
     total_chunks: u32,
+    total_size: u64,
 ) {
     if total_chunks == 0 || total_chunks > MAX_TOTAL_CHUNKS {
         warn!(
@@ -371,20 +377,31 @@ fn handle_file_upload_start(
 
     let safe_filename = sanitize_filename(&filename);
     info!(
-        "File upload started: {} ({} chunks) upload_id={}",
-        safe_filename, total_chunks, upload_id
+        "File upload started: {} ({} chunks, {} bytes) upload_id={}",
+        safe_filename, total_chunks, total_size, upload_id
     );
 
     pending_uploads.insert(
-        upload_id,
+        upload_id.clone(),
         PendingUpload {
-            filename: safe_filename,
-            content_type,
             total_chunks,
-            chunks: vec![None; total_chunks as usize],
             received_count: 0,
         },
     );
+
+    // Forward start message to proxy
+    if let Some(ref key) = session_key {
+        let msg = ServerToProxy::FileUploadStart {
+            upload_id,
+            filename: safe_filename,
+            content_type,
+            total_chunks,
+            total_size,
+        };
+        if !session_manager.send_to_session(key, msg) {
+            warn!("Session not connected for file upload start");
+        }
+    }
 }
 
 fn handle_file_upload_chunk(
@@ -408,43 +425,27 @@ fn handle_file_upload_chunk(
         return;
     }
 
-    if upload.chunks[chunk_index as usize].is_none() {
-        upload.received_count += 1;
+    upload.received_count += 1;
+
+    // Forward chunk directly to proxy
+    if let Some(ref key) = session_key {
+        let msg = ServerToProxy::FileUploadChunk {
+            upload_id: upload_id.clone(),
+            chunk_index,
+            data,
+        };
+        if !session_manager.send_to_session(key, msg) {
+            warn!("Session not connected for file upload chunk");
+        }
     }
-    upload.chunks[chunk_index as usize] = Some(data);
 
-    if upload.received_count < upload.total_chunks {
-        return;
-    }
-
-    // All chunks received — reassemble and forward
-    let upload = pending_uploads.remove(&upload_id).unwrap();
-    let combined: String = upload
-        .chunks
-        .into_iter()
-        .map(|c| c.unwrap_or_default())
-        .collect();
-
-    info!(
-        "File upload complete: {} ({} bytes encoded) upload_id={}",
-        upload.filename,
-        combined.len(),
-        upload_id
-    );
-
-    let Some(ref key) = session_key else {
-        warn!("File upload complete but no session registered");
-        return;
-    };
-
-    let msg = ServerToProxy::FileUpload {
-        filename: upload.filename,
-        data: combined,
-        content_type: upload.content_type,
-    };
-
-    if !session_manager.send_to_session(key, msg) {
-        warn!("Session {} not connected for file upload", key);
+    // Clean up tracking when all chunks forwarded
+    if upload.received_count >= upload.total_chunks {
+        info!(
+            "All {} chunks forwarded for upload_id={}",
+            upload.total_chunks, upload_id
+        );
+        pending_uploads.remove(&upload_id);
     }
 }
 
