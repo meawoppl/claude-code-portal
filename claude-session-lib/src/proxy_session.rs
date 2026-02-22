@@ -1305,7 +1305,10 @@ async fn handle_ws_message(
     heartbeat: &crate::heartbeat::HeartbeatTracker,
     file_upload_tx: &mpsc::UnboundedSender<FileUploadEvent>,
 ) -> WsMessageResult {
-    if !matches!(proxy_msg, ServerToProxy::Heartbeat) {
+    if !matches!(
+        proxy_msg,
+        ServerToProxy::Heartbeat | ServerToProxy::FileUploadChunk { .. }
+    ) {
         debug!("ws recv: {:?}", proxy_msg);
     }
 

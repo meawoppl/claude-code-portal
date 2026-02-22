@@ -73,7 +73,7 @@
 }
 
 .send-button-container .send-button {
-    border-radius: 0;
+    border-radius: 6px 0 0 6px;
     padding: 0.75rem 1rem;
 }
 
