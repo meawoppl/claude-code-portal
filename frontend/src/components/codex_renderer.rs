@@ -57,26 +57,33 @@ pub struct CodexError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CodexItem {
+    #[serde(alias = "agentMessage")]
     AgentMessage {
         id: Option<String>,
         text: Option<String>,
     },
+    #[serde(alias = "reasoning")]
     Reasoning {
         id: Option<String>,
         text: Option<String>,
     },
+    #[serde(alias = "commandExecution")]
     CommandExecution {
         id: Option<String>,
         command: Option<String>,
+        #[serde(alias = "aggregatedOutput")]
         aggregated_output: Option<String>,
+        #[serde(alias = "exitCode")]
         exit_code: Option<i32>,
         status: Option<String>,
     },
+    #[serde(alias = "fileChange")]
     FileChange {
         id: Option<String>,
         changes: Option<Vec<FileChange>>,
         status: Option<String>,
     },
+    #[serde(alias = "mcpToolCall")]
     McpToolCall {
         id: Option<String>,
         server: Option<String>,
@@ -84,14 +91,17 @@ pub enum CodexItem {
         arguments: Option<Value>,
         status: Option<String>,
     },
+    #[serde(alias = "webSearch")]
     WebSearch {
         id: Option<String>,
         query: Option<String>,
     },
+    #[serde(alias = "todoList")]
     TodoList {
         id: Option<String>,
         items: Option<Vec<TodoEntry>>,
     },
+    #[serde(alias = "error")]
     Error {
         id: Option<String>,
         message: Option<String>,

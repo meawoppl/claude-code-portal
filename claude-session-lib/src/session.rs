@@ -2,9 +2,8 @@
 
 use chrono::Utc;
 use claude_codes::io::{ControlResponse, PermissionResult};
-use claude_codes::{AsyncClient, ClaudeInput, ClaudeOutput};
+use claude_codes::{AsyncClient as ClaudeAsyncClient, ClaudeInput, ClaudeOutput};
 use std::path::Path;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -135,19 +134,30 @@ enum SessionState {
     },
 }
 
-/// Commands sent to the Claude I/O task
+/// Commands sent to the agent I/O task
 enum IoCommand {
-    /// Send user input to Claude
-    SendInput(ClaudeInput),
-    /// Send a permission response to Claude
-    SendPermissionResponse(ControlResponse),
+    /// User input to forward to the agent
+    Input(ClaudeInput),
+    /// Permission response for Claude
+    PermissionResponse(ControlResponse),
+    /// Approval response for Codex app-server
+    CodexApproval {
+        request_id: String,
+        result: serde_json::Value,
+    },
 }
 
-/// Events received from the Claude I/O task
+/// Events received from the agent I/O task
 enum IoEvent {
     Output(Box<ClaudeOutput>),
-    /// Raw JSON from a non-Claude agent (Codex JSONL)
+    /// Raw JSON from a non-Claude agent (Codex events)
     RawOutput(serde_json::Value),
+    /// Permission request from Codex app-server approval flow
+    CodexPermissionRequest {
+        request_id: String,
+        tool_name: String,
+        input: serde_json::Value,
+    },
     Error(SessionError),
     Exited {
         code: i32,
@@ -229,7 +239,7 @@ impl Session {
     /// By owning the client exclusively, we avoid deadlocks that would occur
     /// if we tried to share it between tasks with a mutex.
     async fn claude_io_task(
-        mut client: AsyncClient,
+        mut client: ClaudeAsyncClient,
         mut command_rx: mpsc::UnboundedReceiver<IoCommand>,
         event_tx: mpsc::UnboundedSender<IoEvent>,
     ) {
@@ -241,10 +251,11 @@ impl Session {
                 // Handle incoming commands (input to send to Claude)
                 Some(cmd) = command_rx.recv() => {
                     let result = match cmd {
-                        IoCommand::SendInput(input) => client.send(&input).await,
-                        IoCommand::SendPermissionResponse(response) => {
+                        IoCommand::Input(input) => client.send(&input).await,
+                        IoCommand::PermissionResponse(response) => {
                             client.send_control_response(response).await
                         }
+                        IoCommand::CodexApproval { .. } => continue,
                     };
                     if let Err(e) = result {
                         let _ = event_tx.send(IoEvent::Error(SessionError::ClaudeError(e)));
@@ -457,6 +468,27 @@ impl Session {
                     self.buffer.push(value.clone());
                     return Some(SessionEvent::RawOutput(value));
                 }
+                Some(IoEvent::CodexPermissionRequest {
+                    request_id,
+                    tool_name,
+                    input,
+                }) => {
+                    self.pending_permission = Some(PendingPermission {
+                        request_id: request_id.clone(),
+                        tool_name: tool_name.clone(),
+                        input: input.clone(),
+                        requested_at: Utc::now(),
+                    });
+                    self.state = SessionState::WaitingForPermission {
+                        request_id: request_id.clone(),
+                    };
+                    return Some(SessionEvent::PermissionRequest {
+                        request_id,
+                        tool_name,
+                        input,
+                        permission_suggestions: vec![],
+                    });
+                }
                 Some(IoEvent::Exited { code }) => {
                     self.state = SessionState::Exited { code };
                     self.command_tx = None;
@@ -494,7 +526,7 @@ impl Session {
             };
             let input = ClaudeInput::user_message(text, self.id);
             command_tx
-                .send(IoCommand::SendInput(input))
+                .send(IoCommand::Input(input))
                 .map_err(|_| SessionError::CommunicationError("I/O task closed".to_string()))?;
         }
 
@@ -520,33 +552,45 @@ impl Session {
         }
 
         if let Some(ref command_tx) = self.command_tx {
-            let input_value = response
-                .input
-                .unwrap_or(serde_json::Value::Object(Default::default()));
-
-            let ctrl_response = if response.allow {
-                if response.permissions.is_empty() {
-                    // Simple allow
-                    ControlResponse::from_result(request_id, PermissionResult::allow(input_value))
-                } else {
-                    // Allow with permissions to remember
-                    ControlResponse::from_result(
-                        request_id,
-                        PermissionResult::allow_with_typed_permissions(
-                            input_value,
-                            response.permissions,
-                        ),
-                    )
-                }
+            if self.config.agent_type == shared::AgentType::Codex {
+                // Codex approval flow: map allow/deny to accept/decline
+                let decision = if response.allow { "accept" } else { "decline" };
+                command_tx
+                    .send(IoCommand::CodexApproval {
+                        request_id: request_id.to_string(),
+                        result: serde_json::json!({ "decision": decision }),
+                    })
+                    .map_err(|_| SessionError::CommunicationError("I/O task closed".to_string()))?;
             } else {
-                // Deny with optional reason
-                let reason = response.reason.unwrap_or_else(|| "User denied".to_string());
-                ControlResponse::from_result(request_id, PermissionResult::deny(reason))
-            };
+                // Claude permission flow
+                let input_value = response
+                    .input
+                    .unwrap_or(serde_json::Value::Object(Default::default()));
 
-            command_tx
-                .send(IoCommand::SendPermissionResponse(ctrl_response))
-                .map_err(|_| SessionError::CommunicationError("I/O task closed".to_string()))?;
+                let ctrl_response = if response.allow {
+                    if response.permissions.is_empty() {
+                        ControlResponse::from_result(
+                            request_id,
+                            PermissionResult::allow(input_value),
+                        )
+                    } else {
+                        ControlResponse::from_result(
+                            request_id,
+                            PermissionResult::allow_with_typed_permissions(
+                                input_value,
+                                response.permissions,
+                            ),
+                        )
+                    }
+                } else {
+                    let reason = response.reason.unwrap_or_else(|| "User denied".to_string());
+                    ControlResponse::from_result(request_id, PermissionResult::deny(reason))
+                };
+
+                command_tx
+                    .send(IoCommand::PermissionResponse(ctrl_response))
+                    .map_err(|_| SessionError::CommunicationError("I/O task closed".to_string()))?;
+            }
         }
 
         self.pending_permission = None;
@@ -593,126 +637,310 @@ impl Session {
         self.buffer.pending_count()
     }
 
-    /// Background task for Codex sessions.
+    /// Background task for Codex sessions using the app-server JSON-RPC protocol.
     ///
-    /// Codex is request/response: each user message spawns `codex --json --full-auto "prompt"`,
-    /// reads JSONL stdout until the process exits, then waits for the next message.
+    /// Spawns a persistent `codex app-server --listen stdio://` process and manages
+    /// multi-turn conversations via thread/turn lifecycle. Converts JSON-RPC
+    /// notifications into exec-format JSONL events for the frontend.
     async fn codex_io_task(
         config: SessionConfig,
         mut command_rx: mpsc::UnboundedReceiver<IoCommand>,
         event_tx: mpsc::UnboundedSender<IoEvent>,
     ) {
-        while let Some(cmd) = command_rx.recv().await {
-            let prompt = match cmd {
-                IoCommand::SendInput(input) => {
-                    // Extract prompt text from ClaudeInput
-                    match &input {
-                        ClaudeInput::User(msg) => msg
-                            .message
-                            .content
-                            .iter()
-                            .filter_map(|block| {
-                                if let claude_codes::io::ContentBlock::Text(tb) = block {
-                                    Some(tb.text.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n"),
-                        _ => continue,
-                    }
-                }
-                IoCommand::SendPermissionResponse(_) => {
-                    // Codex doesn't have permission flow
-                    continue;
-                }
-            };
+        use codex_codes::{
+            AppServerBuilder, AsyncClient as CodexAsyncClient, ThreadStartParams, TurnStartParams,
+            UserInput,
+        };
 
-            if prompt.is_empty() {
-                continue;
-            }
-
-            // Spawn codex process for this prompt
-            match Self::spawn_codex(&config, &prompt).await {
-                Ok(mut child) => {
-                    let stdout = child.stdout.take();
-                    if let Some(stdout) = stdout {
-                        let mut reader = BufReader::new(stdout).lines();
-                        while let Ok(Some(line)) = reader.next_line().await {
-                            if line.trim().is_empty() {
-                                continue;
-                            }
-                            match serde_json::from_str::<serde_json::Value>(&line) {
-                                Ok(value) => {
-                                    // Forward as raw JSON — the frontend dispatches
-                                    // rendering based on session agent_type
-                                    if event_tx.send(IoEvent::RawOutput(value)).is_err() {
-                                        return;
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!("Failed to parse Codex JSONL: {}", e);
-                                }
-                            }
-                        }
-                    }
-
-                    // Wait for process to exit
-                    match child.wait().await {
-                        Ok(status) => {
-                            let code = status.code().unwrap_or(1);
-                            if code != 0 {
-                                tracing::warn!("Codex process exited with code {}", code);
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to wait for Codex process: {}", e);
-                        }
-                    }
-                    // Don't emit Exited — session stays alive for more messages
-                }
-                Err(e) => {
-                    if event_tx.send(IoEvent::Error(e)).is_err() {
-                        return;
-                    }
-                }
-            }
-        }
-        // Command channel closed — session shutting down
-        let _ = event_tx.send(IoEvent::Exited { code: 0 });
-    }
-
-    /// Spawn a Codex process for a single prompt
-    async fn spawn_codex(
-        config: &SessionConfig,
-        prompt: &str,
-    ) -> Result<tokio::process::Child, SessionError> {
         let codex_path = config.claude_path.as_deref().unwrap_or(Path::new("codex"));
 
-        let mut cmd = Command::new(codex_path);
-        cmd.arg("--json").arg("--full-auto");
-
-        // Add extra arguments
-        for arg in &config.extra_args {
-            cmd.arg(arg);
-        }
-
-        // Prompt is the last positional argument
-        cmd.arg(prompt);
-
-        cmd.current_dir(&config.working_directory);
-
-        cmd.stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+        let mut builder = AppServerBuilder::new().command(codex_path);
+        builder = builder.working_directory(&config.working_directory);
 
         tracing::info!(
-            "Spawning Codex: {} --json --full-auto [prompt]",
+            "Starting Codex app-server: {} app-server --listen stdio://",
             codex_path.display()
         );
 
-        cmd.spawn().map_err(SessionError::SpawnFailed)
+        let mut client = match CodexAsyncClient::start_with(builder).await {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = event_tx.send(IoEvent::Error(SessionError::CommunicationError(format!(
+                    "Failed to start Codex app-server: {}",
+                    e
+                ))));
+                return;
+            }
+        };
+
+        // Start a thread (conversation session)
+        let thread_id = match client.thread_start(&ThreadStartParams::default()).await {
+            Ok(resp) => resp.thread_id,
+            Err(e) => {
+                let _ = event_tx.send(IoEvent::Error(SessionError::CommunicationError(format!(
+                    "Failed to start Codex thread: {}",
+                    e
+                ))));
+                return;
+            }
+        };
+
+        tracing::info!("Codex thread started: {}", thread_id);
+
+        let _ = event_tx.send(IoEvent::RawOutput(serde_json::json!({
+            "type": "thread.started",
+            "thread_id": &thread_id
+        })));
+
+        let mut turn_active = false;
+
+        loop {
+            if turn_active {
+                // Turn is active: drain server messages AND accept approval responses
+                tokio::select! {
+                    result = client.next_message() => {
+                        match result {
+                            Ok(Some(msg)) => {
+                                let (ok, turn_ended) =
+                                    Self::handle_codex_server_message(msg, &event_tx);
+                                if turn_ended {
+                                    turn_active = false;
+                                }
+                                if !ok {
+                                    break;
+                                }
+                            }
+                            Ok(None) => {
+                                let _ = event_tx.send(IoEvent::Exited { code: 0 });
+                                break;
+                            }
+                            Err(e) => {
+                                let _ = event_tx.send(IoEvent::Error(
+                                    SessionError::CommunicationError(e.to_string()),
+                                ));
+                                break;
+                            }
+                        }
+                    }
+                    Some(cmd) = command_rx.recv() => {
+                        match cmd {
+                            IoCommand::CodexApproval { request_id, result } => {
+                                let rid = Self::parse_request_id(&request_id);
+                                if let Err(e) = client.respond(rid, &result).await {
+                                    tracing::error!("Failed to send Codex approval: {}", e);
+                                }
+                            }
+                            IoCommand::Input(_) => {
+                                tracing::warn!("Received input while Codex turn is active");
+                            }
+                            IoCommand::PermissionResponse(_) => {}
+                        }
+                    }
+                }
+            } else {
+                // No active turn: wait for user input
+                match command_rx.recv().await {
+                    Some(IoCommand::Input(input)) => {
+                        let prompt = Self::extract_prompt_text(&input);
+                        if prompt.is_empty() {
+                            continue;
+                        }
+
+                        tracing::info!("Starting Codex turn with {} chars", prompt.len());
+
+                        match client
+                            .turn_start(&TurnStartParams {
+                                thread_id: thread_id.clone(),
+                                input: vec![UserInput::Text { text: prompt }],
+                                model: None,
+                                reasoning_effort: None,
+                                sandbox_policy: None,
+                            })
+                            .await
+                        {
+                            Ok(_) => {
+                                turn_active = true;
+                            }
+                            Err(e) => {
+                                let _ = event_tx.send(IoEvent::RawOutput(serde_json::json!({
+                                    "type": "turn.failed",
+                                    "error": { "message": e.to_string() }
+                                })));
+                            }
+                        }
+                    }
+                    Some(IoCommand::PermissionResponse(_)) => continue,
+                    Some(IoCommand::CodexApproval { .. }) => {
+                        tracing::warn!("Codex approval response with no active turn");
+                    }
+                    None => {
+                        let _ = event_tx.send(IoEvent::Exited { code: 0 });
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Convert a Codex app-server ServerMessage into exec-format JSONL events.
+    /// Returns (event_sent_ok, turn_ended).
+    fn handle_codex_server_message(
+        msg: codex_codes::ServerMessage,
+        event_tx: &mpsc::UnboundedSender<IoEvent>,
+    ) -> (bool, bool) {
+        match msg {
+            codex_codes::ServerMessage::Notification { method, params } => {
+                let params = params.unwrap_or(serde_json::Value::Null);
+
+                match method.as_str() {
+                    "thread/started" | "turn/started" | "thread/status/changed" => {
+                        // Already handled or not needed for frontend
+                        (true, false)
+                    }
+                    "turn/completed" => {
+                        // Extract usage from the Turn object if available
+                        let usage = params
+                            .get("turn")
+                            .and_then(|t| t.get("usage"))
+                            .or_else(|| params.get("usage"))
+                            .cloned()
+                            .unwrap_or(serde_json::json!(null));
+                        let event = serde_json::json!({
+                            "type": "turn.completed",
+                            "usage": usage
+                        });
+                        let ok = event_tx.send(IoEvent::RawOutput(event)).is_ok();
+                        (ok, true)
+                    }
+                    "item/started" => {
+                        if let Some(item) = params.get("item") {
+                            let event = serde_json::json!({
+                                "type": "item.started",
+                                "item": item
+                            });
+                            let ok = event_tx.send(IoEvent::RawOutput(event)).is_ok();
+                            (ok, false)
+                        } else {
+                            (true, false)
+                        }
+                    }
+                    "item/completed" => {
+                        if let Some(item) = params.get("item") {
+                            let event = serde_json::json!({
+                                "type": "item.completed",
+                                "item": item
+                            });
+                            let ok = event_tx.send(IoEvent::RawOutput(event)).is_ok();
+                            (ok, false)
+                        } else {
+                            (true, false)
+                        }
+                    }
+                    "thread/tokenUsage/updated" => {
+                        // Skip — usage is included in turn.completed
+                        (true, false)
+                    }
+                    "error" => {
+                        let message = params
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| params.get("message").and_then(|v| v.as_str()))
+                            .unwrap_or("Unknown error");
+                        let event = serde_json::json!({
+                            "type": "error",
+                            "message": message
+                        });
+                        let ok = event_tx.send(IoEvent::RawOutput(event)).is_ok();
+                        (ok, false)
+                    }
+                    _ => {
+                        // Skip delta notifications — item/completed provides the full item
+                        tracing::debug!("Codex notification: {}", method);
+                        (true, false)
+                    }
+                }
+            }
+            codex_codes::ServerMessage::Request { id, method, params } => {
+                let params = params.unwrap_or_default();
+                let request_id_str = Self::format_request_id(&id);
+
+                match method.as_str() {
+                    "item/commandExecution/requestApproval" => {
+                        let command = params
+                            .get("command")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("(unknown)")
+                            .to_string();
+                        let input = serde_json::json!({
+                            "command": command,
+                            "cwd": params.get("cwd").and_then(|v| v.as_str()).unwrap_or("")
+                        });
+                        let ok = event_tx
+                            .send(IoEvent::CodexPermissionRequest {
+                                request_id: request_id_str,
+                                tool_name: "Bash".to_string(),
+                                input,
+                            })
+                            .is_ok();
+                        (ok, false)
+                    }
+                    "item/fileChange/requestApproval" => {
+                        let input = serde_json::json!({
+                            "changes": params.get("changes").cloned().unwrap_or_default()
+                        });
+                        let ok = event_tx
+                            .send(IoEvent::CodexPermissionRequest {
+                                request_id: request_id_str,
+                                tool_name: "FileChange".to_string(),
+                                input,
+                            })
+                            .is_ok();
+                        (ok, false)
+                    }
+                    _ => {
+                        tracing::warn!("Unknown Codex request: {}", method);
+                        (true, false)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Extract prompt text from ClaudeInput
+    fn extract_prompt_text(input: &ClaudeInput) -> String {
+        match input {
+            ClaudeInput::User(msg) => msg
+                .message
+                .content
+                .iter()
+                .filter_map(|block| {
+                    if let claude_codes::io::ContentBlock::Text(tb) = block {
+                        Some(tb.text.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => String::new(),
+        }
+    }
+
+    /// Format a codex_codes::RequestId as a String
+    fn format_request_id(id: &codex_codes::RequestId) -> String {
+        match id {
+            codex_codes::RequestId::Integer(n) => n.to_string(),
+            codex_codes::RequestId::String(s) => s.clone(),
+        }
+    }
+
+    /// Parse a String back to codex_codes::RequestId
+    fn parse_request_id(s: &str) -> codex_codes::RequestId {
+        if let Ok(n) = s.parse::<i64>() {
+            codex_codes::RequestId::Integer(n)
+        } else {
+            codex_codes::RequestId::String(s.to_string())
+        }
     }
 
     /// Log the resolved path and version of the claude binary for diagnostics.
@@ -745,7 +973,7 @@ impl Session {
     }
 
     /// Spawn the Claude process
-    async fn spawn_claude(config: &SessionConfig) -> Result<AsyncClient, SessionError> {
+    async fn spawn_claude(config: &SessionConfig) -> Result<ClaudeAsyncClient, SessionError> {
         let claude_path = config.claude_path.as_deref().unwrap_or(Path::new("claude"));
 
         Self::log_claude_info(claude_path);
@@ -807,8 +1035,8 @@ impl Session {
 
         let child = cmd.spawn().map_err(SessionError::SpawnFailed)?;
 
-        AsyncClient::new(child).map_err(|e| {
-            SessionError::CommunicationError(format!("Failed to create AsyncClient: {}", e))
+        ClaudeAsyncClient::new(child).map_err(|e| {
+            SessionError::CommunicationError(format!("Failed to create ClaudeAsyncClient: {}", e))
         })
     }
 }
