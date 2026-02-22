@@ -290,6 +290,22 @@ impl SessionManager {
         false
     }
 
+    /// Stop a directly-connected proxy by sending it a shutdown message.
+    /// The proxy will disconnect, and the session will be marked as disconnected in the DB.
+    /// Returns true if the session was found and the message was sent.
+    pub fn disconnect_session(&self, session_id: Uuid) -> bool {
+        let key = session_id.to_string();
+        if let Some(sender) = self.sessions.get(&key) {
+            let _ = sender.send(ServerToProxy::ServerShutdown {
+                reason: "Session stopped by user".to_string(),
+                reconnect_delay_ms: 30_000,
+            });
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn register_dir_request(&self, request_id: Uuid) -> oneshot::Receiver<LauncherToServer> {
         let (tx, rx) = oneshot::channel();
         self.pending_dir_requests.insert(request_id, tx);
