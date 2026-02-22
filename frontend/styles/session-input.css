@@ -73,8 +73,7 @@
 }
 
 .send-button-container .send-button {
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
+    border-radius: 0;
     padding: 0.75rem 1rem;
 }
 
@@ -254,14 +253,51 @@
 }
 
 /* ==========================================================================
-   File Upload
+   File Upload / Attachment
    ========================================================================== */
 
 .hidden-file-input {
     display: none;
 }
 
-.upload-button {
+/* Attachment indicator bar above input */
+.attachment-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 1.5rem;
+    background: rgba(122, 162, 247, 0.1);
+    border-top: 1px solid var(--border);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.attachment-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachment-name::before {
+    content: "\1f4ce ";
+}
+
+.attachment-remove {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0 0.25rem;
+    line-height: 1;
+}
+
+.attachment-remove:hover {
+    color: var(--error);
+}
+
+/* Attach button inside send bar */
+.attach-button {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -270,21 +306,41 @@
     padding: 0;
     background: transparent;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 6px 0 0 6px;
     color: var(--text-secondary);
     cursor: pointer;
     font-size: 16px;
-    transition: all 0.2s;
+    transition: border-color 0.2s, color 0.2s;
 }
 
-.upload-button:hover:not(:disabled) {
+.attach-button:hover:not(:disabled) {
     border-color: var(--accent);
     color: var(--accent);
 }
 
-.upload-button:disabled {
+.attach-button:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+.attach-button.has-file {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(122, 162, 247, 0.1);
+}
+
+.attach-button.uploading {
+    pointer-events: none;
+    border-color: var(--accent);
+    background: conic-gradient(
+        var(--accent) calc(var(--upload-progress) * 1deg),
+        transparent calc(var(--upload-progress) * 1deg)
+    );
+    color: var(--bg-dark);
+}
+
+.send-button-container .send-button {
+    border-radius: 0;
 }
 
 /* Nav mode: dim the input area to indicate it's not active */

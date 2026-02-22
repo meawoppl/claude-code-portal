@@ -6,10 +6,22 @@ use axum::extract::ws::WebSocket;
 use diesel::prelude::*;
 use shared::api::RawMessageFallback;
 use shared::{ClientEndpoint, ClientToServer, SendMode, ServerToClient, ServerToProxy};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
+
+/// Maximum total upload size: 50 MB decoded (~68 MB base64)
+const MAX_TOTAL_CHUNKS: u32 = 51_200; // 50 MB / 1 KB
+
+struct PendingUpload {
+    filename: String,
+    content_type: String,
+    total_chunks: u32,
+    chunks: Vec<Option<String>>,
+    received_count: u32,
+}
 
 pub async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState>, user_id: Uuid) {
     let session_manager = app_state.session_manager.clone();
@@ -20,6 +32,7 @@ pub async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState
 
     let mut session_key: Option<SessionId> = None;
     let mut verified_session_id: Option<Uuid> = None;
+    let mut pending_uploads: HashMap<String, PendingUpload> = HashMap::new();
 
     session_manager.add_user_client(user_id, tx.clone());
 
@@ -43,6 +56,7 @@ pub async fn handle_web_client_socket(socket: WebSocket, app_state: Arc<AppState
                     user_id,
                     &mut session_key,
                     &mut verified_session_id,
+                    &mut pending_uploads,
                 );
                 if should_break {
                     break;
@@ -69,6 +83,7 @@ fn handle_web_client_message(
     user_id: Uuid,
     session_key: &mut Option<SessionId>,
     verified_session_id: &mut Option<Uuid>,
+    pending_uploads: &mut HashMap<String, PendingUpload>,
 ) -> bool {
     match client_msg {
         ClientToServer::Register {
@@ -99,12 +114,34 @@ fn handle_web_client_message(
             );
             false
         }
-        ClientToServer::FileUpload {
+        ClientToServer::FileUploadStart {
+            upload_id,
             filename,
-            data,
             content_type,
+            total_chunks,
         } => {
-            handle_file_upload(session_manager, session_key, filename, data, content_type);
+            handle_file_upload_start(
+                pending_uploads,
+                upload_id,
+                filename,
+                content_type,
+                total_chunks,
+            );
+            false
+        }
+        ClientToServer::FileUploadChunk {
+            upload_id,
+            chunk_index,
+            data,
+        } => {
+            handle_file_upload_chunk(
+                session_manager,
+                session_key,
+                pending_uploads,
+                upload_id,
+                chunk_index,
+                data,
+            );
             false
         }
         ClientToServer::PermissionResponse {
@@ -317,42 +354,97 @@ fn handle_web_input(
     }
 }
 
-/// Maximum upload file size: 10 MB (as base64, ~13.3 MB encoded)
-const MAX_UPLOAD_BASE64_LEN: usize = 14 * 1024 * 1024;
-
-fn handle_file_upload(
-    session_manager: &SessionManager,
-    session_key: &Option<SessionId>,
+fn handle_file_upload_start(
+    pending_uploads: &mut HashMap<String, PendingUpload>,
+    upload_id: String,
     filename: String,
-    data: String,
     content_type: String,
+    total_chunks: u32,
 ) {
-    let Some(ref key) = session_key else {
-        warn!("Web client tried to upload file but no session registered");
-        return;
-    };
-
-    if data.len() > MAX_UPLOAD_BASE64_LEN {
-        warn!("File upload too large: {} bytes encoded", data.len());
+    if total_chunks == 0 || total_chunks > MAX_TOTAL_CHUNKS {
+        warn!(
+            "Invalid total_chunks {} for upload {}",
+            total_chunks, upload_id
+        );
         return;
     }
 
     let safe_filename = sanitize_filename(&filename);
     info!(
-        "File upload via WS: {} ({} bytes encoded) to session {}",
-        safe_filename,
-        data.len(),
-        key
+        "File upload started: {} ({} chunks) upload_id={}",
+        safe_filename, total_chunks, upload_id
     );
 
+    pending_uploads.insert(
+        upload_id,
+        PendingUpload {
+            filename: safe_filename,
+            content_type,
+            total_chunks,
+            chunks: vec![None; total_chunks as usize],
+            received_count: 0,
+        },
+    );
+}
+
+fn handle_file_upload_chunk(
+    session_manager: &SessionManager,
+    session_key: &Option<SessionId>,
+    pending_uploads: &mut HashMap<String, PendingUpload>,
+    upload_id: String,
+    chunk_index: u32,
+    data: String,
+) {
+    let Some(upload) = pending_uploads.get_mut(&upload_id) else {
+        warn!("Received chunk for unknown upload_id={}", upload_id);
+        return;
+    };
+
+    if chunk_index >= upload.total_chunks {
+        warn!(
+            "Chunk index {} out of range for upload {} (total={})",
+            chunk_index, upload_id, upload.total_chunks
+        );
+        return;
+    }
+
+    if upload.chunks[chunk_index as usize].is_none() {
+        upload.received_count += 1;
+    }
+    upload.chunks[chunk_index as usize] = Some(data);
+
+    if upload.received_count < upload.total_chunks {
+        return;
+    }
+
+    // All chunks received — reassemble and forward
+    let upload = pending_uploads.remove(&upload_id).unwrap();
+    let combined: String = upload
+        .chunks
+        .into_iter()
+        .map(|c| c.unwrap_or_default())
+        .collect();
+
+    info!(
+        "File upload complete: {} ({} bytes encoded) upload_id={}",
+        upload.filename,
+        combined.len(),
+        upload_id
+    );
+
+    let Some(ref key) = session_key else {
+        warn!("File upload complete but no session registered");
+        return;
+    };
+
     let msg = ServerToProxy::FileUpload {
-        filename: safe_filename,
-        data,
-        content_type,
+        filename: upload.filename,
+        data: combined,
+        content_type: upload.content_type,
     };
 
     if !session_manager.send_to_session(key, msg) {
-        warn!("Session {} not connected, file upload queued", key);
+        warn!("Session {} not connected for file upload", key);
     }
 }
 
