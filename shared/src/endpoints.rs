@@ -202,6 +202,14 @@ pub enum ClientToServer {
         #[serde(skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
+
+    /// File uploaded by user, to be written to session working directory
+    FileUpload {
+        filename: String,
+        /// File content as base64-encoded string
+        data: String,
+        content_type: String,
+    },
 }
 
 /// Messages the backend sends to the frontend.

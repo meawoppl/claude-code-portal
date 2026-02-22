@@ -431,53 +431,43 @@ impl Component for SessionView {
                 self.handle_send_input_with_mode(ctx, SendMode::Wiggum)
             }
             SessionViewMsg::FileSelected(file) => {
-                let session_id = ctx.props().session.id;
                 let link = ctx.link().clone();
                 let file_name = file.name();
+                let content_type = file.type_();
+                let sender = self.ws_sender.clone();
 
                 spawn_local(async move {
-                    let form_data = match web_sys::FormData::new() {
-                        Ok(fd) => fd,
-                        Err(_) => {
-                            link.send_message(SessionViewMsg::FileUploadError(
-                                "Failed to create form data".into(),
-                            ));
-                            return;
-                        }
-                    };
-                    if form_data
-                        .append_with_blob_and_filename("file", &file, &file_name)
-                        .is_err()
-                    {
+                    let array_buffer =
+                        match wasm_bindgen_futures::JsFuture::from(file.array_buffer()).await {
+                            Ok(buf) => buf,
+                            Err(_) => {
+                                link.send_message(SessionViewMsg::FileUploadError(
+                                    "Failed to read file".into(),
+                                ));
+                                return;
+                            }
+                        };
+                    let uint8_array = js_sys::Uint8Array::new(&array_buffer);
+                    let bytes = uint8_array.to_vec();
+                    let encoded =
+                        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+
+                    if let Some(ref ws) = sender {
+                        let msg = ClientToServer::FileUpload {
+                            filename: file_name.clone(),
+                            data: encoded,
+                            content_type: if content_type.is_empty() {
+                                "application/octet-stream".to_string()
+                            } else {
+                                content_type
+                            },
+                        };
+                        send_message(ws, msg);
+                        link.send_message(SessionViewMsg::FileUploaded(file_name));
+                    } else {
                         link.send_message(SessionViewMsg::FileUploadError(
-                            "Failed to append file".into(),
+                            "WebSocket not connected".into(),
                         ));
-                        return;
-                    }
-
-                    let url = utils::api_url(&format!("/api/sessions/{}/upload", session_id));
-
-                    match Request::post(&url)
-                        .body(form_data)
-                        .expect("form body")
-                        .send()
-                        .await
-                    {
-                        Ok(resp) if resp.ok() => {
-                            link.send_message(SessionViewMsg::FileUploaded(file_name));
-                        }
-                        Ok(resp) => {
-                            link.send_message(SessionViewMsg::FileUploadError(format!(
-                                "Upload failed: HTTP {}",
-                                resp.status()
-                            )));
-                        }
-                        Err(e) => {
-                            link.send_message(SessionViewMsg::FileUploadError(format!(
-                                "Upload error: {}",
-                                e
-                            )));
-                        }
                     }
                 });
                 false

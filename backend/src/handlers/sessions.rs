@@ -197,13 +197,14 @@ pub async fn stop_session(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    if app_state
+    let stopped = app_state
         .session_manager
         .stop_session_on_launcher(session_id)
-    {
+        || app_state.session_manager.disconnect_session(session_id);
+
+    if stopped {
         Ok(StatusCode::ACCEPTED)
     } else {
-        // No launcher found with this session
         Err(StatusCode::NOT_FOUND)
     }
 }
