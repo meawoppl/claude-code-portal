@@ -1,11 +1,11 @@
 [package]
-name = "claude-portal-launcher"
+name = "agent-launcher"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "claude-portal-launcher"
+name = "agent-launcher"
 path = "src/main.rs"
 
 [dependencies]
