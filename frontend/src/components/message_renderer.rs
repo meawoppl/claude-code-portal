@@ -643,12 +643,28 @@ fn render_rate_limit_event(msg: &RateLimitEventMessage) -> Html {
 fn render_system_message(msg: &SystemMessage) -> Html {
     let subtype = msg.subtype.as_deref().unwrap_or("system");
 
-    if subtype == "init" || subtype == "status" {
-        return html! {};
+    // Check if this is a compaction-related message via subtype or status field
+    let status_value = msg
+        .extra
+        .as_ref()
+        .and_then(|v| v.get("status"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("");
+
+    if status_value == "compacting" {
+        return render_compaction_beginning();
+    }
+
+    if subtype == "compact_boundary" {
+        return render_compaction_completed(msg);
     }
 
     if subtype == "summary" || subtype == "compaction" || subtype == "context_compaction" {
-        return render_compaction_message(msg);
+        return render_compaction_completed(msg);
+    }
+
+    if subtype == "init" || subtype == "status" {
+        return html! {};
     }
 
     html! {
@@ -658,7 +674,17 @@ fn render_system_message(msg: &SystemMessage) -> Html {
     }
 }
 
-fn render_compaction_message(msg: &SystemMessage) -> Html {
+fn render_compaction_beginning() -> Html {
+    html! {
+        <div class="claude-message compaction-message compact">
+            <div class="message-header">
+                <span class="message-type-badge compaction">{ "Compaction Beginning" }</span>
+            </div>
+        </div>
+    }
+}
+
+fn render_compaction_completed(msg: &SystemMessage) -> Html {
     let summary_text = msg.summary.as_deref().or_else(|| {
         msg.extra.as_ref().and_then(|v| {
             v.get("summary")
@@ -690,7 +716,7 @@ fn render_compaction_message(msg: &SystemMessage) -> Html {
     html! {
         <div class="claude-message compaction-message">
             <div class="message-header">
-                <span class="message-type-badge compaction">{ "Context Compacted" }</span>
+                <span class="message-type-badge compaction">{ "Compaction Completed" }</span>
                 {
                     if let Some(count) = leaf_count {
                         html! {
