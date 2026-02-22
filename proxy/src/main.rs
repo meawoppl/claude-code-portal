@@ -2,6 +2,7 @@ mod auth;
 mod commands;
 mod config;
 mod session;
+mod shim;
 mod ui;
 mod update;
 mod util;
@@ -137,6 +138,18 @@ struct Args {
     #[arg(long, short = 'v')]
     verbose: bool,
 
+    /// Run in shim mode (transparent proxy for VS Code extension).
+    ///
+    /// In shim mode, the proxy acts as a transparent stdin/stdout bridge
+    /// between a parent process (e.g., VS Code Claude Code extension) and
+    /// the claude CLI binary. All claude output is forwarded to stdout while
+    /// also being sent to the portal backend via WebSocket. Input from both
+    /// stdin and the portal web UI reaches claude.
+    ///
+    /// Diagnostic output goes to stderr only. No TUI banners are emitted.
+    #[arg(long)]
+    shim: bool,
+
     /// Arguments to pass through to the claude CLI.
     ///
     /// Everything after -- or unrecognized flags are forwarded to claude.
@@ -267,40 +280,40 @@ async fn main() -> Result<()> {
 
     init_tracing(args.session_id_tag, args.verbose);
 
-    // Check for and apply pending updates (Windows only)
-    // This handles the case where an update was downloaded but couldn't be
-    // applied because the binary was locked
-    if let Ok(true) = update::apply_pending_update() {
-        ui::print_pending_update_applied();
-    }
+    // Skip update checks and UI output entirely in shim mode
+    if !args.shim {
+        if let Ok(true) = update::apply_pending_update() {
+            ui::print_pending_update_applied();
+        }
 
-    // Handle explicit update commands first
-    if args.check_update {
-        return handle_check_update().await;
-    }
+        // Handle explicit update commands first
+        if args.check_update {
+            return handle_check_update().await;
+        }
 
-    if args.update {
-        return handle_force_update().await;
-    }
+        if args.update {
+            return handle_force_update().await;
+        }
 
-    // Check for updates before anything else (unless --no-update or --init/--logout)
-    if !args.no_update && args.init.is_none() && !args.logout {
-        match update::check_for_update_github(false).await {
-            Ok(update::UpdateResult::UpToDate) => {
-                // Continue normally
-            }
-            Ok(update::UpdateResult::Updated) => {
-                ui::print_update_complete();
-                std::process::exit(0);
-            }
-            Ok(update::UpdateResult::UpdateAvailable { .. }) => {
-                // Shouldn't happen since check_only=false, but handle gracefully
-            }
-            Err(e) => {
-                warn!(
-                    "Update check failed: {}. Continuing with current version.",
-                    e
-                );
+        // Check for updates before anything else (unless --no-update or --init/--logout)
+        if !args.no_update && args.init.is_none() && !args.logout {
+            match update::check_for_update_github(false).await {
+                Ok(update::UpdateResult::UpToDate) => {
+                    // Continue normally
+                }
+                Ok(update::UpdateResult::Updated) => {
+                    ui::print_update_complete();
+                    std::process::exit(0);
+                }
+                Ok(update::UpdateResult::UpdateAvailable { .. }) => {
+                    // Shouldn't happen since check_only=false, but handle gracefully
+                }
+                Err(e) => {
+                    warn!(
+                        "Update check failed: {}. Continuing with current version.",
+                        e
+                    );
+                }
             }
         }
     }
@@ -332,17 +345,30 @@ async fn main() -> Result<()> {
         .or_else(|| config.preferences.default_backend_url.clone())
         .unwrap_or_else(|| shared::default_backend_url().to_string());
 
-    // Print startup info
-    ui::print_startup_banner();
-    ui::print_session_info(
-        &session_name,
-        &session_id.to_string(),
-        &backend_url,
-        resuming,
-    );
+    // Print startup info (suppress in shim mode — stdout is reserved for claude I/O)
+    if !args.shim {
+        ui::print_startup_banner();
+        ui::print_session_info(
+            &session_name,
+            &session_id.to_string(),
+            &backend_url,
+            resuming,
+        );
+    }
 
-    // Resolve auth token
-    let auth_token = resolve_auth_token(&args, &mut config, &cwd, &backend_url).await?;
+    // Resolve auth token — in shim mode, auth failure is non-fatal so claude
+    // still launches even if the portal backend is unreachable.
+    let auth_token = if args.shim {
+        match resolve_auth_token(&args, &mut config, &cwd, &backend_url).await {
+            Ok(token) => token,
+            Err(e) => {
+                warn!("Portal auth failed (shim will continue without it): {}", e);
+                None
+            }
+        }
+    } else {
+        resolve_auth_token(&args, &mut config, &cwd, &backend_url).await?
+    };
 
     // Detect git branch
     let git_branch = get_git_branch(&cwd);
@@ -368,6 +394,13 @@ async fn main() -> Result<()> {
         launcher_id: None,
         agent_type,
     };
+
+    // Branch: shim mode or normal proxy mode
+    // run_shim calls std::process::exit with claude's exit code
+    if args.shim {
+        shim::run_shim(session_config).await?;
+        return Ok(());
+    }
 
     // Start Claude and run session
     run_proxy_session(session_config).await
@@ -399,13 +432,17 @@ fn resolve_session(args: &Args, cwd: &str) -> Result<(Uuid, String, bool)> {
             warn!(
                 "Starting new session (--new-session flag) - previous session will not be resumed"
             );
-            ui::print_new_session_forced();
+            if !args.shim {
+                ui::print_new_session_forced();
+            }
         } else if !had_existing {
             info!(
                 "No existing session for directory {}, creating new session {}",
                 cwd, session_id
             );
-            ui::print_no_previous_session();
+            if !args.shim {
+                ui::print_no_previous_session();
+            }
         }
 
         info!("New session ID: {}", session_id);
@@ -424,7 +461,9 @@ fn resolve_session(args: &Args, cwd: &str) -> Result<(Uuid, String, bool)> {
             "Resuming session {} (created: {}, last used: {})",
             existing.session_id, existing.created_at, existing.last_used
         );
-        ui::print_resuming_session(&existing.session_id.to_string(), &existing.created_at);
+        if !args.shim {
+            ui::print_resuming_session(&existing.session_id.to_string(), &existing.created_at);
+        }
 
         Ok((existing.session_id, session_name, true))
     } else {
@@ -441,7 +480,9 @@ async fn resolve_auth_token(
     backend_url: &str,
 ) -> Result<Option<String>> {
     if args.dev {
-        ui::print_dev_mode();
+        if !args.shim {
+            ui::print_dev_mode();
+        }
         return Ok(None);
     }
 
@@ -451,9 +492,23 @@ async fn resolve_auth_token(
 
     if !args.reauth {
         if let Some(session_auth) = config.get_session_auth(cwd) {
-            ui::print_user(session_auth.user_email.as_deref().unwrap_or("unknown user"));
+            if !args.shim {
+                ui::print_user(session_auth.user_email.as_deref().unwrap_or("unknown user"));
+            }
             return Ok(Some(session_auth.auth_token.clone()));
         }
+    }
+
+    // In shim mode, never trigger interactive device flow — it blocks Claude
+    // startup and println! would corrupt the JSON protocol on stdout.
+    if args.shim {
+        // Try any cached token (cross-directory fallback) before giving up
+        if let Some(any_auth) = config.get_any_session_auth() {
+            info!("Using cached token from another directory for shim mode");
+            return Ok(Some(any_auth.auth_token.clone()));
+        }
+        warn!("No cached auth token for shim mode. Run 'claude-portal' from a terminal to authenticate.");
+        return Ok(None);
     }
 
     // Need to authenticate

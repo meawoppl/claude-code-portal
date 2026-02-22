@@ -222,6 +222,15 @@ impl ProxyConfig {
         self.sessions.get(working_dir)
     }
 
+    /// Find any valid cached auth token, regardless of working directory.
+    /// Returns the most recently used token. Used by shim mode as a fallback
+    /// when no token exists for the current working directory.
+    pub fn get_any_session_auth(&self) -> Option<&SessionAuth> {
+        self.sessions
+            .values()
+            .max_by(|a, b| a.last_used.cmp(&b.last_used))
+    }
+
     pub fn set_session_auth(&mut self, working_dir: String, auth: SessionAuth) {
         self.sessions.insert(working_dir, auth);
     }

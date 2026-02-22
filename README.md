@@ -10,6 +10,7 @@ A web portal that extends [Claude Code](https://docs.anthropic.com/en/docs/claud
 - **Persistent History**: All conversations stored and accessible across devices
 - **Flexible Authentication**: Configure for single-user, organization-only, or public access
 - **Real-time Sync**: Multiple viewers see updates instantly via WebSocket
+- **VS Code Integration**: Use Claude Code in VS Code while sessions appear on the portal dashboard
 
 ## Use Cases
 
@@ -84,6 +85,7 @@ The **portal** refers to the complete system: backend server, web frontend, and 
 | [Development Guide](docs/DEVELOPING.md) | Full dev workflow, building, testing, contributing |
 | [Deployment Guide](docs/DEPLOYING.md) | Production deployment, Google OAuth setup, configuration |
 | [Docker Guide](docs/DOCKER.md) | Docker and Kubernetes deployment with 1Password |
+| [VS Code Setup](docs/VSCODE_SETUP.md) | Use Claude Code in VS Code with portal integration |
 | [Troubleshooting](TROUBLESHOOTING.md) | Common issues and solutions |
 
 ## Platform Support

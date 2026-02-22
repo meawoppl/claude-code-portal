@@ -87,17 +87,7 @@ pub fn handle_claude_output(
     content: serde_json::Value,
     seq: Option<u64>,
 ) {
-    // Broadcast output to all web clients
-    if let Some(ref key) = session_key {
-        session_manager.broadcast_to_web_clients(
-            key,
-            ServerToClient::ClaudeOutput {
-                content: content.clone(),
-            },
-        );
-    }
-
-    // Deduplicate sequenced messages
+    // Deduplicate sequenced messages before broadcasting
     if let (Some(session_id), Some(seq_num)) = (db_session_id, seq) {
         let last_ack = session_manager
             .last_ack_seq
@@ -116,6 +106,16 @@ pub fn handle_claude_output(
             });
             return;
         }
+    }
+
+    // Broadcast output to all web clients (after dedup check)
+    if let Some(ref key) = session_key {
+        session_manager.broadcast_to_web_clients(
+            key,
+            ServerToClient::ClaudeOutput {
+                content: content.clone(),
+            },
+        );
     }
 
     // Store message and update last_activity in DB
