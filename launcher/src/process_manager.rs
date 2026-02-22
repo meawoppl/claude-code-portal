@@ -210,11 +210,22 @@ fn get_git_branch(cwd: &str) -> Option<String> {
         return None;
     }
 
-    let branch = String::from_utf8(output.stdout).ok()?;
-    let branch = branch.trim();
-    if branch.is_empty() || branch == "HEAD" {
-        None
+    let branch = String::from_utf8(output.stdout)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())?;
+
+    if branch == "HEAD" {
+        // Detached HEAD — return short commit hash
+        std::process::Command::new("git")
+            .args(["rev-parse", "--short", "HEAD"])
+            .current_dir(cwd)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| format!("detached:{}", s.trim()))
     } else {
-        Some(branch.to_string())
+        Some(branch)
     }
 }
