@@ -967,6 +967,9 @@ pub fn settings_page() -> Html {
                                     </tbody>
                                 </table>
                             </div>
+                            <p class="section-note">
+                                { "Credentials expired for more than 7 days are automatically deleted." }
+                            </p>
                         }
                     </section>
                 }

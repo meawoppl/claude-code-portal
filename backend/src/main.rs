@@ -672,4 +672,21 @@ async fn run_session_age_cleanup(app_state: &Arc<AppState>) {
         deleted,
         max_days
     );
+
+    // Also clean up tokens expired more than 7 days ago
+    let token_cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::days(7);
+    match diesel::delete(
+        schema::proxy_auth_tokens::table
+            .filter(schema::proxy_auth_tokens::expires_at.lt(token_cutoff)),
+    )
+    .execute(&mut conn)
+    {
+        Ok(0) => {}
+        Ok(count) => {
+            tracing::info!("Expired token cleanup: deleted {} tokens", count);
+        }
+        Err(e) => {
+            tracing::error!("Failed to delete expired tokens: {}", e);
+        }
+    }
 }
