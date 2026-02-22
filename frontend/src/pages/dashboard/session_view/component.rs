@@ -441,8 +441,9 @@ impl Component for SessionView {
                 self.handle_send_input_with_mode(ctx, SendMode::Wiggum)
             }
             SessionViewMsg::FilesSelected(files) => {
-                // Close dropdown and start uploading all files, then send combined message
+                // Close dropdown, clear drag state, and start uploading all files
                 self.send_mode_dropdown_open = false;
+                self.drag_hover = false;
                 self.upload_progress = Some(0.0);
                 let link = ctx.link().clone();
                 let sender = self.ws_sender.clone();
