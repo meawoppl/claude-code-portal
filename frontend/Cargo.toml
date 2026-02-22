@@ -32,7 +32,6 @@ web-sys = { workspace = true, features = [
     "Storage",
     "Navigator",
     "Clipboard",
-    "FormData",
     "File",
     "FileList",
     "Blob",
@@ -76,3 +75,4 @@ uuid = { workspace = true, features = ["v4", "serde", "js"] }
 js-sys = "0.3.83"
 pulldown-cmark = { version = "0.13.0", default-features = false }
 ws-bridge = { workspace = true, features = ["yew-client"] }
+base64 = "0.22"

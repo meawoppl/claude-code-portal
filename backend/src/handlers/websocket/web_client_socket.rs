@@ -99,6 +99,14 @@ fn handle_web_client_message(
             );
             false
         }
+        ClientToServer::FileUpload {
+            filename,
+            data,
+            content_type,
+        } => {
+            handle_file_upload(session_manager, session_key, filename, data, content_type);
+            false
+        }
         ClientToServer::PermissionResponse {
             request_id,
             allow,
@@ -306,5 +314,63 @@ fn handle_web_input(
             "Failed to send to session '{}', session not found in SessionManager",
             key
         );
+    }
+}
+
+/// Maximum upload file size: 10 MB (as base64, ~13.3 MB encoded)
+const MAX_UPLOAD_BASE64_LEN: usize = 14 * 1024 * 1024;
+
+fn handle_file_upload(
+    session_manager: &SessionManager,
+    session_key: &Option<SessionId>,
+    filename: String,
+    data: String,
+    content_type: String,
+) {
+    let Some(ref key) = session_key else {
+        warn!("Web client tried to upload file but no session registered");
+        return;
+    };
+
+    if data.len() > MAX_UPLOAD_BASE64_LEN {
+        warn!("File upload too large: {} bytes encoded", data.len());
+        return;
+    }
+
+    let safe_filename = sanitize_filename(&filename);
+    info!(
+        "File upload via WS: {} ({} bytes encoded) to session {}",
+        safe_filename,
+        data.len(),
+        key
+    );
+
+    let msg = ServerToProxy::FileUpload {
+        filename: safe_filename,
+        data,
+        content_type,
+    };
+
+    if !session_manager.send_to_session(key, msg) {
+        warn!("Session {} not connected, file upload queued", key);
+    }
+}
+
+fn sanitize_filename(name: &str) -> String {
+    let base = name
+        .rsplit('/')
+        .next()
+        .or_else(|| name.rsplit('\\').next())
+        .unwrap_or(name);
+
+    let clean: String = base
+        .chars()
+        .filter(|c| *c != '/' && *c != '\\' && *c != '\0')
+        .collect();
+
+    if clean.is_empty() || clean == "." || clean == ".." {
+        "uploaded_file".to_string()
+    } else {
+        clean
     }
 }
