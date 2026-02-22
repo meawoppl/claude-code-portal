@@ -54,6 +54,11 @@ web-sys = { workspace = true, features = [
     "MessageEvent",
     "MessagePort",
     "KeyboardEvent",
+    "ClipboardEvent",
+    "DataTransfer",
+    "DataTransferItem",
+    "DataTransferItemList",
+    "DragEvent",
 ] }
 
 # Utility libraries for WASM
