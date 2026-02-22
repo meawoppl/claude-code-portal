@@ -154,7 +154,14 @@ fn plist_path() -> Result<std::path::PathBuf> {
 }
 
 #[cfg(target_os = "macos")]
+fn log_dir() -> String {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    format!("{}/Library/Logs/agent-launcher", home)
+}
+
+#[cfg(target_os = "macos")]
 fn generate_plist(binary_path: &str) -> String {
+    let log_dir = log_dir();
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -175,9 +182,9 @@ fn generate_plist(binary_path: &str) -> String {
         <false/>
     </dict>
     <key>StandardOutPath</key>
-    <string>/tmp/agent-launcher.stdout.log</string>
+    <string>{log_dir}/stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/agent-launcher.stderr.log</string>
+    <string>{log_dir}/stderr.log</string>
     <key>ThrottleInterval</key>
     <integer>5</integer>
 </dict>
@@ -207,6 +214,9 @@ pub fn install() -> Result<()> {
         std::fs::create_dir_all(parent).context("Failed to create LaunchAgents directory")?;
     }
 
+    // Ensure log directory exists
+    std::fs::create_dir_all(log_dir()).context("Failed to create log directory")?;
+
     let content = generate_plist(&binary_path);
     std::fs::write(&plist, content)
         .with_context(|| format!("Failed to write {}", plist.display()))?;
@@ -226,7 +236,7 @@ pub fn install() -> Result<()> {
     println!("Loaded {}", PLIST_LABEL);
     println!();
     println!("Launcher is installed and running.");
-    println!("  Logs: tail -f /tmp/agent-launcher.stdout.log");
+    println!("  Logs: tail -f {}/stdout.log", log_dir());
 
     Ok(())
 }
@@ -284,7 +294,7 @@ pub fn status() -> Result<()> {
         }
         println!();
         println!("Service is installed and running.");
-        println!("  Logs: tail -f /tmp/agent-launcher.stdout.log");
+        println!("  Logs: tail -f {}/stdout.log", log_dir());
     }
 
     Ok(())

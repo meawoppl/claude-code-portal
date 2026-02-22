@@ -2,7 +2,7 @@ use crate::process_manager::{ProcessManager, SessionExited};
 use shared::{LauncherEndpoint, LauncherToServer, ServerToLauncher};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
@@ -278,6 +278,111 @@ async fn handle_message(
         ServerToLauncher::ServerShutdown { reason, .. } => {
             info!("Server shutting down: {}", reason);
         }
-        _ => {}
+        other => {
+            debug!("Unhandled message from server: {:?}", other);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn extract_result(
+        msg: LauncherToServer,
+    ) -> (Vec<shared::DirectoryEntry>, Option<String>, Option<String>) {
+        match msg {
+            LauncherToServer::ListDirectoriesResult {
+                entries,
+                error,
+                resolved_path,
+                ..
+            } => (entries, error, resolved_path),
+            other => panic!("Expected ListDirectoriesResult, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn list_directory_returns_sorted_entries() {
+        let tmp = std::env::temp_dir().join("launcher_test_sorted");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::create_dir(tmp.join("beta_dir")).unwrap();
+        std::fs::write(tmp.join("alpha.txt"), "").unwrap();
+        std::fs::create_dir(tmp.join("alpha_dir")).unwrap();
+        std::fs::write(tmp.join("beta.txt"), "").unwrap();
+
+        let path = format!("{}/", tmp.display());
+        let result = list_directory(&path, Uuid::nil());
+        let (entries, error, _) = extract_result(result);
+
+        assert!(error.is_none());
+        // Directories come first, then files, each group sorted alphabetically
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["alpha_dir", "beta_dir", "alpha.txt", "beta.txt"]
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn list_directory_filters_hidden_files() {
+        let tmp = std::env::temp_dir().join("launcher_test_hidden");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join(".hidden"), "").unwrap();
+        std::fs::write(tmp.join("visible"), "").unwrap();
+
+        let path = format!("{}/", tmp.display());
+        let result = list_directory(&path, Uuid::nil());
+        let (entries, _, _) = extract_result(result);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "visible");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn list_directory_prefix_filter() {
+        let tmp = std::env::temp_dir().join("launcher_test_prefix");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("foo.txt"), "").unwrap();
+        std::fs::write(tmp.join("bar.txt"), "").unwrap();
+        std::fs::write(tmp.join("foobar.txt"), "").unwrap();
+
+        // No trailing slash — last component "fo" becomes the prefix filter
+        let path = format!("{}/fo", tmp.display());
+        let result = list_directory(&path, Uuid::nil());
+        let (entries, error, _) = extract_result(result);
+
+        assert!(error.is_none());
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["foo.txt", "foobar.txt"]);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn list_directory_nonexistent_returns_error() {
+        let result = list_directory("/nonexistent_launcher_test_path_12345/subdir/", Uuid::nil());
+        let (entries, error, _) = extract_result(result);
+
+        assert!(entries.is_empty());
+        assert!(error.is_some());
+    }
+
+    #[test]
+    fn list_directory_resolved_path_has_trailing_slash() {
+        let tmp = std::env::temp_dir();
+        let path = tmp.to_string_lossy().to_string();
+        // Even without trailing slash, if it's a valid dir the resolved_path should end with /
+        let result = list_directory(&format!("{}/", path), Uuid::nil());
+        let (_, _, resolved) = extract_result(result);
+
+        assert!(resolved.unwrap().ends_with('/'));
     }
 }
