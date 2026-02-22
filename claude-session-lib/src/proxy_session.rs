@@ -540,6 +540,10 @@ pub struct ConnectionState {
     pub wiggum_state: Option<WiggumState>,
     /// Heartbeat tracker for dead connection detection
     pub heartbeat: crate::heartbeat::HeartbeatTracker,
+    /// Receiver for file uploads from backend
+    pub file_upload_rx: mpsc::UnboundedReceiver<(String, String)>,
+    /// Working directory for file uploads
+    pub working_directory: String,
 }
 
 /// Run the main message forwarding loop
@@ -569,6 +573,9 @@ async fn run_message_loop(
     // Channel for graceful server shutdown signals
     let (graceful_shutdown_tx, graceful_shutdown_rx) =
         mpsc::unbounded_channel::<GracefulShutdown>();
+
+    // Channel for file uploads from backend
+    let (file_upload_tx, file_upload_rx) = mpsc::unbounded_channel::<(String, String)>();
 
     // Wrap ws_write for sharing
     let ws_write = std::sync::Arc::new(tokio::sync::Mutex::new(ws_write));
@@ -605,6 +612,7 @@ async fn run_message_loop(
         wiggum_tx,
         graceful_shutdown_tx,
         heartbeat.clone(),
+        file_upload_tx,
     );
 
     // Create connection state (per-connection channels and timing)
@@ -620,6 +628,8 @@ async fn run_message_loop(
         wiggum_rx,
         wiggum_state: None,
         heartbeat,
+        file_upload_rx,
+        working_directory: config.working_directory.clone(),
     };
 
     // Main loop
@@ -1212,13 +1222,21 @@ fn spawn_ws_reader(
     wiggum_tx: mpsc::UnboundedSender<String>,
     graceful_shutdown_tx: mpsc::UnboundedSender<GracefulShutdown>,
     heartbeat: crate::heartbeat::HeartbeatTracker,
+    file_upload_tx: mpsc::UnboundedSender<(String, String)>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(result) = ws_read.recv().await {
             match result {
                 Ok(msg) => {
                     match handle_ws_message(
-                        msg, &input_tx, &perm_tx, &ack_tx, &ws_write, &wiggum_tx, &heartbeat,
+                        msg,
+                        &input_tx,
+                        &perm_tx,
+                        &ack_tx,
+                        &ws_write,
+                        &wiggum_tx,
+                        &heartbeat,
+                        &file_upload_tx,
                     )
                     .await
                     {
@@ -1244,6 +1262,7 @@ fn spawn_ws_reader(
 }
 
 /// Handle a typed message from the WebSocket
+#[allow(clippy::too_many_arguments)]
 async fn handle_ws_message(
     proxy_msg: ServerToProxy,
     input_tx: &mpsc::UnboundedSender<String>,
@@ -1252,6 +1271,7 @@ async fn handle_ws_message(
     ws_write: &SharedWsWrite,
     wiggum_tx: &mpsc::UnboundedSender<String>,
     heartbeat: &crate::heartbeat::HeartbeatTracker,
+    file_upload_tx: &mpsc::UnboundedSender<(String, String)>,
 ) -> WsMessageResult {
     if !matches!(proxy_msg, ServerToProxy::Heartbeat) {
         debug!("ws recv: {:?}", proxy_msg);
@@ -1371,6 +1391,17 @@ async fn handle_ws_message(
             );
             return WsMessageResult::GracefulShutdown(reconnect_delay_ms);
         }
+        ServerToProxy::FileUpload {
+            filename,
+            data,
+            content_type: _,
+        } => {
+            info!("Received file upload: {}", filename);
+            if file_upload_tx.send((filename, data)).is_err() {
+                error!("Failed to send file upload to main loop");
+                return WsMessageResult::Disconnect;
+            }
+        }
         _ => {
             debug!("ws msg: {:?}", proxy_msg);
         }
@@ -1441,6 +1472,35 @@ async fn run_main_loop(
                 if let Err(e) = claude_session.send_input(serde_json::Value::String(wiggum_prompt)).await {
                     error!("Failed to send wiggum prompt to Claude: {}", e);
                     return ConnectionResult::ClaudeExited;
+                }
+            }
+
+            Some((filename, data)) = state.file_upload_rx.recv() => {
+                let bytes = match base64::engine::general_purpose::STANDARD.decode(&data) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        error!("Failed to decode uploaded file {}: {}", filename, e);
+                        continue;
+                    }
+                };
+
+                let file_path = std::path::Path::new(&state.working_directory).join(&filename);
+                match tokio::fs::write(&file_path, &bytes).await {
+                    Ok(_) => {
+                        info!("Wrote uploaded file: {} ({} bytes)", file_path.display(), bytes.len());
+
+                        let notify_msg = format!(
+                            "The user uploaded a file: {}",
+                            filename,
+                        );
+                        if let Err(e) = claude_session.send_input(serde_json::Value::String(notify_msg)).await {
+                            error!("Failed to notify session about file upload: {}", e);
+                            return ConnectionResult::ClaudeExited;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to write uploaded file {}: {}", file_path.display(), e);
+                    }
                 }
             }
 

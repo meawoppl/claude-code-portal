@@ -76,6 +76,12 @@ pub enum SessionViewMsg {
     CloseSendModeDropdown,
     /// Send with wiggum mode
     SendWiggum,
+    /// User selected a file to upload
+    FileSelected(web_sys::File),
+    /// File upload completed
+    FileUploaded(String),
+    /// File upload failed
+    FileUploadError(String),
 }
 
 /// SessionView - Main terminal view for a single session
@@ -106,6 +112,7 @@ pub struct SessionView {
     multi_select_options: HashMap<usize, HashSet<usize>>,
     question_answers: QuestionAnswers,
     send_mode_dropdown_open: bool,
+    file_input_ref: NodeRef,
 }
 
 impl Component for SessionView {
@@ -180,6 +187,7 @@ impl Component for SessionView {
             multi_select_options: HashMap::new(),
             question_answers: HashMap::new(),
             send_mode_dropdown_open: false,
+            file_input_ref: NodeRef::default(),
         }
     }
 
@@ -422,6 +430,63 @@ impl Component for SessionView {
                 self.send_mode_dropdown_open = false;
                 self.handle_send_input_with_mode(ctx, SendMode::Wiggum)
             }
+            SessionViewMsg::FileSelected(file) => {
+                let session_id = ctx.props().session.id;
+                let link = ctx.link().clone();
+                let file_name = file.name();
+
+                spawn_local(async move {
+                    let form_data = match web_sys::FormData::new() {
+                        Ok(fd) => fd,
+                        Err(_) => {
+                            link.send_message(SessionViewMsg::FileUploadError(
+                                "Failed to create form data".into(),
+                            ));
+                            return;
+                        }
+                    };
+                    if form_data
+                        .append_with_blob_and_filename("file", &file, &file_name)
+                        .is_err()
+                    {
+                        link.send_message(SessionViewMsg::FileUploadError(
+                            "Failed to append file".into(),
+                        ));
+                        return;
+                    }
+
+                    let url = utils::api_url(&format!("/api/sessions/{}/upload", session_id));
+
+                    match Request::post(&url)
+                        .body(form_data)
+                        .expect("form body")
+                        .send()
+                        .await
+                    {
+                        Ok(resp) if resp.ok() => {
+                            link.send_message(SessionViewMsg::FileUploaded(file_name));
+                        }
+                        Ok(resp) => {
+                            link.send_message(SessionViewMsg::FileUploadError(format!(
+                                "Upload failed: HTTP {}",
+                                resp.status()
+                            )));
+                        }
+                        Err(e) => {
+                            link.send_message(SessionViewMsg::FileUploadError(format!(
+                                "Upload error: {}",
+                                e
+                            )));
+                        }
+                    }
+                });
+                false
+            }
+            SessionViewMsg::FileUploaded(_filename) => false,
+            SessionViewMsg::FileUploadError(err) => {
+                gloo::console::error!("File upload error:", &err);
+                false
+            }
         }
     }
 
@@ -496,6 +561,7 @@ impl Component for SessionView {
                         disabled={!self.ws_connected}
                         rows="1"
                     />
+                    { self.render_upload_button(ctx) }
                     { self.render_voice_input(ctx) }
                     { self.render_send_button(ctx) }
                 </form>
@@ -862,6 +928,49 @@ impl SessionView {
             }
         } else {
             html! {}
+        }
+    }
+
+    fn render_upload_button(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link().clone();
+        let file_input_ref = self.file_input_ref.clone();
+
+        let on_click = Callback::from(move |_: MouseEvent| {
+            if let Some(input) = file_input_ref.cast::<web_sys::HtmlInputElement>() {
+                input.click();
+            }
+        });
+
+        let on_file_change = link.callback(|e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            if let Some(files) = input.files() {
+                if let Some(file) = files.get(0) {
+                    // Reset the input so the same file can be re-selected
+                    input.set_value("");
+                    return SessionViewMsg::FileSelected(file);
+                }
+            }
+            SessionViewMsg::FileUploadError("No file selected".into())
+        });
+
+        html! {
+            <>
+                <input
+                    ref={self.file_input_ref.clone()}
+                    type="file"
+                    class="hidden-file-input"
+                    onchange={on_file_change}
+                />
+                <button
+                    type="button"
+                    class="upload-button"
+                    disabled={!self.ws_connected}
+                    onclick={on_click}
+                    title="Upload file to session"
+                >
+                    { "\u{1f4ce}" }
+                </button>
+            </>
         }
     }
 

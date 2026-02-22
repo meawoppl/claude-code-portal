@@ -129,6 +129,14 @@ pub enum ServerToProxy {
     /// Acknowledge receipt of output messages
     OutputAck { session_id: Uuid, ack_seq: u64 },
 
+    /// File uploaded by user, to be written to working directory
+    FileUpload {
+        filename: String,
+        /// File content as base64-encoded string
+        data: String,
+        content_type: String,
+    },
+
     /// Server is shutting down
     ServerShutdown {
         reason: String,
