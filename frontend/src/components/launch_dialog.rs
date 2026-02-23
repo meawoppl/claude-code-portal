@@ -280,17 +280,14 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
     {
         let on_close = props.on_close.clone();
         use_effect_with((), move |_| {
-            let listener = gloo::events::EventListener::new(
-                &gloo::utils::document(),
-                "keydown",
-                move |e| {
+            let listener =
+                gloo::events::EventListener::new(&gloo::utils::document(), "keydown", move |e| {
                     if let Ok(ke) = e.clone().dyn_into::<web_sys::KeyboardEvent>() {
                         if ke.key() == "Escape" {
                             on_close.emit(());
                         }
                     }
-                },
-            );
+                });
             move || drop(listener)
         });
     }
