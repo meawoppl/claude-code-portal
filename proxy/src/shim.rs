@@ -14,8 +14,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::session::{
-    connect_ws, get_git_branch, register_with_backend, Backoff, GracefulShutdown,
-    PermissionResponseData, ProxySessionConfig, SharedWsWrite,
+    connect_ws, get_git_branch, register_with_backend, Backoff, PermissionResponseData,
+    ProxySessionConfig, SharedWsWrite, WsEvent,
 };
 use anyhow::Result;
 use claude_codes::io::{
@@ -493,47 +493,100 @@ async fn run_shim_connection(
     let (ws_write, ws_read) = conn.split();
     let ws_write: SharedWsWrite = Arc::new(Mutex::new(ws_write));
 
-    // Channels for WS reader dispatching
-    let (input_tx, mut input_rx) = mpsc::unbounded_channel::<String>();
-    let (perm_tx, mut perm_rx) = mpsc::unbounded_channel::<PermissionResponseData>();
-    let (ack_tx, mut ack_rx) = mpsc::unbounded_channel::<u64>();
-    let (wiggum_tx, mut wiggum_rx) = mpsc::unbounded_channel::<String>();
-    let (graceful_shutdown_tx, mut graceful_shutdown_rx) =
-        mpsc::unbounded_channel::<GracefulShutdown>();
-    let (disconnect_tx, mut disconnect_rx) = tokio::sync::oneshot::channel::<()>();
+    // Single event channel for all WebSocket reader events
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<WsEvent>();
 
-    // Reuse the existing WS reader (parses portal messages into typed channels)
-    let reader_task = crate::session::spawn_ws_reader(
-        ws_read,
-        input_tx,
-        perm_tx,
-        ack_tx,
-        ws_write.clone(),
-        disconnect_tx,
-        wiggum_tx,
-        graceful_shutdown_tx,
-    );
+    let reader_task = crate::session::spawn_ws_reader(ws_read, ws_write.clone(), event_tx);
 
     // Main select loop
     let result = loop {
         tokio::select! {
-            // Portal disconnected
-            _ = &mut disconnect_rx => {
-                // Check if a graceful shutdown was queued before the disconnect
-                if let Ok(shutdown) = graceful_shutdown_rx.try_recv() {
-                    break ShimConnectionResult::ServerShutdown(
-                        Duration::from_millis(shutdown.reconnect_delay_ms)
-                    );
-                }
-                info!("Portal WebSocket disconnected");
-                break ShimConnectionResult::Disconnected;
-            }
+            // WebSocket events from portal (unified channel)
+            event = event_rx.recv() => {
+                match event {
+                    Some(WsEvent::Input(text)) => {
+                        debug!("Portal input: {}", &text[..text.len().min(80)]);
+                        let _ = portal_text_tx.send(text.clone());
+                        let mut stdin = claude_stdin.lock().await;
+                        let input = ClaudeInput::user_message(&text, config.session_id);
+                        if let Ok(json_line) = serde_json::to_string(&input) {
+                            if let Err(e) = stdin.write_all(json_line.as_bytes()).await {
+                                error!("Failed to write portal input to claude: {}", e);
+                                break ShimConnectionResult::ClaudeExited;
+                            }
+                            let _ = stdin.write_all(b"\n").await;
+                            let _ = stdin.flush().await;
+                        }
+                    }
+                    Some(WsEvent::WiggumActivation(prompt)) => {
+                        debug!("Portal wiggum input: {}", &prompt[..prompt.len().min(60)]);
+                        let wiggum_prompt = format!(
+                            "{}\n\nTake action on the directions above until fully complete. If complete, respond only with DONE.",
+                            prompt
+                        );
+                        let _ = portal_text_tx.send(wiggum_prompt.clone());
+                        let mut stdin = claude_stdin.lock().await;
+                        let input = ClaudeInput::user_message(&wiggum_prompt, config.session_id);
+                        if let Ok(json_line) = serde_json::to_string(&input) {
+                            if let Err(e) = stdin.write_all(json_line.as_bytes()).await {
+                                error!("Failed to write wiggum input to claude: {}", e);
+                                break ShimConnectionResult::ClaudeExited;
+                            }
+                            let _ = stdin.write_all(b"\n").await;
+                            let _ = stdin.flush().await;
+                        }
+                    }
+                    Some(WsEvent::PermissionResponse(perm_response)) => {
+                        let request_id = &perm_response.request_id;
+                        let should_forward = {
+                            let mut perms = permissions.lock().await;
+                            match perms.get(request_id) {
+                                Some(PermissionState::Pending) => {
+                                    *perms.get_mut(request_id).unwrap() = PermissionState::Answered;
+                                    debug!("Permission {} answered by portal", request_id);
+                                    true
+                                }
+                                Some(PermissionState::Answered) => {
+                                    debug!("Permission {} already answered, ignoring portal response", request_id);
+                                    false
+                                }
+                                None => {
+                                    warn!("Unknown permission {}, forwarding", request_id);
+                                    true
+                                }
+                            }
+                        };
 
-            // Server graceful shutdown
-            Some(shutdown) = graceful_shutdown_rx.recv() => {
-                break ShimConnectionResult::ServerShutdown(
-                    Duration::from_millis(shutdown.reconnect_delay_ms)
-                );
+                        if should_forward {
+                            let ctrl_response: ControlResponseMessage = build_control_response(&perm_response).into();
+                            if let Ok(json_line) = serde_json::to_string(&ctrl_response) {
+                                let mut stdin = claude_stdin.lock().await;
+                                if let Err(e) = stdin.write_all(json_line.as_bytes()).await {
+                                    error!("Failed to write permission response to claude: {}", e);
+                                    break ShimConnectionResult::ClaudeExited;
+                                }
+                                let _ = stdin.write_all(b"\n").await;
+                                let _ = stdin.flush().await;
+                            }
+                        }
+                    }
+                    Some(WsEvent::OutputAck(ack_seq)) => {
+                        let mut buf = output_buffer.lock().await;
+                        buf.acknowledge(ack_seq);
+                        if let Err(e) = buf.persist() {
+                            warn!("Failed to persist buffer after ack: {}", e);
+                        }
+                    }
+                    Some(WsEvent::GracefulShutdown(delay_ms)) => {
+                        break ShimConnectionResult::ServerShutdown(
+                            Duration::from_millis(delay_ms)
+                        );
+                    }
+                    Some(WsEvent::Disconnect) | None => {
+                        info!("Portal WebSocket disconnected");
+                        break ShimConnectionResult::Disconnected;
+                    }
+                }
             }
 
             // Claude output ready to send to portal (seq was assigned at buffer push time)
@@ -559,100 +612,8 @@ async fn run_shim_connection(
                 }
             }
 
-            // Text input from portal web UI
-            Some(text) = input_rx.recv() => {
-                debug!("Portal input: {}", &text[..text.len().min(80)]);
-                // Track for user echo dedup — stdout reader will match and forward to VS Code
-                let _ = portal_text_tx.send(text.clone());
-                let mut stdin = claude_stdin.lock().await;
-                // Build a proper ClaudeInput::User message (same format the normal proxy uses)
-                let input = ClaudeInput::user_message(&text, config.session_id);
-                if let Ok(json_line) = serde_json::to_string(&input) {
-                    if let Err(e) = stdin.write_all(json_line.as_bytes()).await {
-                        error!("Failed to write portal input to claude: {}", e);
-                        break ShimConnectionResult::ClaudeExited;
-                    }
-                    let _ = stdin.write_all(b"\n").await;
-                    let _ = stdin.flush().await;
-                }
-            }
-
-            // Wiggum mode from portal
-            Some(prompt) = wiggum_rx.recv() => {
-                debug!("Portal wiggum input: {}", &prompt[..prompt.len().min(60)]);
-                let wiggum_prompt = format!(
-                    "{}\n\nTake action on the directions above until fully complete. If complete, respond only with DONE.",
-                    prompt
-                );
-                // Track the full wiggum text for user echo dedup
-                let _ = portal_text_tx.send(wiggum_prompt.clone());
-                let mut stdin = claude_stdin.lock().await;
-                let input = ClaudeInput::user_message(&wiggum_prompt, config.session_id);
-                if let Ok(json_line) = serde_json::to_string(&input) {
-                    if let Err(e) = stdin.write_all(json_line.as_bytes()).await {
-                        error!("Failed to write wiggum input to claude: {}", e);
-                        break ShimConnectionResult::ClaudeExited;
-                    }
-                    let _ = stdin.write_all(b"\n").await;
-                    let _ = stdin.flush().await;
-                }
-            }
-
-            // Permission response from portal
-            Some(perm_response) = perm_rx.recv() => {
-                let request_id = &perm_response.request_id;
-
-                // Check dedup state
-                let should_forward = {
-                    let mut perms = permissions.lock().await;
-                    match perms.get(request_id) {
-                        Some(PermissionState::Pending) => {
-                            *perms.get_mut(request_id).unwrap() = PermissionState::Answered;
-                            debug!("Permission {} answered by portal", request_id);
-                            true
-                        }
-                        Some(PermissionState::Answered) => {
-                            debug!("Permission {} already answered, ignoring portal response", request_id);
-                            false
-                        }
-                        None => {
-                            // Unknown permission — forward anyway
-                            warn!("Unknown permission {}, forwarding", request_id);
-                            true
-                        }
-                    }
-                };
-
-                if should_forward {
-                    // Build ControlResponse and wrap with type tag for claude's stdin
-                    let ctrl_response: ControlResponseMessage = build_control_response(&perm_response).into();
-                    if let Ok(json_line) = serde_json::to_string(&ctrl_response) {
-                        let mut stdin = claude_stdin.lock().await;
-                        if let Err(e) = stdin.write_all(json_line.as_bytes()).await {
-                            error!("Failed to write permission response to claude: {}", e);
-                            break ShimConnectionResult::ClaudeExited;
-                        }
-                        let _ = stdin.write_all(b"\n").await;
-                        let _ = stdin.flush().await;
-                    }
-                    // Do NOT write to our stdout — VS Code didn't request this
-                }
-            }
-
-            // Output acknowledgments from portal
-            Some(ack_seq) = ack_rx.recv() => {
-                let mut buf = output_buffer.lock().await;
-                buf.acknowledge(ack_seq);
-                if let Err(e) = buf.persist() {
-                    warn!("Failed to persist buffer after ack: {}", e);
-                }
-            }
-
-            // Detect if stdin_line_rx closes (parent process disconnected)
-            // This is informational only — stdin forwarding is handled by the reader task
-            _ = stdin_line_rx.recv() => {
-                // Just drain — actual forwarding happens in the stdin reader task
-            }
+            // Drain stdin lines (actual forwarding happens in the stdin reader task)
+            _ = stdin_line_rx.recv() => {}
         }
     };
 
