@@ -169,8 +169,15 @@
 }
 
 @keyframes taskPulse {
-    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(187, 154, 247, 0.4); }
-    50% { opacity: 0.6; box-shadow: 0 0 0 3px rgba(187, 154, 247, 0); }
+    0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(187, 154, 247, 0.4);
+    }
+
+    50% {
+        opacity: 0.6;
+        box-shadow: 0 0 0 3px rgba(187, 154, 247, 0);
+    }
 }
 
 /* Type pill badge */
