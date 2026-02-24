@@ -188,6 +188,13 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Backend URL: {}", backend_url);
     tracing::info!("Max sessions: {}", max_sessions);
 
+    if !config.sessions.is_empty() {
+        tracing::info!("Expected sessions configured: {}", config.sessions.len());
+        for s in &config.sessions {
+            tracing::info!("  - {} ({})", s.working_directory, s.agent_type);
+        }
+    }
+
     let (process_manager, exit_rx) =
         process_manager::ProcessManager::new(backend_url.clone(), max_sessions);
 
@@ -198,6 +205,7 @@ async fn main() -> anyhow::Result<()> {
         auth_token.as_deref(),
         process_manager,
         exit_rx,
+        config.sessions,
     )
     .await
 }

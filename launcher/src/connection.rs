@@ -1,5 +1,7 @@
+use crate::config::ExpectedSession;
 use crate::process_manager::{ProcessManager, SessionExited};
 use shared::{LauncherEndpoint, LauncherToServer, ServerToLauncher};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
@@ -7,6 +9,8 @@ use uuid::Uuid;
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
+const RESTART_DELAY: Duration = Duration::from_secs(5);
+const MAX_RESTART_ATTEMPTS: u32 = 3;
 
 pub async fn run_launcher_loop(
     backend_url: &str,
@@ -15,6 +19,7 @@ pub async fn run_launcher_loop(
     auth_token: Option<&str>,
     mut process_manager: ProcessManager,
     mut exit_rx: mpsc::UnboundedReceiver<SessionExited>,
+    expected_sessions: Vec<ExpectedSession>,
 ) -> anyhow::Result<()> {
     process_manager.set_launcher_id(launcher_id);
     let mut backoff = Duration::from_secs(1);
@@ -76,6 +81,35 @@ pub async fn run_launcher_loop(
                     continue;
                 }
 
+                // Reconcile expected sessions: launch any that aren't running
+                let mut restart_counts: HashMap<String, u32> = HashMap::new();
+                if !expected_sessions.is_empty() {
+                    let running_dirs = process_manager.running_directories();
+                    for expected in &expected_sessions {
+                        if running_dirs.contains(&expected.working_directory) {
+                            info!(
+                                "Expected session already running: {}",
+                                expected.working_directory
+                            );
+                            continue;
+                        }
+                        info!("Launching expected session: {}", expected.working_directory);
+                        let request = LauncherToServer::RequestLaunch {
+                            request_id: Uuid::new_v4(),
+                            working_directory: expected.working_directory.clone(),
+                            session_name: expected.session_name.clone(),
+                            claude_args: expected.claude_args.clone(),
+                            agent_type: expected.agent_type,
+                        };
+                        if ws_sender.send(request).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+
+                // Channel for delayed restart requests
+                let (restart_tx, mut restart_rx) = mpsc::unbounded_channel::<ExpectedSession>();
+
                 // Main loop
                 let mut heartbeat_timer = tokio::time::interval(HEARTBEAT_INTERVAL);
                 let start = Instant::now();
@@ -114,6 +148,7 @@ pub async fn run_launcher_loop(
                         }
 
                         Some(exited) = exit_rx.recv() => {
+                            let exited_dir = process_manager.session_working_directory(&exited.session_id);
                             info!(
                                 "Session {} exited with code {:?}",
                                 exited.session_id, exited.exit_code
@@ -124,6 +159,45 @@ pub async fn run_launcher_loop(
                                 exit_code: exited.exit_code,
                             };
                             if ws_sender.send(msg).await.is_err() {
+                                break;
+                            }
+
+                            // Schedule restart if this was an expected session
+                            if let Some(dir) = exited_dir {
+                                if let Some(expected) = expected_sessions.iter().find(|s| s.working_directory == dir) {
+                                    let count = restart_counts.entry(dir.clone()).or_insert(0);
+                                    *count += 1;
+                                    if *count <= MAX_RESTART_ATTEMPTS {
+                                        info!(
+                                            "Expected session exited, scheduling restart ({}/{}): {}",
+                                            count, MAX_RESTART_ATTEMPTS, dir
+                                        );
+                                        let tx = restart_tx.clone();
+                                        let session = expected.clone();
+                                        tokio::spawn(async move {
+                                            tokio::time::sleep(RESTART_DELAY).await;
+                                            let _ = tx.send(session);
+                                        });
+                                    } else {
+                                        warn!(
+                                            "Expected session exceeded max restarts ({}): {}",
+                                            MAX_RESTART_ATTEMPTS, dir
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
+                        Some(session) = restart_rx.recv() => {
+                            info!("Restarting expected session: {}", session.working_directory);
+                            let request = LauncherToServer::RequestLaunch {
+                                request_id: Uuid::new_v4(),
+                                working_directory: session.working_directory,
+                                session_name: session.session_name,
+                                claude_args: session.claude_args,
+                                agent_type: session.agent_type,
+                            };
+                            if ws_sender.send(request).await.is_err() {
                                 break;
                             }
                         }

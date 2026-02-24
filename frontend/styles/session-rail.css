@@ -158,6 +158,21 @@
 }
 
 
+a.pill-branch.pill-link {
+    text-decoration: none;
+    color: var(--accent);
+}
+
+a.pill-branch.pill-link:hover {
+    text-decoration: underline;
+}
+
+.pill-branch.pill-no-vcs {
+    color: var(--text-muted);
+    font-style: normal;
+    font-size: 0.65rem;
+}
+
 .session-pill.status-disconnected .pill-branch {
     color: var(--text-secondary);
 }

@@ -18,6 +18,7 @@ pub struct SessionExited {
 struct ManagedTask {
     handle: tokio::task::JoinHandle<()>,
     cancel: CancellationToken,
+    working_directory: String,
 }
 
 pub struct ProcessManager {
@@ -56,6 +57,21 @@ impl ProcessManager {
 
     pub fn running_session_ids(&self) -> Vec<Uuid> {
         self.tasks.keys().copied().collect()
+    }
+
+    /// Returns the set of working directories that currently have running sessions.
+    pub fn running_directories(&self) -> Vec<String> {
+        self.tasks
+            .values()
+            .map(|t| t.working_directory.clone())
+            .collect()
+    }
+
+    /// Returns the working directory for a given session, if it exists.
+    pub fn session_working_directory(&self, session_id: &Uuid) -> Option<String> {
+        self.tasks
+            .get(session_id)
+            .map(|t| t.working_directory.clone())
     }
 
     pub async fn spawn(
@@ -123,8 +139,14 @@ impl ProcessManager {
             session_id, name, working_directory
         );
 
-        self.tasks
-            .insert(session_id, ManagedTask { handle, cancel });
+        self.tasks.insert(
+            session_id,
+            ManagedTask {
+                handle,
+                cancel,
+                working_directory: working_directory.to_string(),
+            },
+        );
 
         Ok(SpawnResult { session_id })
     }

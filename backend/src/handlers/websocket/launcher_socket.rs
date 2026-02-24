@@ -2,7 +2,7 @@ use axum::extract::ws::WebSocket;
 use shared::{LauncherEndpoint, LauncherToServer, ServerToClient, ServerToLauncher};
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use super::LauncherConnection;
@@ -218,6 +218,46 @@ fn handle_launcher_message(
             app_state
                 .session_manager
                 .complete_dir_request(request_id, msg);
+        }
+        LauncherToServer::RequestLaunch {
+            request_id,
+            working_directory,
+            session_name,
+            claude_args,
+            agent_type,
+        } => {
+            info!(
+                "Launcher requested launch: dir={}, name={:?}",
+                working_directory, session_name
+            );
+            match crate::handlers::launchers::mint_launch_token(app_state, user_id) {
+                Ok(auth_token) => {
+                    let launch_msg = ServerToLauncher::LaunchSession {
+                        request_id,
+                        user_id,
+                        auth_token,
+                        working_directory,
+                        session_name,
+                        claude_args,
+                        agent_type,
+                    };
+                    if !app_state
+                        .session_manager
+                        .send_to_launcher(&launcher_id, launch_msg)
+                    {
+                        error!(
+                            "Failed to send LaunchSession back to launcher {}",
+                            launcher_id
+                        );
+                    }
+                }
+                Err(status) => {
+                    error!(
+                        "Failed to mint token for launcher RequestLaunch: {:?}",
+                        status
+                    );
+                }
+            }
         }
         LauncherToServer::LauncherRegister { .. } => {}
     }
