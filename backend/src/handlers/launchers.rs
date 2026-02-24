@@ -158,7 +158,7 @@ pub async fn list_directories(
     }
 }
 
-fn mint_launch_token(app_state: &AppState, user_id: Uuid) -> Result<String, StatusCode> {
+pub(crate) fn mint_launch_token(app_state: &AppState, user_id: Uuid) -> Result<String, StatusCode> {
     let mut conn = app_state
         .db_pool
         .get()

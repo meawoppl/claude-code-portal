@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use shared::AgentType;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -7,6 +8,19 @@ pub struct LauncherConfig {
     pub auth_token: Option<String>,
     pub name: Option<String>,
     pub max_processes: Option<usize>,
+    #[serde(default)]
+    pub sessions: Vec<ExpectedSession>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExpectedSession {
+    pub working_directory: String,
+    #[serde(default)]
+    pub session_name: Option<String>,
+    #[serde(default)]
+    pub agent_type: AgentType,
+    #[serde(default)]
+    pub claude_args: Vec<String>,
 }
 
 fn config_path() -> PathBuf {
@@ -68,6 +82,7 @@ max_processes = 10
         assert_eq!(config.auth_token.unwrap(), "tok_abc123");
         assert_eq!(config.name.unwrap(), "my-launcher");
         assert_eq!(config.max_processes.unwrap(), 10);
+        assert!(config.sessions.is_empty());
     }
 
     #[test]
@@ -77,6 +92,7 @@ max_processes = 10
         assert!(config.auth_token.is_none());
         assert!(config.name.is_none());
         assert!(config.max_processes.is_none());
+        assert!(config.sessions.is_empty());
     }
 
     #[test]
@@ -102,6 +118,12 @@ auth_token = "secret"
             auth_token: Some("tok_test".to_string()),
             name: Some("test-launcher".to_string()),
             max_processes: Some(3),
+            sessions: vec![ExpectedSession {
+                working_directory: "/home/user/project".to_string(),
+                session_name: Some("my-session".to_string()),
+                agent_type: AgentType::Claude,
+                claude_args: vec!["--verbose".to_string()],
+            }],
         };
         let serialized = toml::to_string_pretty(&config).unwrap();
         let deserialized: LauncherConfig = toml::from_str(&serialized).unwrap();
@@ -109,5 +131,42 @@ auth_token = "secret"
         assert_eq!(deserialized.auth_token, config.auth_token);
         assert_eq!(deserialized.name, config.name);
         assert_eq!(deserialized.max_processes, config.max_processes);
+        assert_eq!(deserialized.sessions.len(), 1);
+        assert_eq!(
+            deserialized.sessions[0].working_directory,
+            "/home/user/project"
+        );
+    }
+
+    #[test]
+    fn parse_config_with_sessions() {
+        let toml = r#"
+backend_url = "wss://example.com"
+auth_token = "tok_abc"
+
+[[sessions]]
+working_directory = "/home/user/project-a"
+session_name = "project-a"
+
+[[sessions]]
+working_directory = "/home/user/project-b"
+agent_type = "codex"
+claude_args = ["--model", "opus"]
+"#;
+        let config: LauncherConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.sessions.len(), 2);
+
+        assert_eq!(config.sessions[0].working_directory, "/home/user/project-a");
+        assert_eq!(
+            config.sessions[0].session_name.as_deref(),
+            Some("project-a")
+        );
+        assert_eq!(config.sessions[0].agent_type, AgentType::Claude);
+        assert!(config.sessions[0].claude_args.is_empty());
+
+        assert_eq!(config.sessions[1].working_directory, "/home/user/project-b");
+        assert!(config.sessions[1].session_name.is_none());
+        assert_eq!(config.sessions[1].agent_type, AgentType::Codex);
+        assert_eq!(config.sessions[1].claude_args, vec!["--model", "opus"]);
     }
 }

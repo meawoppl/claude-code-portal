@@ -366,6 +366,18 @@ pub enum LauncherToServer {
         #[serde(default)]
         resolved_path: Option<String>,
     },
+
+    /// Request the backend to mint a token and launch a session
+    RequestLaunch {
+        request_id: Uuid,
+        working_directory: String,
+        #[serde(default)]
+        session_name: Option<String>,
+        #[serde(default)]
+        claude_args: Vec<String>,
+        #[serde(default)]
+        agent_type: AgentType,
+    },
 }
 
 /// Messages the backend sends to the launcher.
@@ -566,6 +578,33 @@ mod tests {
         // Must parse as both ProxyToServer and ClientToServer
         let _: ProxyToServer = serde_json::from_str(json).unwrap();
         let _: ClientToServer = serde_json::from_str(json).unwrap();
+    }
+
+    #[test]
+    fn launcher_request_launch_roundtrip() {
+        let msg = LauncherToServer::RequestLaunch {
+            request_id: Uuid::nil(),
+            working_directory: "/home/user/project".into(),
+            session_name: Some("my-project".into()),
+            claude_args: vec!["--verbose".into()],
+            agent_type: AgentType::Claude,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"RequestLaunch""#));
+        let parsed: LauncherToServer = serde_json::from_str(&json).unwrap();
+        match parsed {
+            LauncherToServer::RequestLaunch {
+                working_directory,
+                session_name,
+                claude_args,
+                ..
+            } => {
+                assert_eq!(working_directory, "/home/user/project");
+                assert_eq!(session_name.as_deref(), Some("my-project"));
+                assert_eq!(claude_args, vec!["--verbose"]);
+            }
+            _ => panic!("Wrong variant"),
+        }
     }
 
     #[test]
