@@ -259,6 +259,11 @@ impl Component for SessionView {
         match msg {
             SessionViewMsg::WsEvent(event) => self.handle_ws_event(ctx, event),
             SessionViewMsg::UpdateInput(value) => {
+                if value.is_empty() {
+                    if let Some(el) = self.input_ref.cast::<Element>() {
+                        el.remove_attribute("style").ok();
+                    }
+                }
                 self.input_value = value;
                 true
             }
@@ -648,6 +653,10 @@ impl Component for SessionView {
 
         let handle_input = link.callback(|e: InputEvent| {
             let input: HtmlTextAreaElement = e.target_unchecked_into();
+            let el: &Element = input.as_ref();
+            el.set_attribute("style", "height: auto").ok();
+            el.set_attribute("style", &format!("height: {}px", input.scroll_height()))
+                .ok();
             SessionViewMsg::UpdateInput(input.value())
         });
 
