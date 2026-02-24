@@ -34,7 +34,6 @@
     max-height: 10em;
     overflow-y: auto;
     line-height: 1.4;
-    field-sizing: content;
 }
 
 .session-view-input .message-input:focus {
