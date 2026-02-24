@@ -182,45 +182,39 @@ pub fn get_git_branch(cwd: &str) -> Option<String> {
     }
 }
 
-/// Result from handling a raw WebSocket text message.
-pub enum WsMessageResult {
-    Continue,
+/// Events produced by the WebSocket reader for the shim's select loop.
+pub enum WsEvent {
+    /// Text input from the portal web UI
+    Input(String),
+    /// Wiggum mode activation with the original prompt
+    WiggumActivation(String),
+    /// Permission response from the portal
+    PermissionResponse(PermissionResponseData),
+    /// Output acknowledgment from the backend
+    OutputAck(u64),
+    /// WebSocket disconnected (connection closed or error)
     Disconnect,
+    /// Server requested graceful shutdown with reconnect delay
     GracefulShutdown(u64),
 }
 
 /// Spawn a WebSocket reader task (raw tokio-tungstenite).
 ///
 /// Reads raw WS text messages, parses them as `ServerToProxy`, and dispatches
-/// to typed channels for the shim's select loop.
-#[allow(clippy::too_many_arguments)]
+/// events through a single channel for the shim's select loop.
+/// The `ws_write` handle is used internally for Heartbeat and InputAck responses.
 pub fn spawn_ws_reader(
     mut ws_read: SplitStream<WsStream>,
-    input_tx: mpsc::UnboundedSender<String>,
-    perm_tx: mpsc::UnboundedSender<PermissionResponseData>,
-    ack_tx: mpsc::UnboundedSender<u64>,
     ws_write: SharedWsWrite,
-    disconnect_tx: tokio::sync::oneshot::Sender<()>,
-    wiggum_tx: mpsc::UnboundedSender<String>,
-    graceful_shutdown_tx: mpsc::UnboundedSender<GracefulShutdown>,
+    event_tx: mpsc::UnboundedSender<WsEvent>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         while let Some(msg) = ws_read.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
-                    match handle_ws_text_message(
-                        &text, &input_tx, &perm_tx, &ack_tx, &ws_write, &wiggum_tx,
-                    )
-                    .await
-                    {
-                        WsMessageResult::Continue => {}
-                        WsMessageResult::Disconnect => break,
-                        WsMessageResult::GracefulShutdown(delay_ms) => {
-                            let _ = graceful_shutdown_tx.send(GracefulShutdown {
-                                reconnect_delay_ms: delay_ms,
-                            });
-                            break;
-                        }
+                    match handle_ws_text_message(&text, &event_tx, &ws_write).await {
+                        true => {}      // continue
+                        false => break, // disconnect or shutdown already sent
                     }
                 }
                 Ok(Message::Close(_)) => {
@@ -235,22 +229,20 @@ pub fn spawn_ws_reader(
             }
         }
         debug!("WebSocket reader ended");
-        let _ = disconnect_tx.send(());
+        let _ = event_tx.send(WsEvent::Disconnect);
     })
 }
 
 /// Handle a raw text message from the WebSocket.
+/// Returns `true` to continue reading, `false` to stop.
 async fn handle_ws_text_message(
     text: &str,
-    input_tx: &mpsc::UnboundedSender<String>,
-    perm_tx: &mpsc::UnboundedSender<PermissionResponseData>,
-    ack_tx: &mpsc::UnboundedSender<u64>,
+    event_tx: &mpsc::UnboundedSender<WsEvent>,
     ws_write: &SharedWsWrite,
-    wiggum_tx: &mpsc::UnboundedSender<String>,
-) -> WsMessageResult {
+) -> bool {
     let server_msg = match serde_json::from_str::<ServerToProxy>(text) {
         Ok(msg) => msg,
-        Err(_) => return WsMessageResult::Continue,
+        Err(_) => return true,
     };
 
     match server_msg {
@@ -260,15 +252,12 @@ async fn handle_ws_text_message(
                 other => other.to_string(),
             };
 
-            if send_mode == Some(SendMode::Wiggum) {
-                if wiggum_tx.send(user_text).is_err() {
-                    error!("Failed to send wiggum activation");
-                    return WsMessageResult::Disconnect;
-                }
-            } else if input_tx.send(user_text).is_err() {
-                error!("Failed to send input to channel");
-                return WsMessageResult::Disconnect;
-            }
+            let event = if send_mode == Some(SendMode::Wiggum) {
+                WsEvent::WiggumActivation(user_text)
+            } else {
+                WsEvent::Input(user_text)
+            };
+            event_tx.send(event).is_ok()
         }
         ServerToProxy::SequencedInput {
             session_id,
@@ -281,14 +270,13 @@ async fn handle_ws_text_message(
                 other => other.to_string(),
             };
 
-            if send_mode == Some(SendMode::Wiggum) {
-                if wiggum_tx.send(user_text).is_err() {
-                    error!("Failed to send wiggum activation");
-                    return WsMessageResult::Disconnect;
-                }
-            } else if input_tx.send(user_text).is_err() {
-                error!("Failed to send input to channel");
-                return WsMessageResult::Disconnect;
+            let event = if send_mode == Some(SendMode::Wiggum) {
+                WsEvent::WiggumActivation(user_text)
+            } else {
+                WsEvent::Input(user_text)
+            };
+            if event_tx.send(event).is_err() {
+                return false;
             }
 
             // Send InputAck back to backend
@@ -302,6 +290,7 @@ async fn handle_ws_text_message(
                     error!("Failed to send InputAck: {}", e);
                 }
             }
+            true
         }
         ServerToProxy::PermissionResponse(shared::PermissionResponseFields {
             request_id,
@@ -309,35 +298,25 @@ async fn handle_ws_text_message(
             input,
             permissions,
             reason,
-        }) => {
-            if perm_tx
-                .send(PermissionResponseData {
-                    request_id,
-                    allow,
-                    input,
-                    permissions,
-                    reason,
-                })
-                .is_err()
-            {
-                error!("Failed to send permission response to channel");
-                return WsMessageResult::Disconnect;
-            }
-        }
+        }) => event_tx
+            .send(WsEvent::PermissionResponse(PermissionResponseData {
+                request_id,
+                allow,
+                input,
+                permissions,
+                reason,
+            }))
+            .is_ok(),
         ServerToProxy::OutputAck {
             session_id: _,
             ack_seq,
-        } => {
-            if ack_tx.send(ack_seq).is_err() {
-                error!("Failed to send output ack to channel");
-                return WsMessageResult::Disconnect;
-            }
-        }
+        } => event_tx.send(WsEvent::OutputAck(ack_seq)).is_ok(),
         ServerToProxy::Heartbeat => {
             let mut ws = ws_write.lock().await;
             if let Ok(json) = serde_json::to_string(&ProxyToServer::Heartbeat) {
                 let _ = ws.send(Message::Text(json)).await;
             }
+            true
         }
         ServerToProxy::ServerShutdown {
             reason,
@@ -347,10 +326,9 @@ async fn handle_ws_text_message(
                 "Server shutting down: {} (reconnecting in {}ms)",
                 reason, reconnect_delay_ms
             );
-            return WsMessageResult::GracefulShutdown(reconnect_delay_ms);
+            let _ = event_tx.send(WsEvent::GracefulShutdown(reconnect_delay_ms));
+            false // stop reading
         }
-        _ => {}
+        _ => true,
     }
-
-    WsMessageResult::Continue
 }
