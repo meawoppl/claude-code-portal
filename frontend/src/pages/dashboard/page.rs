@@ -1,6 +1,6 @@
 //! Dashboard page - Main session management interface
 
-use super::session_rail::SessionRail;
+use super::session_rail::{ActivityRef, SessionRail};
 use super::session_view::SessionView;
 use super::types::{
     load_inactive_hidden, load_paused_sessions, load_show_cost, save_inactive_hidden,
@@ -12,7 +12,7 @@ use crate::utils;
 use crate::Route;
 use gloo_net::http::Request;
 use shared::{AppConfig, SessionInfo};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use uuid::Uuid;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::MouseEvent;
@@ -57,7 +57,9 @@ pub fn dashboard_page() -> Html {
     let current_user_id = use_state(|| None::<String>);
     let app_title = use_state(|| "Agent Portal".to_string());
     let activated_sessions = use_state(HashSet::<Uuid>::new);
-    let activity_timestamps = use_state(HashMap::<Uuid, Vec<(f64, String)>>::new);
+    // Activity buffer: mutations don't trigger page re-renders.
+    // SessionRail reads this on its own 100 ms tick instead.
+    let activity_timestamps = use_memo((), |_| ActivityRef::default());
     let initial_focus_set = use_state(|| false);
     let sessions_at_launch = use_state(|| None::<HashSet<Uuid>>);
 
@@ -478,15 +480,10 @@ pub fn dashboard_page() -> Html {
     };
 
     let on_activity = {
-        let activity_timestamps = activity_timestamps.clone();
+        let activity_timestamps = (*activity_timestamps).clone();
         Callback::from(
             move |(session_id, msg_type, timestamp): (Uuid, String, f64)| {
-                let cutoff = js_sys::Date::now() - 300_000.0; // 5 minutes
-                let mut map = (*activity_timestamps).clone();
-                let timestamps = map.entry(session_id).or_default();
-                timestamps.retain(|(t, _)| *t > cutoff);
-                timestamps.push((timestamp, msg_type));
-                activity_timestamps.set(map);
+                activity_timestamps.push(session_id, msg_type, timestamp);
             },
         )
     };
