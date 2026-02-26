@@ -61,7 +61,6 @@ pub fn use_client_websocket() -> UseClientWebSocket {
                     match ws_bridge::yew_client::connect_to::<ClientEndpoint>(&ws_endpoint) {
                         Ok(conn) => {
                             attempt = 0; // Reset on successful connection
-                            shutdown_reason.set(None); // Clear shutdown banner
                             let (_sender, mut receiver) = conn.split();
 
                             while let Some(result) = receiver.recv().await {
@@ -72,6 +71,7 @@ pub fn use_client_websocket() -> UseClientWebSocket {
                                             session_costs: _,
                                         } => {
                                             total_spend.set(total_spend_usd);
+                                            shutdown_reason.set(None);
                                         }
                                         ServerToClient::ServerShutdown {
                                             reason,
@@ -84,7 +84,9 @@ pub fn use_client_websocket() -> UseClientWebSocket {
                                             );
                                             shutdown_reason.set(Some(reason));
                                         }
-                                        _ => {}
+                                        _ => {
+                                            shutdown_reason.set(None);
+                                        }
                                     },
                                     Err(e) => {
                                         log::error!("Client WebSocket error: {:?}", e);
