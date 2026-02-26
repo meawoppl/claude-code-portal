@@ -738,7 +738,7 @@ pub fn dashboard_page() -> Html {
                                     html! {
                                         <>
                                             <span>{ "Esc = nav mode" }</span>
-                                            <span>{ "Shift+Tab = next paused" }</span>
+                                            <span>{ "Shift+Tab = next active" }</span>
                                             if *voice_enabled {
                                                 <span>{ "Ctrl+M = voice" }</span>
                                             }
