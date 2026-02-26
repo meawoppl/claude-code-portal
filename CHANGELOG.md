@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.28
+
+- Move bug report to bottom-right link with bug emoji
+
 ## 1.3.26
 
 - Fix Shift+Tab keyboard hint text
