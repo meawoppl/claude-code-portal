@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.25
+
+- Keep server shutdown banner until first message received from reconnected server
+
 ## 1.3.24
 
 - Remove unused dead code methods from CommandHistory
