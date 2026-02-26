@@ -642,14 +642,6 @@ pub fn dashboard_page() -> Html {
                     <button class="header-button" onclick={go_to_settings.clone()}>
                         { "Settings" }
                     </button>
-                    <a
-                        href="https://github.com/meawoppl/claude-code-portal/issues/new"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="header-button"
-                    >
-                        { "Report a Bug" }
-                    </a>
                     <button class="header-button logout" onclick={do_logout.clone()}>
                         { "Logout" }
                     </button>
@@ -780,9 +772,19 @@ pub fn dashboard_page() -> Html {
                                 }
                             }
                         </div>
-                        if !(*server_version).is_empty() {
-                            <span class="server-version">{ format!("v{}", *server_version) }</span>
-                        }
+                        <div class="hints-right">
+                            <a
+                                href="https://github.com/meawoppl/claude-code-portal/issues/new"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="bug-report-link"
+                            >
+                                { "\u{1f41b}" }
+                            </a>
+                            if !(*server_version).is_empty() {
+                                <span class="server-version">{ format!("v{}", *server_version) }</span>
+                            }
+                        </div>
                     </div>
                 </>
             }
