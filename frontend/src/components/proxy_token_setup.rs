@@ -77,8 +77,8 @@ pub fn proxy_token_setup() -> Html {
         Platform::Windows => ".\\agent-portal.exe login".to_string(),
     };
     let service_command = match *selected_platform {
-        Platform::Linux | Platform::MacOS => "agent-portal install".to_string(),
-        Platform::Windows => ".\\agent-portal.exe install".to_string(),
+        Platform::Linux | Platform::MacOS => "agent-portal service install".to_string(),
+        Platform::Windows => ".\\agent-portal.exe service install".to_string(),
     };
 
     html! {
