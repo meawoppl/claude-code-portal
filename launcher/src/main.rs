@@ -44,8 +44,6 @@ struct Args {
 enum Command {
     /// Authenticate with the backend server via browser
     Login,
-    /// Install agent-portal as a persistent system service
-    Install,
     /// Update agent-portal to the latest version (restarts service if running)
     Update,
     /// Manage the launcher system service
@@ -91,7 +89,6 @@ async fn main() -> anyhow::Result<()> {
     // Handle subcommands before the daemon startup path
     match args.command {
         Some(Command::Login) => return cmd_login(&args).await,
-        Some(Command::Install) => return service::install(),
         Some(Command::Update) => return cmd_update().await,
         Some(Command::Service { action }) => {
             return match action {
@@ -109,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
     if !args.no_update && !service::is_installed() {
         eprintln!();
         eprintln!("  Tip: Install agent-portal as a system service for persistent operation:");
-        eprintln!("    agent-portal install");
+        eprintln!("    agent-portal service install");
         eprintln!();
     }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.37
+
+- Move install under service subcommand (`agent-portal service install`)
+
 ## 1.3.36
 
 - Add agent install setup under Service section in Credentials settings tab
