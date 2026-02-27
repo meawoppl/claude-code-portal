@@ -19,7 +19,7 @@ Create a `.env` file or set these environment variables:
 DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_REDIRECT_URI=https://your-domain.com/auth/google/callback
+GOOGLE_REDIRECT_URI=https://your-domain.com/api/auth/google/callback
 SESSION_SECRET=generate-a-random-32-char-secret-here
 
 # Optional - Server configuration
@@ -27,14 +27,11 @@ SESSION_SECRET=generate-a-random-32-char-secret-here
 # PORT=3000
 # BASE_URL=https://your-domain.com
 
-# Optional - Customize app title
-# APP_TITLE=Claude Code Portal
+# Optional - Customize app title (default: "Agent Portal")
+# APP_TITLE=Agent Portal
 
 # Optional - Google Cloud Speech-to-Text (for server-side voice transcription)
 # GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-
-# Optional - Frontend path (auto-detected)
-# FRONTEND_DIST=frontend/dist
 
 # Optional - Proxy binary path for downloads (auto-detected)
 # PROXY_BINARY_PATH=/app/claude-portal
@@ -46,6 +43,12 @@ SESSION_SECRET=generate-a-random-32-char-secret-here
 # Optional - Message retention (data cleanup)
 # MESSAGE_RETENTION_COUNT=100    # Max messages per session (default: 100)
 # MESSAGE_RETENTION_DAYS=30      # Delete messages older than N days (default: 30, 0=disabled)
+
+# Optional - Session cleanup
+# SESSION_MAX_AGE_DAYS=14        # Delete sessions older than N days (default: 14, 0=disabled)
+
+# Optional - Image size limit for proxies
+# PORTAL_MAX_IMAGE_MB=10         # Max image size in MB to inline (default: 10)
 ```
 
 ## Docker Deployment (Recommended)
@@ -78,7 +81,7 @@ Create a database and note the connection string.
 export DATABASE_URL="postgresql://..."
 export GOOGLE_CLIENT_ID="..."
 export GOOGLE_CLIENT_SECRET="..."
-export GOOGLE_REDIRECT_URI="https://yourdomain.com/auth/google/callback"
+export GOOGLE_REDIRECT_URI="https://yourdomain.com/api/auth/google/callback"
 export SESSION_SECRET="$(openssl rand -base64 32)"
 ```
 
@@ -118,9 +121,10 @@ cargo run -p backend -- [OPTIONS]
 
 Options:
   --dev-mode              Enable development mode (bypasses OAuth)
-  --frontend-dist <PATH>  Path to frontend dist directory [default: frontend/dist]
   -h, --help              Print help
 ```
+
+Note: The frontend is embedded into the backend binary at compile time. There is no separate `--frontend-dist` option.
 
 ## Proxy Command-Line Options
 
@@ -128,13 +132,22 @@ Options:
 claude-portal [OPTIONS] -- [CLAUDE_ARGS]
 
 Options:
-  --backend-url <URL>     Backend WebSocket URL [default: ws://localhost:3000]
-  --session-name <NAME>   Session name [default: hostname]
-  --auth-token <TOKEN>    Authentication token (skips OAuth)
+  --backend-url <URL>     Backend WebSocket URL [default: wss://txcl.io in release]
+  --session-name <NAME>   Session name [default: hostname-timestamp]
+  --auth-token <TOKEN>    Authentication token (skips OAuth flow)
+  --init <TOKEN_URL>      Initialize with setup token from web UI
   --reauth                Force re-authentication
-  --logout                Remove cached credentials
+  --logout                Remove cached credentials and exit
+  --new-session           Start fresh session (don't resume previous)
+  --dev                   Development mode (bypass auth)
+  --shim                  Shim mode for VS Code extension
+  --agent <AGENT>         Agent CLI to use: "claude" (default) or "codex"
+  --no-update             Skip automatic update check
+  --update                Force update from GitHub releases
+  --check-update          Check for updates without installing
+  -v, --verbose           Enable debug-level logging
 
-  # All other arguments are forwarded to claude CLI
+  # All arguments after -- are forwarded to the agent CLI
 ```
 
 ## Admin Setup
@@ -211,8 +224,8 @@ To deploy your own instance, you need Google OAuth credentials.
 2. Click **Create Credentials > OAuth client ID**
 3. Application type: **Web application**
 4. Add authorized redirect URIs:
-   - `https://your-domain.com/auth/google/callback`
-   - `http://localhost:3000/auth/google/callback` (for development)
+   - `https://your-domain.com/api/auth/google/callback`
+   - `http://localhost:3000/api/auth/google/callback` (for development)
 5. Save the **Client ID** and **Client Secret**
 
 ### 4. Configure Environment
@@ -222,7 +235,7 @@ Add to your `.env` file:
 ```bash
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_REDIRECT_URI=https://your-domain.com/auth/google/callback
+GOOGLE_REDIRECT_URI=https://your-domain.com/api/auth/google/callback
 ```
 
 ### Access Control

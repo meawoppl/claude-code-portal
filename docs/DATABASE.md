@@ -21,6 +21,7 @@ Stores authenticated users. Created on first OAuth login.
 | `disabled` | BOOL | No | Account disabled flag |
 | `voice_enabled` | BOOL | No | Voice input access flag |
 | `ban_reason` | TEXT | Yes | Reason for ban (if disabled) |
+| `sound_config` | JSONB | Yes | Per-user sound notification settings |
 
 ### `sessions`
 
@@ -45,6 +46,10 @@ Stores Claude Code proxy sessions. Each session maps to one claude CLI instance.
 | `cache_read_tokens` | INT8 | No | Cache read tokens |
 | `client_version` | VARCHAR(32) | Yes | Proxy CLI version |
 | `input_seq` | INT8 | No | Next input sequence number |
+| `hostname` | VARCHAR(255) | No | Hostname of machine running the session |
+| `launcher_id` | UUID | Yes | Launcher that started this session |
+| `pr_url` | VARCHAR(512) | Yes | GitHub PR URL for current branch |
+| `agent_type` | VARCHAR(16) | No | Agent CLI type (`claude` or `codex`) |
 
 ### `session_members`
 
@@ -209,6 +214,10 @@ Migrations are in `backend/migrations/` and follow the naming convention `YYYY-M
 | `2026-01-18-205949_add_content_hash_to_raw_messages` | Adds content_hash dedup column |
 | `2026-01-18-221922_add_messages_created_at_index` | Adds messages index |
 | `2026-01-20-231629_add_pending_inputs_table` | Adds pending_inputs table |
+| `2026-02-16-171025_add_hostname_and_launcher_id` | Adds hostname and launcher_id to sessions |
+| `2026-02-18-222738_add_pr_url` | Adds pr_url to sessions |
+| `2026-02-19-180649_add_sound_config_to_users` | Adds sound_config to users |
+| `2026-02-21-204646_add_agent_type_to_sessions` | Adds agent_type to sessions |
 
 ## Working with the Schema
 

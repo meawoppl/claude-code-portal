@@ -40,8 +40,8 @@ claude-portal \
 On first run, the CLI displays a verification URL and code:
 
 ```
-To authenticate, visit: https://your-portal.com/device
-Enter code: ABCD-1234
+To authenticate, visit: https://your-portal.com/api/auth/device
+Enter code: ABC-123
 ```
 
 Open the URL in your browser, sign in with Google, and enter the code. Credentials are cached in `~/.config/claude-code-portal/config.json`.
@@ -52,13 +52,22 @@ Open the URL in your browser, sign in with Google, and enter the code. Credentia
 claude-portal [OPTIONS] -- [CLAUDE_ARGS]
 
 Options:
-  --backend-url <URL>     Backend WebSocket URL [default: ws://localhost:3000]
+  --backend-url <URL>     Backend WebSocket URL [default: wss://txcl.io in release]
   --session-name <NAME>   Session name [default: hostname-timestamp]
   --auth-token <TOKEN>    Authentication token (skips OAuth flow)
+  --init <TOKEN_URL>      Initialize with setup token from web UI
   --reauth                Force re-authentication
   --logout                Remove cached credentials and exit
+  --new-session           Start fresh session (don't resume previous)
+  --dev                   Development mode (bypass auth)
+  --shim                  Shim mode for VS Code extension
+  --agent <AGENT>         Agent CLI to use: "claude" (default) or "codex"
+  --no-update             Skip automatic update check
+  --update                Force update from GitHub releases
+  --check-update          Check for updates without installing
+  -v, --verbose           Enable debug-level logging
 
-# All arguments after -- are forwarded to the claude CLI
+# All arguments after -- are forwarded to the agent CLI
 ```
 
 ### Examples
