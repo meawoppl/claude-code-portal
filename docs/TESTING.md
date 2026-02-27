@@ -17,7 +17,6 @@ cd backend && diesel migration run && cd ..
 cd frontend && trunk build --release && cd ..
 
 # Terminal 3: Run backend in dev mode
-export DEV_MODE=true
 cargo run -p backend -- --dev-mode
 
 # Terminal 4: Run proxy
@@ -33,7 +32,7 @@ cargo run -p proxy -- --backend-url ws://localhost:3000
 1. **Get Google OAuth credentials**:
    - Go to https://console.cloud.google.com/apis/credentials
    - Create OAuth 2.0 Client ID
-   - Add redirect URI: `http://localhost:3000/auth/google/callback`
+   - Add redirect URI: `http://localhost:3000/api/auth/google/callback`
    - Copy client ID and secret
 
 2. **Configure .env**:
@@ -72,7 +71,7 @@ cargo run -p backend
 
 # You should see:
 # Listening on 0.0.0.0:3000
-# Serving frontend from: ../frontend/dist
+# Serving embedded frontend assets
 ```
 
 ### Step 4: Run Proxy (First Time)
@@ -89,7 +88,7 @@ cargo run -p proxy -- --backend-url ws://localhost:3000
 
   To authenticate this machine, please visit:
 
-    http://localhost:3000/auth/device
+    http://localhost:3000/api/auth/device
 
   And enter the code:
 
@@ -100,7 +99,7 @@ cargo run -p proxy -- --backend-url ws://localhost:3000
 
 ### Step 5: Authenticate in Browser
 
-1. Open http://localhost:3000/auth/device?user_code=ABC-123
+1. Open http://localhost:3000/api/auth/device?user_code=ABC-123
 2. You'll be redirected to Google OAuth
 3. Sign in with your Google account
 4. Grant permissions
@@ -136,9 +135,10 @@ cat ~/.config/claude-code-portal/config.json
   "sessions": {
     "/path/to/test-project": {
       "user_id": "...",
-      "auth_token": "ccp_...",
+      "auth_token": "eyJhbGciOiJIUzI1NiIs...",
       "user_email": "your.email@gmail.com",
-      "last_used": "..."
+      "last_used": "...",
+      "backend_url": "ws://localhost:3000"
     }
   },
   "preferences": {
@@ -208,12 +208,12 @@ cargo run -p proxy
 
 Make sure your Google OAuth redirect URI exactly matches:
 ```
-http://localhost:3000/auth/google/callback
+http://localhost:3000/api/auth/google/callback
 ```
 
 ### Device code not found
 
-The code expires after 5 minutes. Get a new one by running the proxy again.
+The code expires after 15 minutes. Get a new one by running the proxy again.
 
 ### Config file not created
 

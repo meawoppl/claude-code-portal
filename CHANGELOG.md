@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.40
+
+- Review and update all docs for accuracy across 15 files
+
 ## 1.3.38
 
 - Add "Add machine" button to launch dialog for setting up new launchers

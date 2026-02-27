@@ -1,10 +1,8 @@
 # File Upload Feature Specification
 
-This document outlines how to implement drag-and-drop file uploads from the web dashboard to the Claude Code client running on the user's machine.
+> **Note**: This document was written as a design spec for a WebRTC-based approach. The actual implementation uses chunked WebSocket transfer via `FileUploadStart`/`FileUploadChunk` messages in `shared/src/endpoints.rs`, not WebRTC. The WebRTC approach described below was not implemented.
 
-## Overview
-
-Users should be able to drag and drop files (or use a file picker) in the web dashboard to upload files to their local Claude Code session. All file transfers use WebRTC DataChannels for direct peer-to-peer transfer, bypassing the server entirely. The WebSocket connection is used only for signaling.
+This document outlines how to implement drag-and-drop file uploads from the web dashboard to the Claude Code client running on the user's machine. All file transfers use WebRTC DataChannels for direct peer-to-peer transfer, bypassing the server entirely. The WebSocket connection is used only for signaling.
 
 ## Architecture
 

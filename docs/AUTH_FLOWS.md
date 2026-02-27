@@ -466,7 +466,7 @@ Step 2.3a (DEV MODE): Backend handler (auth.rs:device_login)
 | `backend/src/handlers/device_flow.rs` | `generate_device_code()` | Create 32-char code |
 | `backend/src/handlers/auth.rs` | `device_login()` | Device-specific OAuth |
 | `backend/src/jwt.rs` | `create_proxy_token()` | Generate JWT |
-| `proxy/src/auth.rs` | `device_flow_login()` | CLI device flow logic |
+| `portal-auth/src/lib.rs` | `device_flow_login()` | CLI device flow logic (shared crate) |
 
 ---
 
@@ -626,4 +626,4 @@ GET  /api/auth/device/error     → Error page
 | `SESSION_SECRET` | Production | Cookie signing key |
 | `ALLOWED_EMAIL_DOMAIN` | Optional | Restrict to email domain |
 | `ALLOWED_EMAILS` | Optional | Restrict to specific emails |
-| `DEV_MODE` | Development | Enable dev mode |
+| `--dev-mode` (CLI flag) | Development | Enable dev mode (not an env var) |
