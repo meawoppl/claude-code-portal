@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.4
+
+- Fix multiline user input getting flattened when rendered in message history
+
 ## 2.0.3
 
 - Bake user's PATH into systemd/launchd service so spawned agents can find `claude`
