@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.1
+
+- Version bump to 2.0.1
+
 ## 1.3.49
 
 - Add Linux aarch64 support (CI builds, auto-update, install script)
