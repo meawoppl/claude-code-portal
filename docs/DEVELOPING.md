@@ -127,7 +127,10 @@ claude-code-portal/
 ├── shared/                 # Common types (WASM-compatible)
 │   ├── Cargo.toml
 │   └── src/
-│       └── lib.rs          # ProxyMessage, SessionInfo, etc.
+│       ├── lib.rs          # SessionInfo, SessionStatus, etc.
+│       ├── endpoints.rs    # Typed WS endpoint definitions
+│       ├── api.rs          # API client types
+│       └── proxy_tokens.rs # Proxy token types
 │
 ├── backend/                # Axum server
 │   ├── Cargo.toml
@@ -149,12 +152,26 @@ claude-code-portal/
 │       ├── components/     # Reusable UI components
 │       └── pages/          # Page components
 │
-├── proxy/                  # CLI wrapper
+├── proxy/                  # CLI wrapper (binary: claude-portal)
 │   ├── Cargo.toml
 │   └── src/
 │       ├── main.rs         # Proxy entry point
-│       ├── auth.rs         # Device flow client
-│       └── config.rs       # Credential storage
+│       ├── config.rs       # Credential storage
+│       └── session.rs      # WebSocket session loop
+│
+├── launcher/               # Persistent daemon (binary: agent-portal)
+│   ├── Cargo.toml
+│   └── src/
+│       ├── main.rs         # Daemon entry point
+│       ├── config.rs       # Launcher config (TOML)
+│       ├── connection.rs   # WebSocket connection to backend
+│       ├── process_manager.rs # Child process management
+│       └── service.rs      # systemd/launchd service install
+│
+├── claude-session-lib/     # Library for managing Claude CLI sessions
+├── portal-auth/            # Shared OAuth device flow client
+├── portal-update/          # Shared auto-update logic
+├── cli-tools/              # Developer CLI tools (poke, etc.)
 │
 ├── scripts/                # Helper scripts
 │   ├── dev.sh              # Development environment

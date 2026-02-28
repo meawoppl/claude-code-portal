@@ -33,6 +33,8 @@ pub struct RegisterFields {
     pub launcher_id: Option<Uuid>,
     #[serde(default)]
     pub agent_type: AgentType,
+    #[serde(default)]
+    pub repo_url: Option<String>,
 }
 
 /// Fields for a permission response (shared by server-to-proxy and client-to-server).
@@ -114,6 +116,8 @@ pub enum ProxyToServer {
         git_branch: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none", default)]
         pr_url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        repo_url: Option<String>,
     },
 
     /// Acknowledge receipt of input messages
@@ -168,11 +172,14 @@ pub enum ServerToProxy {
     /// A single chunk of a file upload (base64-encoded, ~1KB decoded)
     FileUploadChunk(FileUploadChunkFields),
 
-    /// Server is shutting down
+    /// Server is shutting down (proxy should reconnect after delay)
     ServerShutdown {
         reason: String,
         reconnect_delay_ms: u64,
     },
+
+    /// Session has been terminated (proxy should NOT reconnect)
+    SessionTerminated { reason: String },
 }
 
 // =============================================================================
@@ -246,6 +253,8 @@ pub enum ServerToClient {
         git_branch: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none", default)]
         pr_url: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        repo_url: Option<String>,
     },
 
     /// User spend data update
@@ -443,6 +452,7 @@ mod tests {
             hostname: None,
             launcher_id: None,
             agent_type: AgentType::Claude,
+            repo_url: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains(r#""type":"Register""#));
@@ -607,5 +617,17 @@ mod tests {
         let _: ServerToProxy = serde_json::from_str(json).unwrap();
         let _: ServerToClient = serde_json::from_str(json).unwrap();
         let _: ServerToLauncher = serde_json::from_str(json).unwrap();
+    }
+
+    #[test]
+    fn wire_compat_session_terminated() {
+        let json = r#"{"type":"SessionTerminated","reason":"Session stopped by user"}"#;
+        let msg: ServerToProxy = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerToProxy::SessionTerminated { reason } => {
+                assert_eq!(reason, "Session stopped by user");
+            }
+            _ => panic!("Wrong variant"),
+        }
     }
 }

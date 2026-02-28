@@ -48,20 +48,12 @@ ClaudeInput::User(UserMessage {
   - `ToolResultBlock` - Results from tool execution
 - `ClaudeOutput::Result` - Session completion with cost/timing info
 
-### WebSocket Protocol (`ProxyMessage`)
+### WebSocket Protocol (Typed Endpoints)
 
-The proxy communicates with the backend using `shared::ProxyMessage`:
+The proxy communicates with the backend using typed per-endpoint enums defined in `shared/src/endpoints.rs`:
 
-```rust
-enum ProxyMessage {
-    Register { session_name, auth_token, working_directory },
-    ClaudeOutput { content: serde_json::Value },  // Raw ClaudeOutput JSON
-    ClaudeInput { content: serde_json::Value },   // Text to send to Claude
-    Heartbeat,
-    Error { message },
-    SessionStatus { status },
-}
-```
+- **`ProxyToServer`**: Messages the proxy sends (Register, SequencedOutput, PermissionRequest, SessionUpdate, InputAck, SessionStatus, Heartbeat)
+- **`ServerToProxy`**: Messages the backend sends (RegisterAck, SequencedInput, ClaudeInput, PermissionResponse, OutputAck, FileUploadStart, FileUploadChunk, ServerShutdown, Heartbeat)
 
 ## Message Flow
 
@@ -79,12 +71,11 @@ enum ProxyMessage {
 3. **Connect to Backend**
    ```
    Proxy → Backend: WebSocket connect to /ws/session
-   Proxy → Backend: ProxyMessage::Register { session_name, auth_token, cwd }
+   Proxy → Backend: ProxyToServer::Register { session_id, session_name, auth_token, working_directory, ... }
    ```
 
-4. **Spawn Claude CLI**
-   - Uses `ClaudeCliBuilder` with flags:
-     - `--print` - Non-interactive mode
+4. **Spawn Claude CLI** (via `claude-session-lib`)
+   - The session library spawns the claude binary with flags:
      - `--output-format stream-json` - JSON output
      - `--input-format stream-json` - JSON input
      - `--verbose` - Required for streaming
@@ -94,80 +85,56 @@ enum ProxyMessage {
 
 **User Input (Frontend → Claude)**:
 ```
-Frontend → Backend: ProxyMessage::ClaudeInput { content: "hello" }
-Backend → Proxy: (via WebSocket)
-Proxy: Constructs ClaudeInput::user_message("hello", session_id)
+Frontend → Backend: ClientToServer::ClaudeInput { content, send_mode }
+Backend: Assigns sequence number, stores in pending_inputs
+Backend → Proxy: ServerToProxy::SequencedInput { session_id, seq, content, send_mode }
 Proxy → Claude: JSON line to stdin
+Proxy → Backend: ProxyToServer::InputAck { session_id, ack_seq }
 ```
 
 **Claude Response (Claude → Frontend)**:
 ```
 Claude → Proxy: JSON line from stdout (ClaudeOutput)
-Proxy: Parses as ClaudeOutput, logs message type
-Proxy → Backend: ProxyMessage::ClaudeOutput { content: raw_json }
-Backend → Frontend: (via WebSocket broadcast)
+Proxy → Backend: ProxyToServer::SequencedOutput { seq, content }
+Backend: Stores in DB, broadcasts to web clients
+Backend → Proxy: ServerToProxy::OutputAck { session_id, ack_seq }
+Backend → Frontend: ServerToClient::ClaudeOutput { content }
 ```
 
 ## Async Task Structure
 
-The proxy uses `claude_codes::AsyncClient` for type-safe communication with Claude CLI.
+The proxy uses `claude-session-lib` for managing the Claude CLI process.
 It spawns concurrent tasks coordinated via channels:
 
 ```rust
-// Create the Claude client
-let builder = ClaudeCliBuilder::new().session_id(&session_id);
-let mut claude_client = AsyncClient::from_builder(builder).await?;
+// Create a Claude session via claude-session-lib
+let claude_config = SessionConfig {
+    session_id,
+    working_directory: PathBuf::from(&config.working_directory),
+    session_name: config.session_name.clone(),
+    resume: config.resume,
+    claude_path: None,
+    extra_args: config.claude_args.clone(),
+    agent_type: config.agent_type,
+};
+let mut claude_session = Session::new(claude_config).await?;
 
-// Channels for coordination
-let (output_tx, output_rx) = mpsc::unbounded_channel::<ClaudeOutput>();
-let (input_tx, input_rx) = mpsc::unbounded_channel::<String>();
-
-// Task 1: Forward Claude outputs to Backend
-tokio::spawn(async {
-    while let Some(output) = output_rx.recv().await {
-        let content = serde_json::to_value(&output)?;
-        ws_write.send(ProxyMessage::ClaudeOutput { content }).await;
-    }
-});
-
-// Task 2: Read WebSocket → Send to input channel
-tokio::spawn(async {
-    while let msg = ws_read.next().await {
-        if let ProxyMessage::ClaudeInput { content } = msg {
-            input_tx.send(text);
-        }
-    }
-});
-
-// Task 3: Read Claude stderr → Log warnings
-tokio::spawn(async {
-    let mut stderr = claude_client.take_stderr();
-    while let line = stderr.read_line().await {
-        warn!("Claude stderr: {}", line);
-    }
-});
-
-// Main loop: Coordinate sends and receives
-loop {
-    tokio::select! {
-        Some(text) = input_rx.recv() => {
-            let input = ClaudeInput::user_message(&text, &session_id);
-            claude_client.send(&input).await?;
-        }
-        result = claude_client.receive() => {
-            output_tx.send(result?);
-        }
-    }
-}
+// Main loop uses tokio::select! to coordinate:
+// - Reading Claude stdout (JSON lines) and forwarding as SequencedOutput
+// - Reading WebSocket messages (SequencedInput) and forwarding to Claude stdin
+// - Heartbeat keepalive
+// - Git branch change detection
 ```
 
 ## Configuration Storage
 
-Config is stored in `~/.config/claude-code-portal/config.json`:
+Config is stored in the OS-standard config directory (via the `directories` crate):
+- Linux: `~/.config/claude-code-portal/config.json`
+- macOS: `~/Library/Application Support/com.anthropic.claude-code-portal/config.json`
 
 ```json
 {
-  "session_auths": {
+  "sessions": {
     "/path/to/project": {
       "user_id": "uuid",
       "auth_token": "jwt-token",
@@ -176,6 +143,18 @@ Config is stored in `~/.config/claude-code-portal/config.json`:
       "backend_url": "wss://server.com",
       "session_prefix": "my-prefix"
     }
+  },
+  "directory_sessions": {
+    "/path/to/project": {
+      "session_id": "uuid",
+      "session_name": "hostname-timestamp",
+      "created_at": "...",
+      "last_used": "..."
+    }
+  },
+  "preferences": {
+    "default_backend_url": null,
+    "auto_open_browser": false
   }
 }
 ```

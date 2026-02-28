@@ -98,6 +98,7 @@ pub async fn register_with_backend(
         hostname: Some(hostname),
         launcher_id: config.launcher_id,
         agent_type: config.agent_type,
+        repo_url: get_repo_url(&config.working_directory),
     });
 
     if let Err(e) = conn.send(&register_msg).await {
@@ -183,6 +184,22 @@ pub fn get_git_branch(cwd: &str) -> Option<String> {
     }
 }
 
+/// Get the GitHub repository URL using the `gh` CLI.
+pub fn get_repo_url(cwd: &str) -> Option<String> {
+    let output = std::process::Command::new("gh")
+        .args(["repo", "view", "--json", "url", "-q", ".url"])
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8(output.stdout)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Events produced by the WebSocket reader for the shim's select loop.
 pub enum WsEvent {
     /// Text input from the portal web UI
@@ -197,6 +214,8 @@ pub enum WsEvent {
     Disconnect,
     /// Server requested graceful shutdown with reconnect delay
     GracefulShutdown(u64),
+    /// Session was terminated by the server (do not reconnect)
+    SessionTerminated,
 }
 
 /// Spawn a WebSocket reader task (raw tokio-tungstenite).
@@ -328,6 +347,11 @@ async fn handle_ws_text_message(
                 reason, reconnect_delay_ms
             );
             let _ = event_tx.send(WsEvent::GracefulShutdown(reconnect_delay_ms));
+            false // stop reading
+        }
+        ServerToProxy::SessionTerminated { reason } => {
+            info!("Session terminated by server: {}", reason);
+            let _ = event_tx.send(WsEvent::SessionTerminated);
             false // stop reading
         }
         _ => true,

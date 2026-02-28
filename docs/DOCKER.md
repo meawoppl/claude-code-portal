@@ -32,7 +32,7 @@ Create a `.env` file with your configuration:
 DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_REDIRECT_URI=https://your-domain.com/auth/google/callback
+GOOGLE_REDIRECT_URI=https://your-domain.com/api/auth/google/callback
 SESSION_SECRET=generate-a-random-32-char-secret-here
 
 # Optional - Server configuration
@@ -40,14 +40,20 @@ SESSION_SECRET=generate-a-random-32-char-secret-here
 # PORT=3000
 # BASE_URL=https://your-domain.com
 
-# Optional - Customize app title shown in browser
-# APP_TITLE=Claude Code Portal
+# Optional - Customize app title shown in browser (default: "Agent Portal")
+# APP_TITLE=Agent Portal
 
 # Optional - Google Cloud Speech-to-Text (for server-side voice transcription)
 # GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 
 # Optional - Path to proxy binary for downloads (auto-detected if not set)
 # PROXY_BINARY_PATH=/app/claude-portal
+
+# Optional - Session cleanup
+# SESSION_MAX_AGE_DAYS=14        # Delete sessions older than N days (default: 14, 0=disabled)
+
+# Optional - Image size limit for proxies
+# PORTAL_MAX_IMAGE_MB=10         # Max image size in MB to inline (default: 10)
 
 # Optional - Access control (restrict who can sign in)
 # ALLOWED_EMAIL_DOMAIN=yourcompany.com
@@ -77,7 +83,7 @@ docker run -d \
   -e DATABASE_URL="postgresql://..." \
   -e GOOGLE_CLIENT_ID="..." \
   -e GOOGLE_CLIENT_SECRET="..." \
-  -e GOOGLE_REDIRECT_URI="https://your-domain.com/auth/google/callback" \
+  -e GOOGLE_REDIRECT_URI="https://your-domain.com/api/auth/google/callback" \
   -e SESSION_SECRET="$(openssl rand -base64 32)" \
   claude-code-portal-backend
 ```
@@ -173,7 +179,7 @@ docker buildx build \
 | `DATABASE_URL` | PostgreSQL connection string |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URI` | OAuth callback URL (e.g., `https://your-domain.com/auth/google/callback`) |
+| `GOOGLE_REDIRECT_URI` | OAuth callback URL (e.g., `https://your-domain.com/api/auth/google/callback`) |
 | `SESSION_SECRET` | Session encryption key (32+ chars recommended) |
 
 ### Optional
@@ -183,13 +189,15 @@ docker buildx build \
 | `HOST` | `0.0.0.0` | Bind address |
 | `PORT` | `3000` | Bind port |
 | `BASE_URL` | Auto-detected | Public URL for OAuth callbacks |
-| `APP_TITLE` | `Claude Code Sessions` | Title shown in browser tab |
+| `APP_TITLE` | `Agent Portal` | Title shown in browser tab |
 | `GOOGLE_APPLICATION_CREDENTIALS` | *(none)* | Path to GCP service account JSON for Speech-to-Text |
 | `PROXY_BINARY_PATH` | Auto-detected | Path to `claude-portal` binary for downloads |
 | `ALLOWED_EMAIL_DOMAIN` | *(none)* | Restrict sign-in to emails from this domain |
 | `ALLOWED_EMAILS` | *(none)* | Comma-separated list of allowed email addresses |
 | `MESSAGE_RETENTION_COUNT` | `100` | Maximum messages to keep per session |
 | `MESSAGE_RETENTION_DAYS` | `30` | Delete messages older than N days (0 = disabled) |
+| `SESSION_MAX_AGE_DAYS` | `14` | Delete sessions older than N days (0 = disabled) |
+| `PORTAL_MAX_IMAGE_MB` | `10` | Max image size in MB for proxy inlining |
 
 ## Troubleshooting
 

@@ -54,7 +54,8 @@ pub struct SessionViewProps {
     pub on_cost_change: Callback<(Uuid, f64)>,
     pub on_connected_change: Callback<(Uuid, bool)>,
     pub on_message_sent: Callback<Uuid>,
-    pub on_branch_change: Callback<(Uuid, Option<String>, Option<String>)>,
+    #[allow(clippy::type_complexity)]
+    pub on_branch_change: Callback<(Uuid, Option<String>, Option<String>, Option<String>)>,
     #[prop_or_default]
     pub on_activity: Callback<(Uuid, String, f64)>,
     #[prop_or(false)]
@@ -80,7 +81,7 @@ pub enum SessionViewMsg {
     DenyPermission,
     PermissionSelectUp,
     PermissionSelectDown,
-    BranchChanged(Option<String>, Option<String>),
+    BranchChanged(Option<String>, Option<String>, Option<String>),
     PermissionConfirm,
     PermissionSelectAndConfirm(usize),
     HistoryUp,
@@ -156,6 +157,8 @@ pub struct SessionView {
     upload_files: Vec<(String, u64)>,
     drag_hover: bool,
     active_tasks: HashMap<String, TaskEntry>,
+    /// Maps tool_use_id → task_id for fallback task completion via tool_result
+    tool_use_to_task: HashMap<String, String>,
     tasks_panel_open: bool,
     #[allow(dead_code)]
     task_tick_handle: Option<Interval>,
@@ -240,6 +243,7 @@ impl Component for SessionView {
             upload_files: Vec::new(),
             drag_hover: false,
             active_tasks: HashMap::new(),
+            tool_use_to_task: HashMap::new(),
             tasks_panel_open: false,
             task_tick_handle: None,
             tab_anim: None,
@@ -319,6 +323,7 @@ impl Component for SessionView {
                 }
                 let session_id = ctx.props().session.id;
                 self.active_tasks.clear();
+                self.tool_use_to_task.clear();
                 for msg in &messages {
                     let mut msg_type = "unknown".to_string();
                     if let Ok(claude_msg) =
@@ -362,6 +367,8 @@ impl Component for SessionView {
                                         last_tool_name: None,
                                     },
                                 );
+                                self.tool_use_to_task
+                                    .insert(task.tool_use_id.clone(), task.task_id.clone());
                             } else if let Some(progress) = sys.as_task_progress() {
                                 let ts = js_sys::Date::parse(&msg.created_at);
                                 let started_at = if ts.is_finite() { ts } else { 0.0 };
@@ -387,21 +394,71 @@ impl Component for SessionView {
                                 entry.total_tokens = Some(progress.usage.total_tokens);
                             } else if let Some(notif) = sys.as_task_notification() {
                                 msg_type = "task_end".to_string();
-                                if let Some(entry) = self.active_tasks.get_mut(&notif.task_id) {
-                                    entry.status = match notif.status {
-                                        shared::CCTaskStatus::Failed => TaskStatus::Failed,
-                                        _ => TaskStatus::Completed,
-                                    };
-                                    let ts = js_sys::Date::parse(&msg.created_at);
-                                    entry.completed_at =
-                                        Some(if ts.is_finite() { ts } else { 0.0 });
-                                    if let Some(usage) = &notif.usage {
-                                        entry.duration_ms = Some(usage.duration_ms);
-                                        entry.tool_uses = Some(usage.tool_uses);
-                                        entry.total_tokens = Some(usage.total_tokens);
+                                let ts = js_sys::Date::parse(&msg.created_at);
+                                let completed_at = if ts.is_finite() { ts } else { 0.0 };
+                                let entry = self
+                                    .active_tasks
+                                    .entry(notif.task_id.clone())
+                                    .or_insert_with(|| TaskEntry {
+                                        task_type: "local_agent".to_string(),
+                                        description: notif.summary.clone(),
+                                        started_at: completed_at,
+                                        status: TaskStatus::Running,
+                                        duration_ms: None,
+                                        tool_uses: None,
+                                        total_tokens: None,
+                                        completed_at: None,
+                                        current_activity: None,
+                                        last_tool_name: None,
+                                    });
+                                entry.status = match notif.status {
+                                    shared::CCTaskStatus::Completed => TaskStatus::Completed,
+                                    shared::CCTaskStatus::Failed => TaskStatus::Failed,
+                                };
+                                entry.completed_at = Some(completed_at);
+                                if let Some(usage) = &notif.usage {
+                                    entry.duration_ms = Some(usage.duration_ms);
+                                    entry.tool_uses = Some(usage.tool_uses);
+                                    entry.total_tokens = Some(usage.total_tokens);
+                                }
+                            }
+                        }
+                        // Fallback: detect task completion from tool_result in user messages
+                        if let shared::ClaudeOutput::User(user_msg) = &claude_msg {
+                            for block in &user_msg.message.content {
+                                if let shared::ContentBlock::ToolResult(tr) = block {
+                                    if let Some(task_id) =
+                                        self.tool_use_to_task.get(&tr.tool_use_id)
+                                    {
+                                        if let Some(entry) = self.active_tasks.get_mut(task_id) {
+                                            if entry.status == TaskStatus::Running {
+                                                entry.status = TaskStatus::Completed;
+                                                let ts = js_sys::Date::parse(&msg.created_at);
+                                                entry.completed_at =
+                                                    Some(if ts.is_finite() { ts } else { 0.0 });
+                                            }
+                                        }
                                     }
                                 }
-                                // If we never saw task_started (truncated), just ignore the notification
+                            }
+                        }
+                        // Fallback: detect task completion from tool_result in user messages
+                        if let shared::ClaudeOutput::User(user_msg) = &claude_msg {
+                            for block in &user_msg.message.content {
+                                if let shared::ContentBlock::ToolResult(tr) = block {
+                                    if let Some(task_id) =
+                                        self.tool_use_to_task.get(&tr.tool_use_id)
+                                    {
+                                        if let Some(entry) = self.active_tasks.get_mut(task_id) {
+                                            if entry.status == TaskStatus::Running {
+                                                entry.status = TaskStatus::Completed;
+                                                let ts = js_sys::Date::parse(&msg.created_at);
+                                                entry.completed_at =
+                                                    Some(if ts.is_finite() { ts } else { 0.0 });
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     } else if let Ok(parsed) =
@@ -526,11 +583,11 @@ impl Component for SessionView {
                     .emit((session_id, is_awaiting));
                 false
             }
-            SessionViewMsg::BranchChanged(branch, pr_url) => {
+            SessionViewMsg::BranchChanged(branch, pr_url, repo_url) => {
                 let session_id = ctx.props().session.id;
                 ctx.props()
                     .on_branch_change
-                    .emit((session_id, branch, pr_url));
+                    .emit((session_id, branch, pr_url, repo_url));
                 false
             }
             SessionViewMsg::HistoryUp => {
@@ -989,9 +1046,9 @@ impl SessionView {
                     .send_message(SessionViewMsg::PermissionRequest(perm));
                 false
             }
-            WsEvent::BranchChanged(branch, pr_url) => {
+            WsEvent::BranchChanged(branch, pr_url, repo_url) => {
                 ctx.link()
-                    .send_message(SessionViewMsg::BranchChanged(branch, pr_url));
+                    .send_message(SessionViewMsg::BranchChanged(branch, pr_url, repo_url));
                 false
             }
         }
@@ -1074,6 +1131,8 @@ impl SessionView {
                                 last_tool_name: None,
                             },
                         );
+                        self.tool_use_to_task
+                            .insert(task.tool_use_id.clone(), task.task_id.clone());
                         self.ensure_task_tick(ctx);
                         // Bright pulse when the first task appears
                         if was_empty {
@@ -1127,8 +1186,8 @@ impl SessionView {
                                 last_tool_name: None,
                             });
                         entry.status = match notif.status {
+                            shared::CCTaskStatus::Completed => TaskStatus::Completed,
                             shared::CCTaskStatus::Failed => TaskStatus::Failed,
-                            _ => TaskStatus::Completed,
                         };
                         entry.completed_at = Some(js_sys::Date::now());
                         if let Some(usage) = &notif.usage {
@@ -1166,6 +1225,39 @@ impl SessionView {
                             gloo::timers::future::TimeoutFuture::new(600).await;
                             link.send_message(SessionViewMsg::ClearCostFlash);
                         });
+                    }
+                }
+                shared::ClaudeOutput::User(user_msg) => {
+                    // Fallback: detect task completion from tool_result content blocks.
+                    // In --print mode, Claude CLI doesn't emit task_notification,
+                    // so we infer completion when we see a tool_result matching a tracked task.
+                    for block in &user_msg.message.content {
+                        if let shared::ContentBlock::ToolResult(tr) = block {
+                            if let Some(task_id) =
+                                self.tool_use_to_task.get(&tr.tool_use_id).cloned()
+                            {
+                                if let Some(entry) = self.active_tasks.get_mut(&task_id) {
+                                    if entry.status == TaskStatus::Running {
+                                        entry.status = TaskStatus::Completed;
+                                        entry.completed_at = Some(js_sys::Date::now());
+                                        // If no running tasks remain, start departure
+                                        let still_running = self
+                                            .active_tasks
+                                            .values()
+                                            .any(|t| t.status == TaskStatus::Running);
+                                        if !still_running {
+                                            self.tab_anim = Some("departing");
+                                            self.tab_departing = true;
+                                            let link = ctx.link().clone();
+                                            spawn_local(async move {
+                                                gloo::timers::future::TimeoutFuture::new(500).await;
+                                                link.send_message(SessionViewMsg::FinishDeparture);
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 _ => {}

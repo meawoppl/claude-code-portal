@@ -22,8 +22,12 @@
 
 - **Config file**: Launcher reads `~/.config/claude-portal/launcher.toml`;
   CLI args override config values.
-- **Install script**: `launcher/install.sh` detects OS, builds if needed,
-  creates config template, installs systemd/launchd service.
+- **Service management**: `agent-portal service install` / `uninstall` / `status`
+  subcommands manage systemd (Linux) and launchd (macOS) services.
 - **Device flow auth**: Shared `portal-auth` crate provides browser-based
   OAuth device flow. Launcher authenticates automatically on first run
-  and saves the token to config.
+  and saves the token to config. Also available via `agent-portal login`.
+- **Self-update**: `agent-portal update` downloads latest from GitHub releases
+  and restarts the service if running.
+- **Expected sessions**: Config supports `[[sessions]]` entries to auto-launch
+  sessions on startup with per-session `agent_type` and `claude_args`.
