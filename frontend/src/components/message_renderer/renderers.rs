@@ -10,6 +10,12 @@ use shared::ToolResultContent;
 use wasm_bindgen::JsCast;
 use yew::prelude::*;
 
+/// Convert single newlines to markdown hard breaks (trailing two spaces)
+/// so that user-typed line breaks are preserved when rendered as markdown.
+fn preserve_user_newlines(text: &str) -> String {
+    text.replace('\n', "  \n")
+}
+
 // --- Message renderers ---
 
 pub fn render_assistant_group(messages: &[String]) -> Html {
@@ -107,7 +113,7 @@ pub fn render_user_message(msg: &UserMessage, current_user_id: Option<&str>) -> 
                     <span class="message-type-badge user">{ &label }</span>
                 </div>
                 <div class="message-body">
-                    <div class="user-text">{ render_markdown(text) }</div>
+                    <div class="user-text">{ render_markdown(&preserve_user_newlines(text)) }</div>
                 </div>
             </div>
         }
@@ -142,7 +148,7 @@ pub fn render_user_message(msg: &UserMessage, current_user_id: Option<&str>) -> 
                         <span class="message-type-badge user">{ &label }</span>
                     </div>
                     <div class="message-body">
-                        <div class="user-text">{ render_markdown(&text_content) }</div>
+                        <div class="user-text">{ render_markdown(&preserve_user_newlines(&text_content)) }</div>
                     </div>
                 </div>
             }
