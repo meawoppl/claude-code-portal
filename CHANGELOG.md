@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.44
+
+- Break up settings.rs into sub-components (TokensPanel, SessionsPanel, SoundsPanel)
+
 ## 1.3.43
 
 - Update claude-codes to 2.1.51 (typed enums for message fields)
