@@ -157,14 +157,14 @@ For environments where you can't easily copy an init URL, the proxy supports OAu
 │  1. No cached credentials found                                     │
 │                     │                                                │
 │                     ▼                                                │
-│  2. POST /auth/device/code                                          │
+│  2. POST /api/auth/device/code                                          │
 │     Response: { device_code, user_code, verification_uri }          │
 │                     │                                                │
 │                     ▼                                                │
 │  3. Display to user:                                                │
 │     ┌─────────────────────────────────────────────┐                 │
 │     │  To authenticate, visit:                    │                 │
-│     │  https://server.com/auth/device             │                 │
+│     │  https://server.com/api/auth/device          │                 │
 │     │                                             │                 │
 │     │  And enter code: ABC-123                    │                 │
 │     └─────────────────────────────────────────────┘                 │
@@ -196,12 +196,12 @@ For environments where you can't easily copy an init URL, the proxy supports OAu
 │                         CLI (polling)                                │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│  8. POST /auth/device/poll { device_code }                          │
+│  8. POST /api/auth/device/poll { device_code }                          │
 │     Response: { status: "pending" }                                 │
 │     ... (every 5 seconds)                                           │
 │                     │                                                │
 │                     ▼                                                │
-│  9. POST /auth/device/poll { device_code }                          │
+│  9. POST /api/auth/device/poll { device_code }                          │
 │     Response: { status: "complete", access_token, user_email }      │
 │                     │                                                │
 │                     ▼                                                │

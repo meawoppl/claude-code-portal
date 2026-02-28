@@ -301,15 +301,17 @@ Issues to open on the shared repository to make this easier:
 
 ## Implementation Phases
 
-### Phase 1: Foundation (Low Risk)
+### Phase 1: Foundation (Low Risk) -- COMPLETED
 
-1. Add `AgentType` enum to `shared`
-2. Add `agent_type` field to `Register` and `SessionInfo`
-3. Database migration for `agent_type` column
+All Phase 1 items have been implemented:
+
+1. `AgentType` enum in `shared/src/lib.rs`
+2. `agent_type` field on `RegisterFields` and `SessionInfo`
+3. Database migration `2026-02-21-204646_add_agent_type_to_sessions`
 4. Backend stores and returns `agent_type`
-5. Frontend displays agent type badge on session pills (e.g., "Claude" vs "Codex" indicator)
-
-No functional changes — existing Claude sessions default to `AgentType::Claude`.
+5. Frontend displays agent type on sessions
+6. Proxy supports `--agent codex` CLI flag
+7. Launcher supports per-session `agent_type` in config
 
 ### Phase 2: Codex Rendering (Frontend Only)
 
@@ -322,7 +324,7 @@ Can be developed and tested with static fixture data before the proxy supports C
 
 ### Phase 3: Codex Proxy Driver
 
-1. Add `codex-codes` dependency to workspace
+1. `codex-codes` dependency already in workspace (v0.101.0)
 2. Implement `CodexDriver` in `claude-session-lib` (or a new `codex-session-lib`)
 3. Process management: spawn `codex --json`, parse JSONL stdout
 4. Handle Codex's request/response model vs Claude's streaming model

@@ -91,6 +91,8 @@ pub struct SessionConfig {
     pub session_name: String,
     pub resume: bool,
     pub claude_path: Option<PathBuf>,
+    pub extra_args: Vec<String>,
+    pub agent_type: AgentType,
 }
 ```
 
