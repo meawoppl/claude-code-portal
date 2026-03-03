@@ -640,21 +640,29 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     if let Some(ref cv) = session.client_version {
                         if !props.server_version.is_empty() {
                             let staleness = version_staleness(cv, &props.server_version);
-                            let badge_class = match staleness {
-                                VersionStaleness::Current => "",
-                                VersionStaleness::PatchBehind => "version-patch",
-                                VersionStaleness::MinorBehind => "version-minor",
-                                VersionStaleness::MajorBehind => "version-major",
+                            let (badge_class, tooltip) = match staleness {
+                                VersionStaleness::Current => (
+                                    "version-current",
+                                    format!("v{} — up to date", cv),
+                                ),
+                                VersionStaleness::PatchBehind => (
+                                    "version-patch",
+                                    format!("v{} → v{} (patch update available)", cv, props.server_version),
+                                ),
+                                VersionStaleness::MinorBehind => (
+                                    "version-minor",
+                                    format!("v{} → v{} (minor update available)", cv, props.server_version),
+                                ),
+                                VersionStaleness::MajorBehind => (
+                                    "version-major",
+                                    format!("v{} → v{} (major update available)", cv, props.server_version),
+                                ),
                             };
-                            if !badge_class.is_empty() {
-                                html! {
-                                    <span class={classes!("pill-version-badge", badge_class)}
-                                        title={format!("Client v{} (server v{})", cv, props.server_version)}>
-                                        { format!("v{}", cv) }
-                                    </span>
-                                }
-                            } else {
-                                html! {}
+                            html! {
+                                <span class={classes!("pill-version-badge", badge_class)}
+                                    title={tooltip}>
+                                    { format!("v{}", cv) }
+                                </span>
                             }
                         } else {
                             html! {}
