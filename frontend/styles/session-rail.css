@@ -307,6 +307,12 @@
     flex-shrink: 0;
 }
 
+.pill-version-badge.version-current {
+    color: var(--text-secondary);
+    background: transparent;
+    opacity: 0.5;
+}
+
 .pill-version-badge.version-patch {
     color: #e0af68;
     background: rgba(224, 175, 104, 0.15);
