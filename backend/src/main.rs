@@ -441,6 +441,8 @@ async fn main() -> anyhow::Result<()> {
         // Serve embedded frontend assets with SPA fallback
         .fallback(axum::routing::get(embedded_assets::serve_embedded_frontend));
 
+    // Pre-compress all embedded assets at startup (brotli + gzip)
+    embedded_assets::init_cache();
     tracing::info!("Serving embedded frontend assets");
 
     // Add CORS and cookie management
