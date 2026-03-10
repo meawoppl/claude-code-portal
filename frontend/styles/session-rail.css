@@ -137,12 +137,24 @@
     text-overflow: ellipsis;
 }
 
+.pill-hostname-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    overflow: hidden;
+}
+
 .pill-hostname {
     font-size: 0.7rem;
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.pill-hostname-row .pill-version-badge {
+    font-size: 0.55rem;
+    flex-shrink: 0;
 }
 
 .pill-branch {

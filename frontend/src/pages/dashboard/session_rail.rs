@@ -577,6 +577,49 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             None
         };
 
+        // Build version badge (rendered inline with hostname).
+        let version_badge = if let Some(ref cv) = session.client_version {
+            if !props.server_version.is_empty() {
+                let staleness = version_staleness(cv, &props.server_version);
+                let (badge_class, tooltip) = match staleness {
+                    VersionStaleness::Current => {
+                        ("version-current", format!("v{} — up to date", cv))
+                    }
+                    VersionStaleness::PatchBehind => (
+                        "version-patch",
+                        format!(
+                            "v{} → v{} (patch update available)",
+                            cv, props.server_version
+                        ),
+                    ),
+                    VersionStaleness::MinorBehind => (
+                        "version-minor",
+                        format!(
+                            "v{} → v{} (minor update available)",
+                            cv, props.server_version
+                        ),
+                    ),
+                    VersionStaleness::MajorBehind => (
+                        "version-major",
+                        format!(
+                            "v{} → v{} (major update available)",
+                            cv, props.server_version
+                        ),
+                    ),
+                };
+                html! {
+                    <span class={classes!("pill-version-badge", badge_class)}
+                        title={tooltip}>
+                        { format!("v{}", cv) }
+                    </span>
+                }
+            } else {
+                html! {}
+            }
+        } else {
+            html! {}
+        };
+
         // Build sparkline. `render_time` ticks every 100 ms; view_for() does
         // all the windowing and range-pairing at draw time.
         let sparkline = {
@@ -620,7 +663,10 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                 </span>
                 <span class="pill-name" title={session.session_name.clone()}>
                     <span class="pill-folder">{ folder }</span>
-                    <span class="pill-hostname">{ hostname }</span>
+                    <span class="pill-hostname-row">
+                        <span class="pill-hostname">{ hostname }</span>
+                        { version_badge }
+                    </span>
                     {
                         if let Some(ref branch) = session.git_branch {
                             html! { <span class="pill-branch" title={branch.clone()}>{ branch }</span> }
@@ -632,41 +678,6 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                 {
                     if session.agent_type == shared::AgentType::Codex {
                         html! { <span class="pill-agent-badge codex">{ "Codex" }</span> }
-                    } else {
-                        html! {}
-                    }
-                }
-                {
-                    if let Some(ref cv) = session.client_version {
-                        if !props.server_version.is_empty() {
-                            let staleness = version_staleness(cv, &props.server_version);
-                            let (badge_class, tooltip) = match staleness {
-                                VersionStaleness::Current => (
-                                    "version-current",
-                                    format!("v{} — up to date", cv),
-                                ),
-                                VersionStaleness::PatchBehind => (
-                                    "version-patch",
-                                    format!("v{} → v{} (patch update available)", cv, props.server_version),
-                                ),
-                                VersionStaleness::MinorBehind => (
-                                    "version-minor",
-                                    format!("v{} → v{} (minor update available)", cv, props.server_version),
-                                ),
-                                VersionStaleness::MajorBehind => (
-                                    "version-major",
-                                    format!("v{} → v{} (major update available)", cv, props.server_version),
-                                ),
-                            };
-                            html! {
-                                <span class={classes!("pill-version-badge", badge_class)}
-                                    title={tooltip}>
-                                    { format!("v{}", cv) }
-                                </span>
-                            }
-                        } else {
-                            html! {}
-                        }
                     } else {
                         html! {}
                     }
