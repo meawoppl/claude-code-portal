@@ -582,21 +582,29 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             if !props.server_version.is_empty() {
                 let staleness = version_staleness(cv, &props.server_version);
                 let (badge_class, tooltip) = match staleness {
-                    VersionStaleness::Current => (
-                        "version-current",
-                        format!("v{} — up to date", cv),
-                    ),
+                    VersionStaleness::Current => {
+                        ("version-current", format!("v{} — up to date", cv))
+                    }
                     VersionStaleness::PatchBehind => (
                         "version-patch",
-                        format!("v{} → v{} (patch update available)", cv, props.server_version),
+                        format!(
+                            "v{} → v{} (patch update available)",
+                            cv, props.server_version
+                        ),
                     ),
                     VersionStaleness::MinorBehind => (
                         "version-minor",
-                        format!("v{} → v{} (minor update available)", cv, props.server_version),
+                        format!(
+                            "v{} → v{} (minor update available)",
+                            cv, props.server_version
+                        ),
                     ),
                     VersionStaleness::MajorBehind => (
                         "version-major",
-                        format!("v{} → v{} (major update available)", cv, props.server_version),
+                        format!(
+                            "v{} → v{} (major update available)",
+                            cv, props.server_version
+                        ),
                     ),
                 };
                 html! {
