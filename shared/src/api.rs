@@ -205,8 +205,7 @@ pub struct CreateScheduledTaskRequest {
     pub cron_expression: String,
     #[serde(default = "default_timezone")]
     pub timezone: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hostname: Option<String>,
+    pub hostname: String,
     pub working_directory: String,
     pub prompt: String,
     #[serde(default)]
@@ -235,7 +234,7 @@ pub struct UpdateScheduledTaskRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timezone: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hostname: Option<Option<String>>,
+    pub hostname: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_directory: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -257,7 +256,7 @@ pub struct ScheduledTaskInfo {
     pub name: String,
     pub cron_expression: String,
     pub timezone: String,
-    pub hostname: Option<String>,
+    pub hostname: String,
     pub working_directory: String,
     pub prompt: String,
     pub claude_args: Vec<String>,
@@ -266,7 +265,6 @@ pub struct ScheduledTaskInfo {
     pub max_runtime_minutes: i32,
     pub last_session_id: Option<uuid::Uuid>,
     pub last_run_at: Option<String>,
-    pub next_run_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }

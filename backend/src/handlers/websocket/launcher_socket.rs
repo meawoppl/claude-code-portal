@@ -171,7 +171,7 @@ pub async fn handle_launcher_socket(socket: WebSocket, app_state: Arc<AppState>)
 
         let task_configs: Vec<ScheduledTaskConfig> = tasks
             .iter()
-            .filter(|t| t.hostname.is_none() || t.hostname.as_deref() == Some(&launcher_hostname))
+            .filter(|t| t.hostname == launcher_hostname)
             .map(|t| ScheduledTaskConfig {
                 id: t.id,
                 name: t.name.clone(),
