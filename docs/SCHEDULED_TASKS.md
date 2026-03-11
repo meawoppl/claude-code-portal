@@ -27,11 +27,9 @@ The backend stores task definitions for persistence and UI display, but the laun
 
 ### Launcher Pinning
 
-A user may have launchers on multiple hostnames (work laptop, CI server, home machine). Each scheduled task can be **pinned to a specific hostname** via the `hostname` column, or left `NULL` to run on any connected launcher.
+A user may have launchers on multiple hostnames (work laptop, CI server, home machine). Each scheduled task is **pinned to a specific hostname** via the required `hostname` column. This ensures exactly one launcher owns each task — no distributed coordination needed, no risk of duplicate runs.
 
-When the backend sends `ScheduleSync`, it filters tasks:
-- Tasks with `hostname = NULL` → sent to all of the user's launchers (first one to fire wins)
-- Tasks with `hostname = 'my-laptop'` → sent only to the launcher registered with that hostname
+When the backend sends `ScheduleSync`, it filters tasks to only include those matching the launcher's hostname.
 
 If the pinned launcher is offline when a tick is due, the task is simply skipped (same as overlap policy). The next tick fires normally when the launcher reconnects.
 
@@ -41,10 +39,10 @@ Cron expressions default to **UTC**. Each task has an optional `timezone` field 
 
 UTC is the default because:
 - It avoids DST ambiguity (no skipped or doubled runs at clock changes)
-- Server logs and `next_run_at` are always in UTC for consistency
+- Server logs and timestamps are always in UTC for consistency
 - Users can override per-task when local time matters (e.g. "every weekday at 9am Eastern")
 
-The frontend displays `next_run_at` in the user's browser timezone for readability.
+The frontend can compute the next fire time client-side from `cron_expression` + `timezone` for display.
 
 ## Data Model
 
@@ -57,7 +55,7 @@ CREATE TABLE scheduled_tasks (
     name            VARCHAR(255) NOT NULL,
     cron_expression VARCHAR(128) NOT NULL,       -- standard 5-field cron
     timezone        VARCHAR(64) NOT NULL DEFAULT 'UTC',  -- IANA timezone (e.g. "America/New_York")
-    hostname        VARCHAR(255),                -- pin to specific launcher; NULL = any launcher
+    hostname        VARCHAR(255) NOT NULL,        -- pin to specific launcher
     working_directory TEXT NOT NULL,
     prompt          TEXT NOT NULL,                -- initial message sent to agent
     claude_args     JSONB NOT NULL DEFAULT '[]',  -- extra CLI args
@@ -66,7 +64,6 @@ CREATE TABLE scheduled_tasks (
     max_runtime_minutes INTEGER NOT NULL DEFAULT 30,
     last_session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,  -- current long-lived session
     last_run_at     TIMESTAMP,
-    next_run_at     TIMESTAMP,
     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -211,23 +208,27 @@ loop {
 
 ### Prompt Injection
 
-After the session connects and Claude is ready, the launcher needs to send the task's prompt. The launcher sends a `LauncherToServer::InjectInput { session_id, content }` message, which flows through the existing input pipeline:
+After the session connects and Claude is ready, the launcher needs to send the task's prompt. The launcher sends a `LauncherToServer::InjectInput { session_id, content }` message, which flows through the sequenced input pipeline:
 
 ```
 Launcher ─── InjectInput { session_id, content } ──→ Backend
                                                         │
-                                                        ├─ Saves to messages table (type: "human")
-                                                        ├─ Broadcasts to connected web clients (ServerToClient::ClaudeOutput)
+                                                        ├─ Sets last_input_sender to "Scheduler"
+                                                        ├─ Increments session input_seq
+                                                        ├─ Stores in pending_inputs table
                                                         │
                                                         └─ Forwards as ServerToProxy::SequencedInput ──→ Proxy ──→ Claude stdin
+                                                                                                                      │
+                                                              Web clients see the prompt when proxy echoes it back ◄───┘
 ```
 
 This ensures the prompt is:
-1. **Logged** — visible in the session message history, so the frontend shows what triggered each run
-2. **Sequenced** — uses the same sequence numbering as user-typed messages, preventing ordering bugs
-3. **Observable** — web clients watching the session see the prompt arrive in real time
+1. **Sequenced** — uses the same sequence numbering as user-typed messages, preventing ordering bugs
+2. **Reliably delivered** — stored in `pending_inputs` so the proxy can request replay if it reconnects
+3. **Observable** — web clients watching the session see the prompt when the proxy echoes it back as output
+4. **Attributed** — the sender badge shows "Scheduler" in the frontend, distinguishing scheduled prompts from user-typed ones
 
-The alternative (writing directly to proxy stdin) was rejected because it bypasses message logging and makes scheduled runs invisible in the session view.
+The alternative (writing directly to proxy stdin) was rejected because it bypasses message sequencing and makes scheduled runs invisible in the session view.
 
 New protocol message:
 
@@ -238,7 +239,7 @@ LauncherToServer::InjectInput {
 }
 ```
 
-The backend handler for `InjectInput` is identical to the existing `ClientToServer::ClaudeInput` handler — it sequences the message, stores it, and forwards it to the proxy.
+The backend handler uses the same sequenced input pipeline as `ClientToServer::ClaudeInput` — it increments the session's `input_seq`, stores the message in `pending_inputs`, and sends `ServerToProxy::SequencedInput` to the proxy.
 
 ### No Local Persistence
 
@@ -266,10 +267,7 @@ If a `SessionNotFound` retry creates a replacement session, the launcher reports
 
 ### Schedule Sync
 
-When a scheduled task is created/updated/deleted via API, the backend sends `ScheduleSync` to the user's connected launcher(s). Tasks are filtered per-launcher:
-
-- Tasks with `hostname = NULL` → included in every launcher's sync
-- Tasks with `hostname = 'foo'` → only included in the launcher registered as `foo`
+When a scheduled task is created/updated/deleted via API, the backend sends `ScheduleSync` to the user's connected launcher(s). Each launcher only receives tasks pinned to its hostname.
 
 The launcher replaces its task set and recomputes timers, preserving `running_session` state for tasks that are currently executing.
 
@@ -278,10 +276,10 @@ On launcher connect, the backend also sends an initial `ScheduleSync` with the u
 ### Run Reporting
 
 When the backend receives `ScheduledRunStarted`, it:
-1. Updates `scheduled_tasks.last_run_at`
+1. Updates `scheduled_tasks.last_run_at` and `updated_at`
 2. Stores the `session_id` in `scheduled_tasks.last_session_id`
 
-When it receives `ScheduledRunCompleted`, it recomputes `next_run_at` from the cron expression and timezone.
+`ScheduledRunCompleted` is logged for observability. The next fire time is not stored — it's computed on-demand from `cron_expression` + `timezone` + current time by the launcher (for scheduling) and the frontend (for display).
 
 ### Registration
 
@@ -305,8 +303,8 @@ Styled similarly to the existing Codex badge. Scheduled sessions appear in the r
 
 A new section accessible from the dashboard (settings gear or dedicated tab):
 
-- **Task list**: name, cron expression (with human-readable description like "Every day at 3am"), enabled toggle, last/next run times
-- **Create/edit form**: name, cron expression, working directory (dropdown from known launcher directories?), prompt (textarea), agent type, max runtime
+- **Task list**: name, cron expression (with human-readable description like "Every day at 3am"), hostname, enabled toggle, last run time, computed next run time
+- **Create/edit form**: name, cron expression, hostname (dropdown from connected launchers), working directory (dropdown from launcher directories?), prompt (textarea), agent type, max runtime
 - **Run history**: click a task to see its past sessions with timestamps and exit codes
 
 This could live as a new admin-style page or as a panel within the existing dashboard, depending on UX preference.
@@ -337,7 +335,7 @@ This could live as a new admin-style page or as a panel within the existing dash
    - Launcher sends ScheduledRunStarted { task_id, session_id }
    - Backend stores session_id in scheduled_tasks.last_session_id
    - Launcher sends InjectInput { session_id, prompt }
-   - Backend logs prompt as human message, forwards to proxy
+   - Backend sequences prompt (pending_inputs), forwards to proxy as SequencedInput
    - Claude runs, does its work
    - Claude finishes → proxy exits → session status becomes "inactive"
    - Launcher sends ScheduledRunCompleted { task_id, session_id, exit_code, duration }
@@ -360,11 +358,62 @@ This could live as a new admin-style page or as a panel within the existing dash
 
 2. **Timezone**: **UTC by default**, with optional per-task IANA timezone override. Avoids DST ambiguity while letting users say "9am Eastern" when they need local time. See [Timezone Handling](#timezone-handling).
 
-3. **Multiple launchers**: Tasks can be **pinned to a hostname** or left unpinned (any launcher). See [Launcher Pinning](#launcher-pinning).
+3. **Launcher pinning**: Tasks are **always pinned to a hostname** (required field). This guarantees exactly one launcher owns each task — no distributed coordination or deduplication needed. See [Launcher Pinning](#launcher-pinning).
 
 4. **Task→session mapping**: **Server-side only** via `scheduled_tasks.last_session_id`. No local persistence file. See [No Local Persistence](#no-local-persistence).
 
 5. **Prompt injection**: **Backend relay** via `LauncherToServer::InjectInput`. See [Prompt Injection](#prompt-injection).
+
+6. **Next run time**: **Computed, not stored.** The next fire time is derived from `cron_expression` + `timezone` + current time. The launcher computes it for scheduling; the frontend computes it for display. No `next_run_at` column needed.
+
+## Implementation Status
+
+### Phase 1: Foundation (Complete — PR #570)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Database migration (`scheduled_tasks` table + `scheduled_task_id` on sessions) | Done | |
+| Protocol types (`ScheduledTaskConfig`, `ScheduleSync`, `InjectInput`, `ScheduledRunStarted/Completed`) | Done | Serde roundtrip tests included |
+| Backend CRUD API (list, create, update, delete, list runs) | Done | Ownership enforced, ScheduleSync pushed on changes |
+| `ScheduleSync` on launcher connect | Done | Filtered by hostname |
+| `InjectInput` backend handler | Done | Sequenced pipeline, sender = "Scheduler" |
+| `ScheduledRunStarted` backend handler | Done | Updates `last_run_at` + `last_session_id` |
+| `ScheduledRunCompleted` backend handler | Done | Logs completion (no DB update needed — next run is computed) |
+| Registration plumbing (`scheduled_task_id` end-to-end) | Done | `RegisterFields` → `RegistrationParams` → `NewSessionWithId` → DB |
+| `SessionInfo.scheduled_task_id` | Done | |
+| API types in `shared/src/api.rs` | Done | |
+| Version bump 2.0.24 → 2.1.0 | Done | |
+
+### Phase 1.5: Schema Cleanup (Not Started)
+
+The phase 1 migration created `hostname` as nullable and included a `next_run_at` column. Per resolved decisions, a follow-up migration should:
+- `ALTER TABLE scheduled_tasks ALTER COLUMN hostname SET NOT NULL` (with a default for any existing rows)
+- `ALTER TABLE scheduled_tasks DROP COLUMN next_run_at`
+- Update `backend/src/schema.rs`, `backend/src/models.rs`, `shared/src/api.rs` accordingly
+
+### Phase 2: Launcher Scheduler (Not Started)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `launcher/src/scheduler.rs` module | Not started | Core scheduling engine |
+| Handle `ScheduleSync` in launcher `connection.rs` | Not started | Currently logged as "unhandled message" |
+| Cron expression evaluation (`croner` crate) | Not started | Need to add dependency |
+| Timezone support (`chrono-tz` crate) | Not started | Need to add dependency |
+| `ProcessManager::spawn()` accepts `scheduled_task_id` | Not started | Currently hardcoded to `None` |
+| Task firing on cron tick | Not started | |
+| `InjectInput` sending after session connects | Not started | |
+| Max runtime enforcement (kill after timeout) | Not started | |
+| `ScheduledRunStarted`/`Completed` reporting | Not started | |
+| Overlap policy (skip if running) | Not started | |
+
+### Phase 3: Frontend UI (Not Started)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Cron badge on session pills | Not started | |
+| Scheduled tasks management page | Not started | |
+| Create/edit task form | Not started | |
+| Run history view | Not started | |
 
 ## Open Questions
 
