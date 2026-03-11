@@ -12,8 +12,8 @@ pub struct KeyboardNavConfig {
     pub sessions: Vec<SessionInfo>,
     /// Currently focused session index
     pub focused_index: usize,
-    /// Set of paused session IDs
-    pub paused_sessions: HashSet<Uuid>,
+    /// Set of hidden session IDs
+    pub hidden_sessions: HashSet<Uuid>,
     /// Set of connected session IDs
     pub connected_sessions: HashSet<Uuid>,
     /// Whether inactive sessions are hidden
@@ -37,7 +37,7 @@ pub struct UseKeyboardNav {
 /// Edit Mode (default):
 /// - Typing works normally
 /// - Escape -> Nav Mode
-/// - Shift+Tab -> next active session (skips paused)
+/// - Shift+Tab -> next active session (skips hidden)
 ///
 /// Nav Mode:
 /// - Arrow keys / hjkl navigate sessions
@@ -56,7 +56,7 @@ pub struct UseKeyboardNav {
 /// let nav = use_keyboard_nav(KeyboardNavConfig {
 ///     sessions: sessions.clone(),
 ///     focused_index: *focused_index,
-///     paused_sessions: paused.clone(),
+///     hidden_sessions: hidden.clone(),
 ///     connected_sessions: connected.clone(),
 ///     inactive_hidden: *inactive_hidden,
 ///     on_select: on_select.clone(),
@@ -77,7 +77,7 @@ pub fn use_keyboard_nav(config: KeyboardNavConfig) -> UseKeyboardNav {
         let nav_mode = nav_mode.clone();
         let sessions = config.sessions.clone();
         let focused_index = config.focused_index;
-        let paused_sessions = config.paused_sessions.clone();
+        let hidden_sessions = config.hidden_sessions.clone();
         let connected_sessions = config.connected_sessions.clone();
         let inactive_hidden = config.inactive_hidden;
         let on_select = config.on_select.clone();
@@ -87,7 +87,7 @@ pub fn use_keyboard_nav(config: KeyboardNavConfig) -> UseKeyboardNav {
             let in_nav_mode = *nav_mode;
             let len = sessions.len();
 
-            // Helper: navigate to next non-paused session
+            // Helper: navigate to next non-hidden session
             let navigate_to_next_active = |current: usize| -> Option<usize> {
                 if len == 0 {
                     return None;
@@ -95,7 +95,7 @@ pub fn use_keyboard_nav(config: KeyboardNavConfig) -> UseKeyboardNav {
                 for i in 1..=len {
                     let idx = (current + i) % len;
                     if let Some(session) = sessions.get(idx) {
-                        if !paused_sessions.contains(&session.id) {
+                        if !hidden_sessions.contains(&session.id) {
                             return Some(idx);
                         }
                     }
@@ -103,30 +103,30 @@ pub fn use_keyboard_nav(config: KeyboardNavConfig) -> UseKeyboardNav {
                 None
             };
 
-            // Helper: navigate by delta, skipping paused sessions
+            // Helper: navigate by delta, skipping hidden sessions
             let navigate_by_delta = |current: usize, delta: i32| -> Option<usize> {
                 if len == 0 {
                     return None;
                 }
 
-                let non_paused_count = sessions
+                let non_hidden_count = sessions
                     .iter()
-                    .filter(|s| !paused_sessions.contains(&s.id))
+                    .filter(|s| !hidden_sessions.contains(&s.id))
                     .count();
 
-                // If all sessions are paused, allow normal navigation
-                if non_paused_count == 0 {
+                // If all sessions are hidden, allow normal navigation
+                if non_hidden_count == 0 {
                     return Some((current as i32 + delta).rem_euclid(len as i32) as usize);
                 }
 
-                // Skip paused sessions when navigating
+                // Skip hidden sessions when navigating
                 let step = if delta > 0 { 1 } else { len - 1 };
                 let mut new_index = current;
 
                 for _ in 0..len {
                     new_index = (new_index + step) % len;
                     if let Some(session) = sessions.get(new_index) {
-                        if !paused_sessions.contains(&session.id) {
+                        if !hidden_sessions.contains(&session.id) {
                             return Some(new_index);
                         }
                     }
@@ -197,8 +197,8 @@ pub fn use_keyboard_nav(config: KeyboardNavConfig) -> UseKeyboardNav {
                                 // Add active sessions first
                                 for (idx, session) in sessions.iter().enumerate() {
                                     let is_connected = connected_sessions.contains(&session.id);
-                                    let is_paused = paused_sessions.contains(&session.id);
-                                    if is_connected && !is_paused {
+                                    let is_hidden = hidden_sessions.contains(&session.id);
+                                    if is_connected && !is_hidden {
                                         visible_indices.push(idx);
                                     }
                                 }
@@ -207,8 +207,8 @@ pub fn use_keyboard_nav(config: KeyboardNavConfig) -> UseKeyboardNav {
                                 if !inactive_hidden {
                                     for (idx, session) in sessions.iter().enumerate() {
                                         let is_connected = connected_sessions.contains(&session.id);
-                                        let is_paused = paused_sessions.contains(&session.id);
-                                        if !is_connected || is_paused {
+                                        let is_hidden = hidden_sessions.contains(&session.id);
+                                        if !is_connected || is_hidden {
                                             visible_indices.push(idx);
                                         }
                                     }
