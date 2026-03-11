@@ -75,7 +75,6 @@ fn task_to_info(t: ScheduledTask) -> ScheduledTaskInfo {
         max_runtime_minutes: t.max_runtime_minutes,
         last_session_id: t.last_session_id,
         last_run_at: t.last_run_at.map(|dt| dt.and_utc().to_rfc3339()),
-        next_run_at: t.next_run_at.map(|dt| dt.and_utc().to_rfc3339()),
         created_at: t.created_at.and_utc().to_rfc3339(),
         updated_at: t.updated_at.and_utc().to_rfc3339(),
     }
@@ -117,7 +116,7 @@ fn send_schedule_sync(app_state: &AppState, user_id: Uuid) {
     for launcher in launchers {
         let filtered: Vec<ScheduledTaskConfig> = tasks
             .iter()
-            .filter(|t| t.hostname.is_none() || t.hostname.as_deref() == Some(&launcher.hostname))
+            .filter(|t| t.hostname == launcher.hostname)
             .map(task_to_config)
             .collect();
 

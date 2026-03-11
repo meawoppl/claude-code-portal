@@ -88,7 +88,7 @@ diesel::table! {
         #[max_length = 64]
         timezone -> Varchar,
         #[max_length = 255]
-        hostname -> Nullable<Varchar>,
+        hostname -> Varchar,
         working_directory -> Text,
         prompt -> Text,
         claude_args -> Jsonb,
@@ -98,7 +98,6 @@ diesel::table! {
         max_runtime_minutes -> Int4,
         last_session_id -> Nullable<Uuid>,
         last_run_at -> Nullable<Timestamp>,
-        next_run_at -> Nullable<Timestamp>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
     }
