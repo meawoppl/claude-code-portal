@@ -201,7 +201,7 @@ pub struct SessionRailProps {
     pub sessions: Vec<SessionInfo>,
     pub focused_index: usize,
     pub awaiting_sessions: HashSet<Uuid>,
-    pub paused_sessions: HashSet<Uuid>,
+    pub hidden_sessions: HashSet<Uuid>,
     pub inactive_hidden: bool,
     pub connected_sessions: HashSet<Uuid>,
     pub nav_mode: bool,
@@ -212,7 +212,7 @@ pub struct SessionRailProps {
     pub server_version: String,
     pub on_select: Callback<usize>,
     pub on_leave: Callback<Uuid>,
-    pub on_toggle_pause: Callback<Uuid>,
+    pub on_toggle_hidden: Callback<Uuid>,
     pub on_toggle_inactive_hidden: Callback<MouseEvent>,
     pub on_stop: Callback<Uuid>,
 }
@@ -320,7 +320,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
     };
 
     let dropdown_content = if let Some(session) = open_session {
-        let is_paused = props.paused_sessions.contains(&session.id);
+        let is_hidden = props.hidden_sessions.contains(&session.id);
         let is_connected = props.connected_sessions.contains(&session.id);
 
         let on_stop = {
@@ -340,12 +340,12 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         };
         let confirming_stop = *stop_confirm;
 
-        let on_pause = {
-            let on_toggle_pause = props.on_toggle_pause.clone();
+        let on_hide = {
+            let on_toggle_hidden = props.on_toggle_hidden.clone();
             let session_id = session.id;
             let menu_session = menu_session.clone();
             Callback::from(move |_: MouseEvent| {
-                on_toggle_pause.emit(session_id);
+                on_toggle_hidden.emit(session_id);
                 menu_session.set(None);
             })
         };
@@ -360,15 +360,15 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             })
         };
 
-        let pause_label = if is_paused {
-            "Unpause Session"
+        let hide_label = if is_hidden {
+            "Show Session"
         } else {
-            "Pause Session"
+            "Hide Session"
         };
-        let pause_hint = if is_paused {
-            "Resume rotation"
+        let hide_hint = if is_hidden {
+            "Show in rotation"
         } else {
-            "Skip in rotation"
+            "Hide from rotation"
         };
 
         let stop_option = if is_connected && session.status == shared::SessionStatus::Active {
@@ -488,11 +488,11 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                 { repo_option }
                 <button
                     type="button"
-                    class={classes!("pill-menu-option", "pause", is_paused.then_some("active"))}
-                    onclick={on_pause}
+                    class={classes!("pill-menu-option", "hide", is_hidden.then_some("active"))}
+                    onclick={on_hide}
                 >
-                    { pause_label }
-                    <span class="option-hint">{ pause_hint }</span>
+                    { hide_label }
+                    <span class="option-hint">{ hide_hint }</span>
                 </button>
                 { leave_option }
                 { stop_option }
@@ -509,7 +509,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
      -> Html {
         let is_focused = index == props.focused_index;
         let is_awaiting = props.awaiting_sessions.contains(&session.id);
-        let is_paused = props.paused_sessions.contains(&session.id);
+        let is_hidden = props.hidden_sessions.contains(&session.id);
         let is_connected = props.connected_sessions.contains(&session.id);
 
         let on_click = {
@@ -551,7 +551,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
             "session-pill",
             if is_focused { Some("focused") } else { None },
             if is_awaiting { Some("awaiting") } else { None },
-            if is_paused { Some("paused") } else { None },
+            if is_hidden { Some("hidden") } else { None },
             if in_nav_mode { Some("nav-mode") } else { None },
             if is_status_disconnected {
                 Some("status-disconnected")
@@ -683,8 +683,8 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                     }
                 }
                 {
-                    if is_paused {
-                        html! { <span class="pill-paused-badge">{ "ᴾ" }</span> }
+                    if is_hidden {
+                        html! { <span class="pill-hidden-badge">{ "ᴴ" }</span> }
                     } else {
                         html! {}
                     }
@@ -705,14 +705,14 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
         }
     };
 
-    // Split sessions into visible (not paused) vs hidden (paused only)
-    let (visible_indices, paused_indices): (Vec<_>, Vec<_>) =
+    // Split sessions into visible vs hidden
+    let (visible_indices, hidden_indices): (Vec<_>, Vec<_>) =
         props.sessions.iter().enumerate().partition(|(_, session)| {
-            let is_paused = props.paused_sessions.contains(&session.id);
-            !is_paused
+            let is_hidden = props.hidden_sessions.contains(&session.id);
+            !is_hidden
         });
 
-    let paused_count = paused_indices.len();
+    let hidden_count = hidden_indices.len();
     let visible_count = visible_indices.len();
 
     // Container with position:relative holds the rail + dropdown.
@@ -738,7 +738,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                 }).collect::<Html>() }
 
                 {
-                    if paused_count > 0 {
+                    if hidden_count > 0 {
                         let toggle_class = classes!(
                             "session-rail-divider",
                             if props.inactive_hidden { Some("collapsed") } else { None }
@@ -746,9 +746,9 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
                         html! {
                             <div class={toggle_class} onclick={props.on_toggle_inactive_hidden.clone()}>
                                 <span class="divider-line"></span>
-                                <button class="divider-toggle" title={if props.inactive_hidden { "Show paused sessions" } else { "Hide paused sessions" }}>
+                                <button class="divider-toggle" title={if props.inactive_hidden { "Show hidden sessions" } else { "Collapse hidden sessions" }}>
                                     { if props.inactive_hidden {
-                                        format!("▶ {}", paused_count)
+                                        format!("▶ {}", hidden_count)
                                     } else {
                                         "◀".to_string()
                                     }}
@@ -762,7 +762,7 @@ pub fn session_rail(props: &SessionRailProps) -> Html {
 
                 {
                     if !props.inactive_hidden {
-                        paused_indices.iter().enumerate().map(|(display_idx, (index, session))| {
+                        hidden_indices.iter().enumerate().map(|(display_idx, (index, session))| {
                             render_pill(*index, session, Some(visible_count + display_idx))
                         }).collect::<Html>()
                     } else {

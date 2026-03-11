@@ -3,8 +3,8 @@
 use super::session_rail::{ActivityRef, SessionRail};
 use super::session_view::SessionView;
 use super::types::{
-    load_inactive_hidden, load_paused_sessions, load_show_cost, save_inactive_hidden,
-    save_paused_sessions, save_show_cost,
+    load_hidden_sessions, load_inactive_hidden, load_show_cost, save_hidden_sessions,
+    save_inactive_hidden, save_show_cost,
 };
 use crate::components::LaunchDialog;
 use crate::hooks::{use_client_websocket, use_keyboard_nav, use_sessions, KeyboardNavConfig};
@@ -46,7 +46,7 @@ pub fn dashboard_page() -> Html {
     let show_settings = use_state(|| false);
     let focused_index = use_state(|| 0usize);
     let awaiting_sessions = use_state(HashSet::<Uuid>::new);
-    let paused_sessions = use_state(load_paused_sessions);
+    let hidden_sessions = use_state(load_hidden_sessions);
     let inactive_hidden = use_state(load_inactive_hidden);
     let show_cost = use_state(load_show_cost);
     let connected_sessions = use_state(HashSet::<Uuid>::new);
@@ -176,10 +176,10 @@ pub fn dashboard_page() -> Html {
         sorted
     };
 
-    // On initial load, focus first non-paused session and activate all non-paused sessions
+    // On initial load, focus first non-hidden session and activate all non-hidden sessions
     {
         let active_sessions = active_sessions.clone();
-        let paused_sessions = paused_sessions.clone();
+        let hidden_sessions = hidden_sessions.clone();
         let focused_index = focused_index.clone();
         let initial_focus_set = initial_focus_set.clone();
         let activated_sessions = activated_sessions.clone();
@@ -188,17 +188,17 @@ pub fn dashboard_page() -> Html {
             (active_sessions.len(), loading),
             move |(session_count, is_loading)| {
                 if !*initial_focus_set && !*is_loading && *session_count > 0 {
-                    let first_non_paused_idx = active_sessions
+                    let first_non_hidden_idx = active_sessions
                         .iter()
-                        .position(|s| !paused_sessions.contains(&s.id))
+                        .position(|s| !hidden_sessions.contains(&s.id))
                         .unwrap_or(0);
 
-                    focused_index.set(first_non_paused_idx);
+                    focused_index.set(first_non_hidden_idx);
 
-                    // Activate all non-paused sessions so they load in background
+                    // Activate all non-hidden sessions so they load in background
                     let mut activated = (*activated_sessions).clone();
                     for s in &active_sessions {
-                        if !paused_sessions.contains(&s.id) {
+                        if !hidden_sessions.contains(&s.id) {
                             activated.insert(s.id);
                         }
                     }
@@ -267,7 +267,7 @@ pub fn dashboard_page() -> Html {
     let keyboard_nav = use_keyboard_nav(KeyboardNavConfig {
         sessions: active_sessions.clone(),
         focused_index: *focused_index,
-        paused_sessions: (*paused_sessions).clone(),
+        hidden_sessions: (*hidden_sessions).clone(),
         connected_sessions: (*connected_sessions).clone(),
         inactive_hidden: *inactive_hidden,
         on_select: on_select_session.clone(),
@@ -447,17 +447,17 @@ pub fn dashboard_page() -> Html {
         })
     };
 
-    let on_toggle_pause = {
-        let paused_sessions = paused_sessions.clone();
+    let on_toggle_hidden = {
+        let hidden_sessions = hidden_sessions.clone();
         Callback::from(move |session_id: Uuid| {
-            let mut set = (*paused_sessions).clone();
+            let mut set = (*hidden_sessions).clone();
             if set.contains(&session_id) {
                 set.remove(&session_id);
             } else {
                 set.insert(session_id);
             }
-            save_paused_sessions(&set);
-            paused_sessions.set(set);
+            save_hidden_sessions(&set);
+            hidden_sessions.set(set);
         })
     };
 
@@ -521,7 +521,7 @@ pub fn dashboard_page() -> Html {
     // Computed values
     let waiting_count = awaiting_sessions
         .iter()
-        .filter(|id| !paused_sessions.contains(id))
+        .filter(|id| !hidden_sessions.contains(id))
         .count();
 
     // Update browser tab title
@@ -680,7 +680,7 @@ pub fn dashboard_page() -> Html {
                         sessions={active_sessions.clone()}
                         focused_index={*focused_index}
                         awaiting_sessions={(*awaiting_sessions).clone()}
-                        paused_sessions={(*paused_sessions).clone()}
+                        hidden_sessions={(*hidden_sessions).clone()}
                         inactive_hidden={*inactive_hidden}
                         connected_sessions={(*connected_sessions).clone()}
                         nav_mode={keyboard_nav.nav_mode}
@@ -688,7 +688,7 @@ pub fn dashboard_page() -> Html {
                         server_version={(*server_version).clone()}
                         on_select={on_select_session.clone()}
                         on_leave={on_leave.clone()}
-                        on_toggle_pause={on_toggle_pause.clone()}
+                        on_toggle_hidden={on_toggle_hidden.clone()}
                         on_toggle_inactive_hidden={on_toggle_inactive_hidden.clone()}
                         on_stop={on_stop.clone()}
                     />
