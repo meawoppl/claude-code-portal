@@ -51,24 +51,6 @@ pub struct UseKeyboardNav {
 /// # Returns
 /// * `UseKeyboardNav` - The current mode and keydown handler
 ///
-/// # Example
-/// ```ignore
-/// let nav = use_keyboard_nav(KeyboardNavConfig {
-///     sessions: sessions.clone(),
-///     focused_index: *focused_index,
-///     hidden_sessions: hidden.clone(),
-///     connected_sessions: connected.clone(),
-///     inactive_hidden: *inactive_hidden,
-///     on_select: on_select.clone(),
-///     on_activate: on_activate.clone(),
-/// });
-///
-/// html! {
-///     <div onkeydown={nav.on_keydown.clone()}>
-///         { if nav.nav_mode { "NAV" } else { "EDIT" } }
-///     </div>
-/// }
-/// ```
 #[hook]
 pub fn use_keyboard_nav(config: KeyboardNavConfig) -> UseKeyboardNav {
     let nav_mode = use_state(|| false);
