@@ -200,6 +200,9 @@ pub enum ServerToProxy {
 
     /// Session has been terminated (proxy should NOT reconnect)
     SessionTerminated { reason: String },
+
+    /// Interrupt the current Claude response
+    Interrupt,
 }
 
 // =============================================================================
@@ -236,6 +239,9 @@ pub enum ClientToServer {
 
     /// A single chunk of a file upload
     FileUploadChunk(FileUploadChunkFields),
+
+    /// Interrupt the current Claude response
+    Interrupt,
 }
 
 /// Messages the backend sends to the frontend.

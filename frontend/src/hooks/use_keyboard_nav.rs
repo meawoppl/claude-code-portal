@@ -22,6 +22,8 @@ pub struct KeyboardNavConfig {
     pub on_select: Callback<usize>,
     /// Callback to activate a session (mark it as having been viewed)
     pub on_activate: Callback<Uuid>,
+    /// Callback when triple-Escape interrupt is triggered
+    pub on_interrupt: Callback<()>,
 }
 
 /// Return value from the use_keyboard_nav hook.
@@ -31,6 +33,9 @@ pub struct UseKeyboardNav {
     /// Callback to handle keydown events
     pub on_keydown: Callback<KeyboardEvent>,
 }
+
+/// Max time window (ms) for 3 Escape presses to trigger an interrupt.
+const TRIPLE_ESCAPE_WINDOW_MS: f64 = 600.0;
 
 /// Hook for managing two-mode keyboard navigation.
 ///
@@ -45,18 +50,16 @@ pub struct UseKeyboardNav {
 /// - Enter/Escape/i -> Edit Mode
 /// - w -> next waiting session
 ///
-/// # Arguments
-/// * `config` - Configuration containing sessions, focused index, and callbacks
-///
-/// # Returns
-/// * `UseKeyboardNav` - The current mode and keydown handler
-///
+/// Triple-Escape (within 600ms) sends an interrupt to the focused session.
 #[hook]
 pub fn use_keyboard_nav(config: KeyboardNavConfig) -> UseKeyboardNav {
     let nav_mode = use_state(|| false);
+    // Track timestamps of recent Escape presses for triple-Escape detection
+    let escape_times = use_mut_ref(Vec::<f64>::new);
 
     let on_keydown = {
         let nav_mode = nav_mode.clone();
+        let escape_times = escape_times.clone();
         let sessions = config.sessions.clone();
         let focused_index = config.focused_index;
         let hidden_sessions = config.hidden_sessions.clone();
@@ -64,6 +67,7 @@ pub fn use_keyboard_nav(config: KeyboardNavConfig) -> UseKeyboardNav {
         let inactive_hidden = config.inactive_hidden;
         let on_select = config.on_select.clone();
         let on_activate = config.on_activate.clone();
+        let on_interrupt = config.on_interrupt.clone();
         Callback::from(move |e: KeyboardEvent| {
             // Don't handle keyboard nav when a modal overlay is open
             if gloo::utils::document()
@@ -134,6 +138,23 @@ pub fn use_keyboard_nav(config: KeyboardNavConfig) -> UseKeyboardNav {
                     on_select.emit(new_idx);
                 }
                 return;
+            }
+
+            // Track Escape presses for triple-Escape interrupt detection
+            if e.key() == "Escape" {
+                let now = js_sys::Date::now();
+                let mut times = escape_times.borrow_mut();
+                times.push(now);
+                // Keep only presses within the time window
+                times.retain(|&t| now - t <= TRIPLE_ESCAPE_WINDOW_MS);
+                if times.len() >= 3 {
+                    times.clear();
+                    e.prevent_default();
+                    // Return to edit mode and fire interrupt
+                    nav_mode.set(false);
+                    on_interrupt.emit(());
+                    return;
+                }
             }
 
             if in_nav_mode {

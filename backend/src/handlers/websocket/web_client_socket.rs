@@ -172,6 +172,15 @@ fn handle_web_client_message(
             }
             false
         }
+        ClientToServer::Interrupt => {
+            if let Some(ref key) = session_key {
+                info!("Web client sending interrupt to session");
+                session_manager.send_to_session(key, ServerToProxy::Interrupt);
+            } else {
+                warn!("Web client tried to send Interrupt without registered session");
+            }
+            false
+        }
     }
 }
 
