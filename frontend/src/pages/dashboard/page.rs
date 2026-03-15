@@ -263,6 +263,16 @@ pub fn dashboard_page() -> Html {
         })
     };
 
+    // Interrupt signal counter — incremented by triple-Escape, passed to focused SessionView
+    let interrupt_signal = use_state(|| 0u32);
+
+    let on_interrupt = {
+        let interrupt_signal = interrupt_signal.clone();
+        Callback::from(move |()| {
+            interrupt_signal.set(*interrupt_signal + 1);
+        })
+    };
+
     // Use the keyboard navigation hook
     let keyboard_nav = use_keyboard_nav(KeyboardNavConfig {
         sessions: active_sessions.clone(),
@@ -272,6 +282,7 @@ pub fn dashboard_page() -> Html {
         inactive_hidden: *inactive_hidden,
         on_select: on_select_session.clone(),
         on_activate,
+        on_interrupt,
     });
 
     // Modal open callbacks
@@ -716,6 +727,7 @@ pub fn dashboard_page() -> Html {
                                                 on_activity={on_activity.clone()}
                                                 voice_enabled={*voice_enabled}
                                                 current_user_id={(*current_user_id).clone()}
+                                                interrupt_signal={*interrupt_signal}
                                             />
                                         </div>
                                     }

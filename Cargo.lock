@@ -10,7 +10,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agent-portal"
-version = "2.1.5"
+version = "2.1.6"
 dependencies = [
  "anyhow",
  "chrono",
@@ -453,7 +453,7 @@ dependencies = [
 
 [[package]]
 name = "backend"
-version = "2.1.5"
+version = "2.1.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -728,9 +728,9 @@ checksum = "3a822ea5bc7590f9d40f1ba12c0dc3c2760f3482c6984db1573ad11031420831"
 
 [[package]]
 name = "claude-codes"
-version = "2.1.51"
+version = "2.1.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b6ec8a841ec95644b5cfaa2545e7a79fd74483bcc131cd94777271e3d3cdd3e"
+checksum = "a8e31455ac644adf66d92d35a9257a0f1aa003024587cf37efb2a5c843db59f3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -744,7 +744,7 @@ dependencies = [
 
 [[package]]
 name = "claude-portal"
-version = "2.1.5"
+version = "2.1.6"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -777,7 +777,7 @@ dependencies = [
 
 [[package]]
 name = "claude-session-lib"
-version = "2.1.5"
+version = "2.1.6"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -799,7 +799,7 @@ dependencies = [
 
 [[package]]
 name = "cli-tools"
-version = "2.1.5"
+version = "2.1.6"
 dependencies = [
  "anyhow",
  "clap",
@@ -1419,7 +1419,7 @@ dependencies = [
 
 [[package]]
 name = "frontend"
-version = "2.1.5"
+version = "2.1.6"
 dependencies = [
  "base64 0.22.1",
  "futures-channel",
@@ -3200,7 +3200,7 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
 name = "portal-auth"
-version = "2.1.5"
+version = "2.1.6"
 dependencies = [
  "anyhow",
  "colored",
@@ -3215,7 +3215,7 @@ dependencies = [
 
 [[package]]
 name = "portal-update"
-version = "2.1.5"
+version = "2.1.6"
 dependencies = [
  "anyhow",
  "hex",
@@ -4131,7 +4131,7 @@ dependencies = [
 
 [[package]]
 name = "shared"
-version = "2.1.5"
+version = "2.1.6"
 dependencies = [
  "chrono",
  "claude-codes",

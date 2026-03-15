@@ -62,6 +62,8 @@ pub struct SessionViewProps {
     pub voice_enabled: bool,
     #[prop_or_default]
     pub current_user_id: Option<String>,
+    #[prop_or(0)]
+    pub interrupt_signal: u32,
 }
 
 /// Messages for the SessionView component
@@ -124,6 +126,8 @@ pub enum SessionViewMsg {
     ClearTabPulse,
     /// Finish the departure animation and hide the drawer
     FinishDeparture,
+    /// Send an interrupt to stop the current Claude response
+    Interrupt,
 }
 
 /// SessionView - Main terminal view for a single session
@@ -254,7 +258,7 @@ impl Component for SessionView {
         }
     }
 
-    fn changed(&mut self, ctx: &Context<Self>, _old_props: &Self::Properties) -> bool {
+    fn changed(&mut self, ctx: &Context<Self>, old_props: &Self::Properties) -> bool {
         let now_focused = ctx.props().focused;
         let became_focused = now_focused && !self.was_focused;
         self.was_focused = now_focused;
@@ -263,6 +267,14 @@ impl Component for SessionView {
             if let Some(input) = self.input_ref.cast::<HtmlTextAreaElement>() {
                 let _ = input.focus();
             }
+        }
+
+        // Detect interrupt signal change on the focused session
+        if now_focused
+            && ctx.props().interrupt_signal != old_props.interrupt_signal
+            && ctx.props().interrupt_signal > 0
+        {
+            ctx.link().send_message(SessionViewMsg::Interrupt);
         }
 
         true
@@ -856,6 +868,13 @@ impl Component for SessionView {
                 self.tab_departing = false;
                 self.tasks_panel_open = false;
                 true
+            }
+            SessionViewMsg::Interrupt => {
+                if let Some(ref sender) = self.ws_sender {
+                    log::info!("Sending interrupt to session");
+                    send_message(sender, ClientToServer::Interrupt);
+                }
+                false
             }
             SessionViewMsg::TaskTick => {
                 let now = js_sys::Date::now();

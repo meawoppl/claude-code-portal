@@ -217,6 +217,8 @@ pub enum WsEvent {
     GracefulShutdown(u64),
     /// Session was terminated by the server (do not reconnect)
     SessionTerminated,
+    /// Interrupt the current Claude response
+    Interrupt,
 }
 
 /// Spawn a WebSocket reader task (raw tokio-tungstenite).
@@ -354,6 +356,10 @@ async fn handle_ws_text_message(
             info!("Session terminated by server: {}", reason);
             let _ = event_tx.send(WsEvent::SessionTerminated);
             false // stop reading
+        }
+        ServerToProxy::Interrupt => {
+            info!("Interrupt received from server");
+            event_tx.send(WsEvent::Interrupt).is_ok()
         }
         _ => true,
     }
