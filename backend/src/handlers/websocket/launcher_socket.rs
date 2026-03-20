@@ -17,7 +17,16 @@ pub async fn handle_launcher_socket(socket: WebSocket, app_state: Arc<AppState>)
     let (mut ws_sender, mut ws_receiver) = conn.split();
 
     // Wait for LauncherRegister message
-    let (launcher_id, launcher_name, hostname, user_id, working_directory, version, reg_token_hash, reg_token_expires_at) = loop {
+    let (
+        launcher_id,
+        launcher_name,
+        hostname,
+        user_id,
+        working_directory,
+        version,
+        reg_token_hash,
+        reg_token_expires_at,
+    ) = loop {
         match ws_receiver.recv().await {
             Some(Ok(LauncherToServer::LauncherRegister {
                 launcher_id,
@@ -28,7 +37,9 @@ pub async fn handle_launcher_socket(socket: WebSocket, app_state: Arc<AppState>)
                 version,
             })) => {
                 // Authenticate and look up token metadata
-                let (user_id, reg_token_hash, reg_token_expires_at) = if let Some(ref token) = auth_token {
+                let (user_id, reg_token_hash, reg_token_expires_at) = if let Some(ref token) =
+                    auth_token
+                {
                     match app_state.db_pool.get() {
                         Ok(mut conn) => {
                             match crate::handlers::proxy_tokens::verify_and_get_user(
@@ -302,7 +313,11 @@ fn handle_launcher_message(
                         let sender = launcher.sender.clone();
                         drop(launcher); // release DashMap lock before DB work
                         let _ = renew_launcher_token_for(
-                            app_state, launcher_id, user_id, old_hash, sender,
+                            app_state,
+                            launcher_id,
+                            user_id,
+                            old_hash,
+                            sender,
                         );
                     }
                 }
@@ -536,7 +551,10 @@ pub fn renew_launcher_token_for(
     }
 
     // Push the new token to the launcher
-    if sender.send(ServerToLauncher::TokenRenewed { token }).is_ok() {
+    if sender
+        .send(ServerToLauncher::TokenRenewed { token })
+        .is_ok()
+    {
         info!(
             "Renewed launcher token for '{}' (user {}), new expiry: {}",
             launcher_id, user.email, new_expires_at
