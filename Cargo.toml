@@ -3,7 +3,7 @@ members = ["shared", "backend", "frontend", "proxy", "cli-tools", "claude-sessio
 resolver = "2"
 
 [workspace.package]
-version = "2.2.3"
+version = "2.2.4"
 edition = "2021"
 authors = ["Matthew Goodman <d3a6d0cec0c16f3e@inboxnegative.com>"]
 
@@ -40,10 +40,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Claude Code integration
-claude-codes = "2.1.52"
+claude-codes = "2.1.53"
 
 # Codex CLI integration
-codex-codes = { version = "0.101.0", default-features = false, features = ["types"] }
+codex-codes = { version = "0.101.1", default-features = false, features = ["types"] }
 
 # Frontend (Yew)
 yew = { version = "0.21", features = ["csr"] }
