@@ -1,9 +1,11 @@
+mod launchers_panel;
 mod sessions_panel;
 mod sounds_panel;
 mod tokens_panel;
 
+use launchers_panel::{count_expiring_launchers, LaunchersPanel};
 use sessions_panel::SessionsPanel;
-use shared::{ProxyTokenInfo, SessionInfo};
+use shared::{LauncherInfo, ProxyTokenInfo, SessionInfo};
 use sounds_panel::SoundsPanel;
 use tokens_panel::{count_expiring_tokens, TokensPanel};
 use yew::prelude::*;
@@ -12,6 +14,7 @@ use yew::prelude::*;
 enum SettingsTab {
     Sessions,
     Tokens,
+    Launchers,
     Sounds,
 }
 
@@ -27,6 +30,7 @@ pub fn settings_page(props: &SettingsPageProps) -> Html {
     // Counts for tab badges (updated when panels load their data)
     let session_count = use_state(|| 0usize);
     let expiring_token_count = use_state(|| 0usize);
+    let expiring_launcher_count = use_state(|| 0usize);
 
     let on_sessions_loaded = {
         let session_count = session_count.clone();
@@ -42,6 +46,13 @@ pub fn settings_page(props: &SettingsPageProps) -> Html {
         })
     };
 
+    let on_launchers_loaded = {
+        let expiring_launcher_count = expiring_launcher_count.clone();
+        Callback::from(move |launchers: Vec<LauncherInfo>| {
+            expiring_launcher_count.set(count_expiring_launchers(&launchers));
+        })
+    };
+
     let on_sessions_tab = {
         let active_tab = active_tab.clone();
         Callback::from(move |_| active_tab.set(SettingsTab::Sessions))
@@ -50,6 +61,11 @@ pub fn settings_page(props: &SettingsPageProps) -> Html {
     let on_tokens_tab = {
         let active_tab = active_tab.clone();
         Callback::from(move |_| active_tab.set(SettingsTab::Tokens))
+    };
+
+    let on_launchers_tab = {
+        let active_tab = active_tab.clone();
+        Callback::from(move |_| active_tab.set(SettingsTab::Launchers))
     };
 
     let on_sounds_tab = {
@@ -96,6 +112,15 @@ pub fn settings_page(props: &SettingsPageProps) -> Html {
                     }
                 </button>
                 <button
+                    class={classes!("tab-button", (*active_tab == SettingsTab::Launchers).then_some("active"))}
+                    onclick={on_launchers_tab}
+                >
+                    { "Launchers" }
+                    if *expiring_launcher_count > 0 {
+                        <span class="expiring-badge">{ *expiring_launcher_count }</span>
+                    }
+                </button>
+                <button
                     class={classes!("tab-button", (*active_tab == SettingsTab::Sounds).then_some("active"))}
                     onclick={on_sounds_tab}
                 >
@@ -106,6 +131,9 @@ pub fn settings_page(props: &SettingsPageProps) -> Html {
             <main class="settings-content">
                 if *active_tab == SettingsTab::Tokens {
                     <TokensPanel on_tokens_loaded={on_tokens_loaded} />
+                }
+                if *active_tab == SettingsTab::Launchers {
+                    <LaunchersPanel on_launchers_loaded={on_launchers_loaded} />
                 }
                 if *active_tab == SettingsTab::Sounds {
                     <SoundsPanel />
