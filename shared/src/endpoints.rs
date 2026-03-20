@@ -463,6 +463,9 @@ pub enum ServerToLauncher {
 
     /// Sync scheduled task definitions to the launcher
     ScheduleSync { tasks: Vec<ScheduledTaskConfig> },
+
+    /// Push a renewed auth token to the launcher (auto-renewal or manual)
+    TokenRenewed { token: String },
 }
 
 #[cfg(test)]

@@ -344,6 +344,22 @@
     background: rgba(247, 118, 142, 0.15);
 }
 
+/* Token expiry warning badge */
+.pill-token-warning {
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    cursor: help;
+    color: #e0af68;
+}
+
+.pill-token-warning.critical {
+    color: #ff9e64;
+}
+
+.pill-token-warning.expired {
+    color: #f7768e;
+}
+
 /* Pill menu toggle (▼ button) */
 .pill-menu-toggle {
     background: transparent;

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.0
+
+- Auto-renew launcher auth tokens over WebSocket when within 7 days of expiry
+- Add token expiry warning icon on session pills for sessions from launchers with expiring tokens
+- Add Launchers tab to Settings page with manual token renewal button
+- Add POST /api/launchers/:id/renew-token endpoint for manual token renewal
+
 ## 2.2.3
 
 - Fix Codex sessions failing to start from launcher: resolve binary path via `which` before spawning

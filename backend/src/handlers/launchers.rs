@@ -207,6 +207,40 @@ pub(crate) fn mint_launch_token(app_state: &AppState, user_id: Uuid) -> Result<S
     Ok(token)
 }
 
+/// POST /api/launchers/:launcher_id/renew-token - Manually renew a launcher's auth token
+pub async fn renew_launcher_token(
+    State(app_state): State<Arc<AppState>>,
+    cookies: Cookies,
+    Path(launcher_id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = get_user_id(&app_state, &cookies)?;
+
+    // Verify the launcher belongs to this user and get its current token info
+    let (old_token_hash, sender) = {
+        let launcher = app_state
+            .session_manager
+            .launchers
+            .get(&launcher_id)
+            .ok_or(StatusCode::NOT_FOUND)?;
+        if launcher.user_id != user_id {
+            return Err(StatusCode::FORBIDDEN);
+        }
+        (launcher.token_hash.clone(), launcher.sender.clone())
+    };
+
+    crate::handlers::websocket::launcher_socket::renew_launcher_token_for(
+        &app_state,
+        launcher_id,
+        user_id,
+        old_token_hash,
+        sender,
+    )
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    info!("Manually renewed token for launcher {}", launcher_id);
+    Ok(StatusCode::OK)
+}
+
 fn get_user_id(app_state: &AppState, cookies: &Cookies) -> Result<Uuid, StatusCode> {
     if app_state.dev_mode {
         use crate::schema::users;

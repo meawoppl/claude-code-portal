@@ -420,6 +420,10 @@ async fn main() -> anyhow::Result<()> {
             get(handlers::launchers::list_directories),
         )
         .route("/api/launch", post(handlers::launchers::launch_session))
+        .route(
+            "/api/launchers/:launcher_id/renew-token",
+            post(handlers::launchers::renew_launcher_token),
+        )
         // Download routes for proxy binary and install script
         .route(
             "/api/download/install.sh",
