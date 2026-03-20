@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.3
+
+- Fix Codex sessions failing to start from launcher: resolve binary path via `which` before spawning
+
+## 2.2.2
+
+- Add favicon and browser tab icon for link previews
+
 ## 2.0.4
 
 - Fix multiline user input getting flattened when rendered in message history
