@@ -4,7 +4,6 @@
 
 - Consolidate remaining duplicate user ID extraction into shared auth module
 - Convert scheduled_tasks and proxy_tokens handlers to use AppError
-- Remove duplicate extract_user_id_from_cookies from websocket/auth and voice handlers
 
 ## 2.3.2
 
