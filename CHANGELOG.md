@@ -2,8 +2,8 @@
 
 ## 2.3.3
 
-- Replace stale "CC-Proxy" / "cc-proxy" references with "Agent Portal" / "agent-portal" across codebase
-- Remove stale cli-tools entry from docs/DEVELOPING.md directory listing
+- Consolidate remaining duplicate user ID extraction into shared auth module
+- Convert scheduled_tasks and proxy_tokens handlers to use AppError
 
 ## 2.3.2
 
