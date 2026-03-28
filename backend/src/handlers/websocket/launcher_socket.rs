@@ -476,6 +476,37 @@ fn handle_launcher_message(
                 "Scheduled run completed: task={}, session={}, exit={:?}, duration={}s",
                 task_id, session_id, exit_code, duration_secs
             );
+
+            // Auto-delete completed scheduled sessions to avoid cluttering the UI.
+            // Costs are preserved in deleted_session_costs.
+            if let Ok(mut db_conn) = app_state.db_pool.get() {
+                use crate::schema::sessions;
+                match sessions::table
+                    .find(session_id)
+                    .first::<crate::models::Session>(&mut db_conn)
+                {
+                    Ok(session) => {
+                        if let Err(e) = super::super::helpers::delete_session_with_data(
+                            &mut db_conn,
+                            &session,
+                            true,
+                        ) {
+                            error!(
+                                "Failed to auto-delete scheduled session {}: {:?}",
+                                session_id, e
+                            );
+                        } else {
+                            info!("Auto-deleted completed scheduled session {}", session_id);
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Could not find scheduled session {} for cleanup: {}",
+                            session_id, e
+                        );
+                    }
+                }
+            }
         }
         LauncherToServer::LauncherRegister { .. } => {}
     }

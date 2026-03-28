@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.6
+
+- Auto-delete completed cron sessions to prevent UI clutter (costs preserved)
+- Hide cron sessions by default in the session rail
+
 ## 2.3.5
 
 - Fix admin stats endpoint returning empty body due to SQL type mismatch (COALESCE returns numeric, Diesel expects float8)
