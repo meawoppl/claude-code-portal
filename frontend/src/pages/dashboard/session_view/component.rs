@@ -16,6 +16,21 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::{ClipboardEvent, DragEvent, Element, HtmlTextAreaElement, KeyboardEvent};
 use yew::prelude::*;
 
+/// Check if a Claude session is awaiting user input by scanning messages
+/// backwards. Skips noise types (portal, error, system, rate_limit_event)
+/// and returns true if "result" is found before "user" or "assistant".
+fn is_claude_awaiting(messages: impl DoubleEndedIterator<Item = impl AsRef<str>>) -> bool {
+    messages
+        .rev()
+        .find_map(|msg| {
+            serde_json::from_str::<serde_json::Value>(msg.as_ref())
+                .ok()
+                .and_then(|p| p.get("type")?.as_str().map(String::from))
+                .filter(|t| t == "result" || t == "assistant" || t == "user")
+        })
+        .is_some_and(|t| t == "result")
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum TaskStatus {
     Running,
@@ -191,16 +206,7 @@ impl Component for SessionView {
 
             if let Ok(response) = Request::get(&api_endpoint).send().await {
                 if let Ok(data) = response.json::<MessagesResponse>().await {
-                    let is_awaiting = data.messages.last().is_some_and(|msg| {
-                        serde_json::from_str::<serde_json::Value>(&msg.content)
-                            .ok()
-                            .and_then(|p| {
-                                p.get("type")
-                                    .and_then(|t| t.as_str())
-                                    .map(|t| t == "result")
-                            })
-                            .unwrap_or(false)
-                    });
+                    let is_awaiting = is_claude_awaiting(data.messages.iter().map(|m| &m.content));
                     on_awaiting_change.emit((session_id, is_awaiting));
 
                     last_message_time = data.messages.last().map(|m| m.created_at.clone());
@@ -582,20 +588,7 @@ impl Component for SessionView {
                         })
                         .unwrap_or(false)
                 } else {
-                    // For Claude: search backwards for "result" or "assistant"
-                    // Late-arriving proxy messages or tool completions can land
-                    // after a result, so checking only .last() would incorrectly
-                    // show the session as still working.
-                    self.messages
-                        .iter()
-                        .rev()
-                        .find_map(|msg| {
-                            serde_json::from_str::<serde_json::Value>(msg)
-                                .ok()
-                                .and_then(|p| p.get("type")?.as_str().map(String::from))
-                                .filter(|t| t == "result" || t == "assistant")
-                        })
-                        .is_some_and(|t| t == "result")
+                    is_claude_awaiting(self.messages.iter())
                 };
                 let is_awaiting = is_result_awaiting || self.pending_permission.is_some();
                 let session_id = ctx.props().session.id;
