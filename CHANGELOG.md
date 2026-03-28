@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.3.7
+
+- Fix awaiting-input detection to skip noise message types (portal, error, system, rate_limit_event)
+- Extract shared `is_claude_awaiting` function used by both REST load and WebSocket paths
+
 ## 2.3.6
 
 - Auto-delete completed cron sessions to prevent UI clutter (costs preserved)
