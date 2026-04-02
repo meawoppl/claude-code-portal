@@ -174,6 +174,11 @@ pub fn admin_page(props: &AdminPageProps) -> Html {
                             loading.set(false);
                             return;
                         }
+                        if !response.ok() {
+                            error.set(Some(format!("Server error (HTTP {})", response.status())));
+                            loading.set(false);
+                            return;
+                        }
                         match response.json::<AdminStats>().await {
                             Ok(data) => {
                                 stats.set(Some(data));

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.13
+
+- Fix admin stats page crashing on non-401/403 error responses
+
 ## 2.3.12
 
 - Render each message in assistant groups as its own component so only new messages re-render
