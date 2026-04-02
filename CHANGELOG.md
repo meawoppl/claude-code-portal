@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.14
+
+- Resume existing Claude sessions on launcher restart instead of creating new ones
+
 ## 2.3.13
 
 - Fix admin stats page crashing on non-401/403 error responses

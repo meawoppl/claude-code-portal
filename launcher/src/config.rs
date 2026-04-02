@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use shared::AgentType;
 use std::path::PathBuf;
+use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct LauncherConfig {
@@ -20,6 +21,8 @@ pub struct ExpectedSession {
     pub agent_type: AgentType,
     #[serde(default)]
     pub claude_args: Vec<String>,
+    #[serde(default)]
+    pub session_id: Option<Uuid>,
 }
 
 fn config_path() -> PathBuf {
@@ -78,6 +81,24 @@ pub fn add_session(session: &ExpectedSession) -> anyhow::Result<()> {
     }
     config.sessions.push(session.clone());
     save_config(&config)
+}
+
+pub fn update_session_id(working_directory: &str, session_id: Uuid) -> anyhow::Result<()> {
+    let mut config = load_config();
+    if let Some(session) = config
+        .sessions
+        .iter_mut()
+        .find(|s| s.working_directory == working_directory)
+    {
+        session.session_id = Some(session_id);
+        save_config(&config)?;
+        tracing::debug!(
+            "Updated session_id for {}: {}",
+            working_directory,
+            session_id
+        );
+    }
+    Ok(())
 }
 
 pub fn remove_session(working_directory: &str) -> anyhow::Result<()> {
@@ -147,6 +168,7 @@ auth_token = "secret"
                 session_name: Some("my-session".to_string()),
                 agent_type: AgentType::Claude,
                 claude_args: vec!["--verbose".to_string()],
+                session_id: None,
             }],
         };
         let serialized = toml::to_string_pretty(&config).unwrap();
@@ -186,10 +208,50 @@ claude_args = ["--model", "opus"]
         );
         assert_eq!(config.sessions[0].agent_type, AgentType::Claude);
         assert!(config.sessions[0].claude_args.is_empty());
+        assert!(config.sessions[0].session_id.is_none());
 
         assert_eq!(config.sessions[1].working_directory, "/home/user/project-b");
         assert!(config.sessions[1].session_name.is_none());
         assert_eq!(config.sessions[1].agent_type, AgentType::Codex);
         assert_eq!(config.sessions[1].claude_args, vec!["--model", "opus"]);
+        assert!(config.sessions[1].session_id.is_none());
+    }
+
+    #[test]
+    fn parse_config_with_session_id() {
+        let toml = r#"
+backend_url = "wss://example.com"
+auth_token = "tok_abc"
+
+[[sessions]]
+working_directory = "/home/user/project-a"
+session_id = "550e8400-e29b-41d4-a716-446655440000"
+"#;
+        let config: LauncherConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.sessions.len(), 1);
+        assert_eq!(
+            config.sessions[0].session_id,
+            Some(Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap())
+        );
+    }
+
+    #[test]
+    fn roundtrip_config_with_session_id() {
+        let sid = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let config = LauncherConfig {
+            backend_url: None,
+            auth_token: None,
+            name: None,
+            sessions: vec![ExpectedSession {
+                working_directory: "/home/user/project".to_string(),
+                session_name: None,
+                agent_type: AgentType::Claude,
+                claude_args: vec![],
+                session_id: Some(sid),
+            }],
+        };
+        let serialized = toml::to_string_pretty(&config).unwrap();
+        let deserialized: LauncherConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.sessions[0].session_id, Some(sid));
     }
 }
