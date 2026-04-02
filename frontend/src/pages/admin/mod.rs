@@ -175,10 +175,7 @@ pub fn admin_page(props: &AdminPageProps) -> Html {
                             return;
                         }
                         if !response.ok() {
-                            error.set(Some(format!(
-                                "Server error (HTTP {})",
-                                response.status()
-                            )));
+                            error.set(Some(format!("Server error (HTTP {})", response.status())));
                             loading.set(false);
                             return;
                         }
