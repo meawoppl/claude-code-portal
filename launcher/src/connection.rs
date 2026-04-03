@@ -430,7 +430,7 @@ async fn handle_message(
             agent_type,
             ..
         } => {
-            // Check if this is a scheduled launch
+            // Check if this is a scheduled launch or a relaunch of an expected session
             let (resume_session_id, scheduled_task_id, is_scheduled) = if let Some((
                 resume_id,
                 task_id,
@@ -439,7 +439,11 @@ async fn handle_message(
             {
                 (resume_id, Some(task_id), true)
             } else {
-                (None, None, false)
+                let resume_id = expected_sessions
+                    .iter()
+                    .find(|s| s.working_directory == working_directory)
+                    .and_then(|s| s.session_id);
+                (resume_id, None, false)
             };
 
             info!(
@@ -463,23 +467,28 @@ async fn handle_message(
                 Ok(session_id) => {
                     if is_scheduled {
                         scheduler.on_session_spawned(request_id, session_id);
-                    } else {
-                        // Persist so this session survives launcher restarts
-                        if !expected_sessions
-                            .iter()
-                            .any(|s| s.working_directory == working_directory)
-                        {
-                            let expected = ExpectedSession {
-                                working_directory: working_directory.clone(),
-                                session_name: session_name.clone(),
-                                agent_type,
-                                claude_args: claude_args.clone(),
-                            };
-                            if let Err(e) = config::add_session(&expected) {
-                                warn!("Failed to persist session to config: {}", e);
-                            }
-                            expected_sessions.push(expected);
+                    } else if let Some(existing) = expected_sessions
+                        .iter_mut()
+                        .find(|s| s.working_directory == working_directory)
+                    {
+                        // Update stored session_id so future restarts resume this session
+                        existing.session_id = Some(session_id);
+                        if let Err(e) = config::update_session_id(&working_directory, session_id) {
+                            warn!("Failed to update session_id in config: {}", e);
                         }
+                    } else {
+                        // New session — persist so it survives launcher restarts
+                        let expected = ExpectedSession {
+                            working_directory: working_directory.clone(),
+                            session_name: session_name.clone(),
+                            agent_type,
+                            claude_args: claude_args.clone(),
+                            session_id: Some(session_id),
+                        };
+                        if let Err(e) = config::add_session(&expected) {
+                            warn!("Failed to persist session to config: {}", e);
+                        }
+                        expected_sessions.push(expected);
                     }
                     LauncherToServer::LaunchSessionResult {
                         request_id,
