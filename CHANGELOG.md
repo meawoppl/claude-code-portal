@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.4
+
+- Unify config directory: launcher now uses `~/.config/agent-portal/` (same as proxy)
+- Migrate launcher config from TOML to JSON (`launcher.toml` -> `launcher.json`)
+- Auto-migrate old `~/.config/claude-portal/launcher.toml` on startup
+- Both proxy and launcher use `directories::ProjectDirs` for consistent paths across platforms
+- Update install script to use new config path and JSON format
+
 ## 2.4.3
 
 - Add GitHub link to minimal splash page footer
