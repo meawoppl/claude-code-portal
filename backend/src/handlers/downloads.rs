@@ -39,10 +39,10 @@ pub async fn install_script(
 
 set -e
 
-CONFIG_DIR="${{HOME}}/.config/claude-portal"
+CONFIG_DIR="${{HOME}}/.config/agent-portal"
 BIN_NAME="agent-portal"
 BIN_PATH="${{CONFIG_DIR}}/${{BIN_NAME}}"
-CONFIG_FILE="${{CONFIG_DIR}}/launcher.toml"
+CONFIG_FILE="${{CONFIG_DIR}}/launcher.json"
 GITHUB_RELEASE_URL="https://github.com/meawoppl/agent-portal/releases/download/latest"
 BACKEND_URL="{backend_url}"
 
@@ -141,15 +141,28 @@ fi
 if [ -f "${{CONFIG_FILE}}" ]; then
     # Config exists — update backend_url if not already set
     if ! grep -q "backend_url" "${{CONFIG_FILE}}" 2>/dev/null; then
-        echo "backend_url = \"${{BACKEND_URL}}\"" >> "${{CONFIG_FILE}}"
-        echo "Added backend_url to existing config"
+        # Inject backend_url into existing JSON
+        TMP_FILE="${{CONFIG_FILE}}.tmp"
+        if command -v python3 >/dev/null 2>&1; then
+            python3 -c "
+import json, sys
+with open('${{CONFIG_FILE}}') as f: cfg = json.load(f)
+cfg['backend_url'] = '${{BACKEND_URL}}'
+with open('${{TMP_FILE}}', 'w') as f: json.dump(cfg, f, indent=2)
+" && mv "${{TMP_FILE}}" "${{CONFIG_FILE}}"
+            echo "Added backend_url to existing config"
+        else
+            echo "Warning: python3 not found, cannot update config"
+        fi
     else
         echo "Config already exists with backend_url, skipping"
     fi
 else
     echo "Configuring backend URL: ${{BACKEND_URL}}"
     cat > "${{CONFIG_FILE}}" << EOF
-backend_url = "${{BACKEND_URL}}"
+{{
+  "backend_url": "${{BACKEND_URL}}"
+}}
 EOF
 fi
 echo ""
@@ -160,7 +173,7 @@ add_to_path() {{
     local path_line="export PATH=\"\$PATH:${{CONFIG_DIR}}\""
 
     if [ -f "${{rc_file}}" ]; then
-        if ! grep -q "claude-portal" "${{rc_file}}" 2>/dev/null; then
+        if ! grep -q "agent-portal" "${{rc_file}}" 2>/dev/null; then
             echo "" >> "${{rc_file}}"
             echo "# Agent Launcher binary path" >> "${{rc_file}}"
             echo "${{path_line}}" >> "${{rc_file}}"

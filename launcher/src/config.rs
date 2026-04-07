@@ -25,7 +25,17 @@ pub struct ExpectedSession {
     pub session_id: Option<Uuid>,
 }
 
+fn config_dir() -> PathBuf {
+    directories::ProjectDirs::from("com", "anthropic", "agent-portal")
+        .map(|p| p.config_dir().to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("/tmp/agent-portal"))
+}
+
 fn config_path() -> PathBuf {
+    config_dir().join("launcher.json")
+}
+
+fn legacy_config_path() -> PathBuf {
     dirs::config_dir()
         .or_else(|| dirs::home_dir().map(|h| h.join(".config")))
         .unwrap_or_else(|| PathBuf::from("/tmp"))
@@ -33,10 +43,63 @@ fn config_path() -> PathBuf {
         .join("launcher.toml")
 }
 
+/// Migrate from the old ~/.config/claude-portal/launcher.toml to the new path.
+/// Reads the TOML, writes JSON to the new location, and removes the old file.
+fn migrate_legacy_config() {
+    let old_path = legacy_config_path();
+    let new_path = config_path();
+
+    if !old_path.exists() || new_path.exists() {
+        return;
+    }
+
+    tracing::warn!(
+        "Migrating config: {} -> {}",
+        old_path.display(),
+        new_path.display()
+    );
+
+    let Ok(contents) = std::fs::read_to_string(&old_path) else {
+        return;
+    };
+
+    // Parse as TOML (the old format)
+    let config: LauncherConfig = match toml::from_str(&contents) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("Failed to parse legacy config: {}", e);
+            return;
+        }
+    };
+
+    // Write as JSON to the new path
+    if let Some(parent) = new_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match serde_json::to_string_pretty(&config) {
+        Ok(json) => {
+            if std::fs::write(&new_path, &json).is_ok() {
+                tracing::info!("Migrated config to {}", new_path.display());
+                // Remove the old file
+                if let Err(e) = std::fs::remove_file(&old_path) {
+                    tracing::warn!("Failed to remove old config: {}", e);
+                }
+                // Try to remove the old directory if empty
+                if let Some(old_dir) = old_path.parent() {
+                    let _ = std::fs::remove_dir(old_dir);
+                }
+            }
+        }
+        Err(e) => tracing::warn!("Failed to serialize migrated config: {}", e),
+    }
+}
+
 pub fn load_config() -> LauncherConfig {
+    migrate_legacy_config();
+
     let path = config_path();
     match std::fs::read_to_string(&path) {
-        Ok(contents) => match toml::from_str(&contents) {
+        Ok(contents) => match serde_json::from_str(&contents) {
             Ok(config) => {
                 tracing::info!("Loaded config from {}", path.display());
                 config
@@ -52,7 +115,7 @@ pub fn load_config() -> LauncherConfig {
 
 fn save_config(config: &LauncherConfig) -> anyhow::Result<()> {
     let path = config_path();
-    let contents = toml::to_string_pretty(config)?;
+    let contents = serde_json::to_string_pretty(config)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -120,12 +183,12 @@ mod tests {
 
     #[test]
     fn parse_full_config() {
-        let toml = r#"
-backend_url = "wss://example.com"
-auth_token = "tok_abc123"
-name = "my-launcher"
-"#;
-        let config: LauncherConfig = toml::from_str(toml).unwrap();
+        let json = r#"{
+            "backend_url": "wss://example.com",
+            "auth_token": "tok_abc123",
+            "name": "my-launcher"
+        }"#;
+        let config: LauncherConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.backend_url.unwrap(), "wss://example.com");
         assert_eq!(config.auth_token.unwrap(), "tok_abc123");
         assert_eq!(config.name.unwrap(), "my-launcher");
@@ -134,7 +197,7 @@ name = "my-launcher"
 
     #[test]
     fn parse_empty_config() {
-        let config: LauncherConfig = toml::from_str("").unwrap();
+        let config: LauncherConfig = serde_json::from_str("{}").unwrap();
         assert!(config.backend_url.is_none());
         assert!(config.auth_token.is_none());
         assert!(config.name.is_none());
@@ -143,10 +206,8 @@ name = "my-launcher"
 
     #[test]
     fn parse_partial_config() {
-        let toml = r#"
-auth_token = "secret"
-"#;
-        let config: LauncherConfig = toml::from_str(toml).unwrap();
+        let json = r#"{ "auth_token": "secret" }"#;
+        let config: LauncherConfig = serde_json::from_str(json).unwrap();
         assert!(config.backend_url.is_none());
         assert_eq!(config.auth_token.unwrap(), "secret");
     }
@@ -171,8 +232,8 @@ auth_token = "secret"
                 session_id: None,
             }],
         };
-        let serialized = toml::to_string_pretty(&config).unwrap();
-        let deserialized: LauncherConfig = toml::from_str(&serialized).unwrap();
+        let serialized = serde_json::to_string_pretty(&config).unwrap();
+        let deserialized: LauncherConfig = serde_json::from_str(&serialized).unwrap();
         assert_eq!(deserialized.backend_url, config.backend_url);
         assert_eq!(deserialized.auth_token, config.auth_token);
         assert_eq!(deserialized.name, config.name);
@@ -185,20 +246,22 @@ auth_token = "secret"
 
     #[test]
     fn parse_config_with_sessions() {
-        let toml = r#"
-backend_url = "wss://example.com"
-auth_token = "tok_abc"
-
-[[sessions]]
-working_directory = "/home/user/project-a"
-session_name = "project-a"
-
-[[sessions]]
-working_directory = "/home/user/project-b"
-agent_type = "codex"
-claude_args = ["--model", "opus"]
-"#;
-        let config: LauncherConfig = toml::from_str(toml).unwrap();
+        let json = r#"{
+            "backend_url": "wss://example.com",
+            "auth_token": "tok_abc",
+            "sessions": [
+                {
+                    "working_directory": "/home/user/project-a",
+                    "session_name": "project-a"
+                },
+                {
+                    "working_directory": "/home/user/project-b",
+                    "agent_type": "codex",
+                    "claude_args": ["--model", "opus"]
+                }
+            ]
+        }"#;
+        let config: LauncherConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.sessions.len(), 2);
 
         assert_eq!(config.sessions[0].working_directory, "/home/user/project-a");
@@ -219,15 +282,15 @@ claude_args = ["--model", "opus"]
 
     #[test]
     fn parse_config_with_session_id() {
-        let toml = r#"
-backend_url = "wss://example.com"
-auth_token = "tok_abc"
-
-[[sessions]]
-working_directory = "/home/user/project-a"
-session_id = "550e8400-e29b-41d4-a716-446655440000"
-"#;
-        let config: LauncherConfig = toml::from_str(toml).unwrap();
+        let json = r#"{
+            "backend_url": "wss://example.com",
+            "auth_token": "tok_abc",
+            "sessions": [{
+                "working_directory": "/home/user/project-a",
+                "session_id": "550e8400-e29b-41d4-a716-446655440000"
+            }]
+        }"#;
+        let config: LauncherConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.sessions.len(), 1);
         assert_eq!(
             config.sessions[0].session_id,
@@ -250,8 +313,8 @@ session_id = "550e8400-e29b-41d4-a716-446655440000"
                 session_id: Some(sid),
             }],
         };
-        let serialized = toml::to_string_pretty(&config).unwrap();
-        let deserialized: LauncherConfig = toml::from_str(&serialized).unwrap();
+        let serialized = serde_json::to_string_pretty(&config).unwrap();
+        let deserialized: LauncherConfig = serde_json::from_str(&serialized).unwrap();
         assert_eq!(deserialized.sessions[0].session_id, Some(sid));
     }
 }
