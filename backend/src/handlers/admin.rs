@@ -174,10 +174,10 @@ pub async fn get_stats(
         "SELECT COUNT(*) as total, \
          COUNT(*) FILTER (WHERE status = 'active') as active_count, \
          COALESCE(SUM(total_cost_usd), 0.0)::float8 as spend_usd, \
-         COALESCE(SUM(input_tokens), 0) as sum_input_tokens, \
-         COALESCE(SUM(output_tokens), 0) as sum_output_tokens, \
-         COALESCE(SUM(cache_creation_tokens), 0) as sum_cache_creation_tokens, \
-         COALESCE(SUM(cache_read_tokens), 0) as sum_cache_read_tokens \
+         COALESCE(SUM(input_tokens), 0)::bigint as sum_input_tokens, \
+         COALESCE(SUM(output_tokens), 0)::bigint as sum_output_tokens, \
+         COALESCE(SUM(cache_creation_tokens), 0)::bigint as sum_cache_creation_tokens, \
+         COALESCE(SUM(cache_read_tokens), 0)::bigint as sum_cache_read_tokens \
          FROM sessions",
     )
     .get_result(&mut conn)
@@ -190,10 +190,10 @@ pub async fn get_stats(
     let deleted_stats: DeletedCostStats = diesel::sql_query(
         "SELECT \
          COALESCE(SUM(cost_usd), 0.0)::float8 as spend_usd, \
-         COALESCE(SUM(input_tokens), 0) as sum_input_tokens, \
-         COALESCE(SUM(output_tokens), 0) as sum_output_tokens, \
-         COALESCE(SUM(cache_creation_tokens), 0) as sum_cache_creation_tokens, \
-         COALESCE(SUM(cache_read_tokens), 0) as sum_cache_read_tokens \
+         COALESCE(SUM(input_tokens), 0)::bigint as sum_input_tokens, \
+         COALESCE(SUM(output_tokens), 0)::bigint as sum_output_tokens, \
+         COALESCE(SUM(cache_creation_tokens), 0)::bigint as sum_cache_creation_tokens, \
+         COALESCE(SUM(cache_read_tokens), 0)::bigint as sum_cache_read_tokens \
          FROM deleted_session_costs",
     )
     .get_result(&mut conn)

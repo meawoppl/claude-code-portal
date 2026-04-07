@@ -137,6 +137,25 @@ use schema::messages;
 sessions::table.filter(sessions::id.eq(some_id))
 ```
 
+### Raw SQL Type Safety
+
+**When using `diesel::sql_query()`, always cast aggregate results to match the Rust type:**
+
+PostgreSQL `SUM(bigint)` returns `numeric`, not `bigint`. Diesel will fail at runtime trying to decode it. Always add explicit casts:
+
+```sql
+-- ❌ BAD - SUM(bigint) returns numeric, Diesel can't decode as i64
+COALESCE(SUM(input_tokens), 0) as sum_input_tokens
+
+-- ✅ GOOD - explicit cast matches #[diesel(sql_type = BigInt)]
+COALESCE(SUM(input_tokens), 0)::bigint as sum_input_tokens
+
+-- ✅ GOOD - float casts for Double sql_type
+COALESCE(SUM(total_cost_usd), 0.0)::float8 as spend_usd
+```
+
+**Prefer Diesel query builder over raw SQL** — the query builder handles type mapping automatically. Only use `sql_query()` for PostgreSQL-specific syntax (like `FILTER (WHERE ...)`).
+
 ### 4. WebSocket Protocol
 
 **Each endpoint has its own typed message enums** in `shared/src/endpoints.rs`:
