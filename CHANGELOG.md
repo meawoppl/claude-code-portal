@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.5
+
+- Fix admin stats 500: cast SUM(bigint) to ::bigint in raw SQL queries (#627)
+- Add raw SQL type safety guidance to CLAUDE.md
+
 ## 2.4.4
 
 - Unify config directory: launcher now uses `~/.config/agent-portal/` (same as proxy)
