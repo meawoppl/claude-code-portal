@@ -16,7 +16,7 @@ use crate::snapshot::{PendingPermission, SessionConfig, SessionSnapshot};
 #[derive(Debug)]
 pub enum SessionEvent {
     /// Claude produced output (excluding permission requests, which have their own event)
-    Output(ClaudeOutput),
+    Output(Box<ClaudeOutput>),
 
     /// Raw JSON output from a non-Claude agent (e.g. Codex JSONL).
     ///
@@ -492,7 +492,7 @@ impl Session {
                         continue;
                     }
 
-                    return Some(SessionEvent::Output(output));
+                    return Some(SessionEvent::Output(Box::new(output)));
                 }
                 Some(IoEvent::RawOutput(value)) => {
                     // Buffer the raw output

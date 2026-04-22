@@ -44,7 +44,7 @@ pub(super) async fn handle_session_event_with_wiggum(
     match event {
         Some(SessionEvent::Output(ref output)) => {
             // Check for wiggum completion before forwarding
-            let should_continue_wiggum = if let ClaudeOutput::Result(ref result) = output {
+            let should_continue_wiggum = if let ClaudeOutput::Result(ref result) = **output {
                 if let Some(ref state) = wiggum_state {
                     // Check if Claude responded with "DONE"
                     let is_done = check_wiggum_done(result);
@@ -62,7 +62,7 @@ pub(super) async fn handle_session_event_with_wiggum(
             };
 
             // Forward the output
-            if output_tx.send(output.clone()).is_err() {
+            if output_tx.send(*output.clone()).is_err() {
                 error!("Failed to forward Claude output");
                 return Some(ConnectionResult::Disconnected(connection_start.elapsed()));
             }
@@ -127,7 +127,7 @@ pub(super) async fn handle_session_event_with_wiggum(
                         }
                     }
                 }
-            } else if matches!(output, ClaudeOutput::Result(_)) && wiggum_state.is_some() {
+            } else if matches!(&**output, ClaudeOutput::Result(_)) && wiggum_state.is_some() {
                 // Send final completion portal message
                 if let Some(ref mut state) = wiggum_state {
                     let loop_duration = state.loop_start.elapsed();
@@ -161,7 +161,7 @@ pub(super) async fn handle_session_event_with_wiggum(
                 *wiggum_state = None;
             }
 
-            if matches!(output, ClaudeOutput::Result(_)) && wiggum_state.is_none() {
+            if matches!(&**output, ClaudeOutput::Result(_)) && wiggum_state.is_none() {
                 debug!("--- ready for input ---");
             }
             None
