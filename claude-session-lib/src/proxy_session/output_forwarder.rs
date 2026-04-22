@@ -443,6 +443,9 @@ fn log_claude_output(output: &ClaudeOutput) {
                     ContentBlock::Image(_) => {
                         debug!("← [assistant] image block");
                     }
+                    _ => {
+                        debug!("← [assistant] other block");
+                    }
                 }
             }
 
