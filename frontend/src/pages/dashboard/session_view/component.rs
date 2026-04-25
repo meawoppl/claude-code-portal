@@ -1,5 +1,6 @@
 //! SessionView component - Main terminal view for a single session
 
+use crate::components::message_renderer::MessageRenderer;
 use crate::components::{group_messages, MessageGroupRenderer, VoiceInput};
 use crate::utils;
 use gloo::timers::callback::{Interval, Timeout};
@@ -193,6 +194,8 @@ pub struct SessionView {
     tab_departing: bool,
     /// Tracks textarea content so it can be restored after reconnection re-renders
     input_text: String,
+    /// Messages sent but not yet confirmed by the server echo
+    pending_sends: Vec<String>,
 }
 
 impl Component for SessionView {
@@ -268,6 +271,7 @@ impl Component for SessionView {
             tab_anim: None,
             tab_departing: false,
             input_text: String::new(),
+            pending_sends: Vec::new(),
         }
     }
 
@@ -1019,6 +1023,9 @@ impl Component for SessionView {
                                 html! { <MessageGroupRenderer group={group} session_id={Some(ctx.props().session.id)} agent_type={ctx.props().session.agent_type} current_user_id={ctx.props().current_user_id.clone()} /> }
                             }).collect::<Html>()
                         }
+                        { for self.pending_sends.iter().map(|json| {
+                            html! { <MessageRenderer json={json.clone()} session_id={Some(ctx.props().session.id)} agent_type={ctx.props().session.agent_type} current_user_id={ctx.props().current_user_id.clone()} /> }
+                        })}
                     </div>
                     { self.render_tasks_sidebar(ctx) }
                 </div>
@@ -1145,7 +1152,7 @@ impl SessionView {
         let session_id = ctx.props().session.id;
         ctx.props().on_message_sent.emit(session_id);
 
-        // Optimistic local echo: show the message immediately with _pending flag
+        // Optimistic local echo: show in pending queue at bottom of chat
         let now_iso = js_sys::Date::new_0()
             .to_iso_string()
             .as_string()
@@ -1156,7 +1163,7 @@ impl SessionView {
             "_pending": true,
             "_created_at": now_iso,
         });
-        self.messages.push(optimistic_msg.to_string());
+        self.pending_sends.push(optimistic_msg.to_string());
 
         // Send the text
         if let Some(ref sender) = self.ws_sender {
@@ -1377,24 +1384,11 @@ impl SessionView {
         } else {
             output
         };
-        // If this is a confirmed user message from the server, replace the
-        // optimistic pending message instead of appending a duplicate.
-        if msg_type == "user" {
-            if let Some(pos) = self.messages.iter().position(|m| {
-                serde_json::from_str::<serde_json::Value>(m)
-                    .ok()
-                    .and_then(|v| v.get("_pending")?.as_bool())
-                    .unwrap_or(false)
-            }) {
-                self.messages[pos] = output;
-                self.last_message_timestamp = Some(
-                    js_sys::Date::new_0()
-                        .to_iso_string()
-                        .as_string()
-                        .unwrap_or_default(),
-                );
-                return true;
-            }
+        // When a confirmed user message arrives from the server, remove the
+        // oldest pending send so it doesn't duplicate. The confirmed version
+        // appends to self.messages at the natural scroll position.
+        if msg_type == "user" && !self.pending_sends.is_empty() {
+            self.pending_sends.remove(0);
         }
         self.messages.push(output);
         if self.messages.len() > MAX_MESSAGES_PER_SESSION {
