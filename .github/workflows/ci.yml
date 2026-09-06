@@ -19,9 +19,9 @@ jobs:
     name: Lint Checks
     runs-on: ubuntu-latest
     steps:
+      # Shallow checkout: these scripts scan the working tree only and never
+      # build, so the build.rs commit-count version (#1096) doesn't apply.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # full history so build.rs commit-count version is real (#1096)
 
       - name: Check migration naming convention
         run: ./scripts/check-migration-names.sh
@@ -36,9 +36,8 @@ jobs:
       run:
         working-directory: frontend/lint
     steps:
+      # Shallow checkout: stylelint reads the working tree only, no builds.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # full history so build.rs commit-count version is real (#1096)
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -57,9 +56,8 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
+      # Shallow checkout: rustfmt never runs build.rs, so no history needed.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # full history so build.rs commit-count version is real (#1096)
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.96.0
