@@ -5,7 +5,6 @@
 //! proxy token (programmatic/agent callers), and is scoped to a single user —
 //! you can only see and message your own sessions.
 
-use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::{
@@ -431,7 +430,7 @@ pub async fn show_media(
     }
 
     let content_json = portal.to_json();
-    let agent_type = AgentType::from_str(&session.agent_type).unwrap_or_default();
+    let agent_type = AgentType::parse_or_default(&session.agent_type);
 
     // Persist the transcript row (durability + reconnect replay). Broadcast is
     // best-effort; persistence is the guarantee.

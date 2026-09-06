@@ -57,7 +57,7 @@ pub fn history_transcript_page(props: &HistoryTranscriptProps) -> Html {
     // first archived line's own agent_type (so a Codex transcript renders
     // correctly even while the manifest is in flight or failed).
     let agent_type = match &*manifest {
-        Some(Ok(m)) => shared::AgentType::from_str(&m.agent_type).unwrap_or_default(),
+        Some(Ok(m)) => shared::AgentType::parse_or_default(&m.agent_type),
         _ => match &*messages {
             Some(Ok(lines)) => lines
                 .first()

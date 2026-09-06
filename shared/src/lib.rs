@@ -228,6 +228,15 @@ impl AgentType {
         }
     }
 
+    /// Parse a stored agent-type string, falling back to the default
+    /// ([`AgentType::Claude`]) on unknown values. Single place where the
+    /// dozen DB/wire read sites agree that a stale string means Claude
+    /// rather than an error — previously each spelled out
+    /// `.parse().unwrap_or(AgentType::Claude)` (or the equivalent default).
+    pub fn parse_or_default(s: &str) -> Self {
+        s.parse().unwrap_or_default()
+    }
+
     /// The command that installs this agent's CLI, as structured data so the
     /// launcher (which runs it) and the frontend (which displays it for the
     /// user to confirm) agree on exactly one thing.
@@ -1339,6 +1348,19 @@ mod tests {
         // Default is Fresh so omitted/older payloads keep today's behavior.
         assert_eq!(SessionMode::default(), SessionMode::Fresh);
         assert_eq!("fresh".parse::<SessionMode>().unwrap(), SessionMode::Fresh);
+    }
+
+    #[test]
+    fn agent_type_parse_or_default_tolerates_stale_strings() {
+        // Every known wire value parses, case-insensitively like FromStr.
+        assert_eq!(AgentType::parse_or_default("claude"), AgentType::Claude);
+        assert_eq!(AgentType::parse_or_default("codex"), AgentType::Codex);
+        assert_eq!(AgentType::parse_or_default("Muse"), AgentType::Muse);
+        // A stale/unknown stored string means Claude, never an error —
+        // this is the fallback the DB read sites previously spelled out.
+        assert_eq!(AgentType::parse_or_default("gpt-5"), AgentType::Claude);
+        assert_eq!(AgentType::parse_or_default(""), AgentType::Claude);
+        assert_eq!(AgentType::default(), AgentType::Claude);
     }
 
     #[test]

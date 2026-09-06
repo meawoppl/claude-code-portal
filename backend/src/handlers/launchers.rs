@@ -276,7 +276,7 @@ pub async fn fork_session(
             "Source launcher is offline or does not support session forking",
         ));
     }
-    let agent_type = source.agent_type.parse().unwrap_or(AgentType::Claude);
+    let agent_type = AgentType::parse_or_default(&source.agent_type);
     if agent_type == AgentType::Muse {
         return Err(AppError::BadRequest("Muse sessions cannot be forked"));
     }
