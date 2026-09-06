@@ -1156,8 +1156,7 @@ fn reconcile_desired_sessions(app_state: &AppState, launcher_id: Uuid, user_id: 
             .session_manager
             .register_launch_session(request_id, session.id);
 
-        let claude_args =
-            serde_json::from_value::<Vec<String>>(session.claude_args.clone()).unwrap_or_default();
+        let claude_args: Vec<String> = crate::models::jsonb_or_default(session.claude_args.clone());
         let agent_type = session
             .agent_type
             .parse()

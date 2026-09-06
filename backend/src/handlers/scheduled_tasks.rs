@@ -35,7 +35,7 @@ fn task_to_fields(t: &ScheduledTask) -> ScheduledTaskFields {
         timezone: t.timezone.clone(),
         working_directory: t.working_directory.clone(),
         prompt: t.prompt.clone(),
-        claude_args: serde_json::from_value(t.claude_args.clone()).unwrap_or_default(),
+        claude_args: crate::models::jsonb_or_default(t.claude_args.clone()),
         agent_type: t.agent_type.parse().unwrap_or(AgentType::Claude),
         max_runtime_minutes: t.max_runtime_minutes,
         session_mode: t.session_mode.parse().unwrap_or_default(),

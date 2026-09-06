@@ -384,8 +384,7 @@ pub fn load_scheduled_continuations(
         .unwrap_or_default()
         .into_iter()
         .map(|(row, session)| {
-            let claude_args =
-                serde_json::from_value::<Vec<String>>(session.claude_args).unwrap_or_default();
+            let claude_args: Vec<String> = crate::models::jsonb_or_default(session.claude_args);
             let agent_type = session.agent_type.parse().unwrap_or_default();
             ContinuationConfig {
                 id: row.id,

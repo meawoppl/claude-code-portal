@@ -345,8 +345,7 @@ pub async fn resume_session(
 
     let auth_token = crate::handlers::launchers::mint_launch_token(&app_state, session.user_id)?;
     let request_id = Uuid::new_v4();
-    let claude_args =
-        serde_json::from_value::<Vec<String>>(session.claude_args.clone()).unwrap_or_default();
+    let claude_args: Vec<String> = crate::models::jsonb_or_default(session.claude_args.clone());
     let agent_type = session
         .agent_type
         .parse()
