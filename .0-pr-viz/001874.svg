@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1200"
+     font-family="'Segoe UI', 'Noto Sans', 'DejaVu Sans', ui-sans-serif, system-ui, sans-serif">
+  <rect x="0" y="0" width="2000" height="1200" fill="#16161e"/>
+
+  <defs>
+    <marker id="arr-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#565f89"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9ece6a"/>
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <text x="55" y="52" font-size="24" letter-spacing="1" fill="#565f89">PR #1874 · Add AgentType parse_or_default, dedupe 12 sites</text>
+
+  <!-- Thesis -->
+  <text x="55" y="100" font-size="34" fill="#e6e9f5">Twelve agent-type reads each spelled the same stale-means-Claude fallback three ways —</text>
+  <text x="55" y="140" font-size="34" fill="#e6e9f5">now AgentType::parse_or_default owns it in shared, so every DB and wire reader agrees.</text>
+  <line x1="55" y1="165" x2="1945" y2="165" stroke="#3d4666" stroke-width="1"/>
+
+  <!-- Panel labels + center divider -->
+  <text x="55" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#f7768e">BEFORE</text>
+  <text x="1040" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#9ece6a">AFTER</text>
+  <line x1="1000" y1="190" x2="1000" y2="1135" stroke="#3d4666" stroke-width="1.5" stroke-dasharray="2 6"/>
+
+  <!-- ==================== BEFORE panel: x 55–945 ==================== -->
+
+  <g>
+    <rect x="80" y="250" width="810" height="200" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="290" font-size="26" fill="#7aa2f7">six files · three spellings, one meaning</text>
+    <text x="104" y="330" font-size="23" fill="#f7768e">.parse().unwrap_or(AgentType::Claude)</text>
+    <text x="104" y="366" font-size="23" fill="#f7768e">.parse().unwrap_or_default() — the same thing</text>
+    <text x="104" y="402" font-size="22" fill="#565f89">Default for AgentType is Claude either way</text>
+  </g>
+
+  <line x1="485" y1="450" x2="485" y2="490" stroke="#565f89" stroke-width="1.5" marker-end="url(#arr-dim)"/>
+
+  <g>
+    <rect x="80" y="510" width="810" height="200" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="550" font-size="26" fill="#7aa2f7">continuations.rs · five copies alone</text>
+    <text x="104" y="590" font-size="23" fill="#f7768e">AgentOutput fan-out pasted per handler</text>
+    <text x="104" y="626" font-size="23" fill="#f7768e">session.agent_type.parse().unwrap_or_default()</text>
+    <text x="104" y="662" font-size="22" fill="#565f89">five of the twelve sites in a single file</text>
+  </g>
+
+  <line x1="485" y1="710" x2="485" y2="750" stroke="#565f89" stroke-width="1.5" marker-end="url(#arr-dim)"/>
+
+  <g>
+    <rect x="80" y="770" width="810" height="200" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="810" font-size="26" fill="#7aa2f7">agent_comms.rs:434 · the third spelling</text>
+    <text x="104" y="850" font-size="23" fill="#f7768e">AgentType::from_str(..).unwrap_or_default()</text>
+    <text x="104" y="886" font-size="23" fill="#f7768e">a thirteenth reader means a thirteenth paste</text>
+    <text x="104" y="922" font-size="22" fill="#565f89">its FromStr import dies with the call</text>
+  </g>
+
+  <!-- ==================== AFTER panel: x 1040–1945 ==================== -->
+
+  <g>
+    <rect x="1065" y="250" width="810" height="200" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
+    <text x="1089" y="290" font-size="26" fill="#7aa2f7">shared/lib.rs · parse_or_default</text>
+    <text x="1089" y="330" font-size="23" fill="#9ece6a">pub fn parse_or_default(s: &amp;str) -&gt; Self</text>
+    <text x="1089" y="366" font-size="23" fill="#a9b1d6">s.parse().unwrap_or_default() lives here once</text>
+    <text x="1089" y="402" font-size="22" fill="#565f89">WASM-safe: the history page uses it too</text>
+  </g>
+
+  <line x1="1470" y1="450" x2="1470" y2="490" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <g>
+    <rect x="1065" y="500" width="810" height="265" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="1089" y="540" font-size="26" fill="#c0caf5">twelve one-line call sites</text>
+    <text x="1089" y="580" font-size="23" fill="#9ece6a">parse_or_default(&amp;stored) → Claude on stale</text>
+    <text x="1089" y="616" font-size="23" fill="#a9b1d6">models, metrics, launchers, tasks, sockets</text>
+    <text x="1089" y="652" font-size="23" fill="#9ece6a">shared::parse_or_default(&amp;m) → history page</text>
+    <text x="1089" y="688" font-size="23" fill="#a9b1d6">type flows from the struct field by inference</text>
+    <text x="1089" y="724" font-size="22" fill="#565f89">+34 / -13 lines across eight files</text>
+  </g>
+
+  <g>
+    <rect x="1065" y="785" width="810" height="145" fill="#1e202e" stroke="#9ece6a" stroke-width="1.5"/>
+    <text x="1089" y="831" font-size="26" fill="#c0caf5">pinned by a new unit test</text>
+    <text x="1089" y="871" font-size="23" fill="#9ece6a">agent_type_parse_or_default_tolerates_stale_strings</text>
+    <text x="1089" y="907" font-size="22" fill="#565f89">known, cased, stale, empty; 197 shared + 319 backend green</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="55" y="1172" font-size="22" fill="#565f89">Leaves the matches! gate and the Option-chain fallback untouched — different shapes, different helpers.</text>
+</svg>
