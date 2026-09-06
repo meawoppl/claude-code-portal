@@ -156,12 +156,17 @@ fn normalize_custom_name(name: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Timestamped default branch/name for an unnamed worktree launch. Mirrors the
-/// launcher's own fallback format (`session-<YYYYMMDD-HHMMSS>`) so the two paths
-/// stay visually consistent; generating it here lets the display name match the
-/// worktree branch even when the caller supplies no name.
+/// Timestamped default branch/name for an unnamed worktree launch. Built from
+/// the shared [`shared::WORKTREE_BRANCH_PREFIX`] shape (the launcher's fallback
+/// uses the same consts) so the display name always matches the worktree branch
+/// even when the caller supplies no name; generating it here lets the two agree
+/// before the launcher runs.
 fn default_worktree_branch() -> String {
-    format!("session-{}", chrono::Local::now().format("%Y%m%d-%H%M%S"))
+    format!(
+        "{}{}",
+        shared::WORKTREE_BRANCH_PREFIX,
+        chrono::Local::now().format(shared::WORKTREE_BRANCH_TIME_FORMAT)
+    )
 }
 
 fn default_session_name(working_directory: &str) -> String {

@@ -178,7 +178,14 @@ fn sanitize_branch_name(input: &str) -> String {
 }
 
 fn default_branch_name() -> String {
-    format!("session-{}", chrono::Local::now().format("%Y%m%d-%H%M%S"))
+    // Shared shape with the backend's pre-launch display-name default
+    // ([`shared::WORKTREE_BRANCH_PREFIX`]) so an unnamed worktree launch shows
+    // the same name in the rail as on the branch.
+    format!(
+        "{}{}",
+        shared::WORKTREE_BRANCH_PREFIX,
+        chrono::Local::now().format(shared::WORKTREE_BRANCH_TIME_FORMAT)
+    )
 }
 
 #[cfg(test)]
