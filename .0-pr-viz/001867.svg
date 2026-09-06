@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1200"
+     font-family="'Segoe UI', 'Noto Sans', 'DejaVu Sans', ui-sans-serif, system-ui, sans-serif">
+  <rect x="0" y="0" width="2000" height="1200" fill="#16161e"/>
+
+  <defs>
+    <marker id="arr-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#565f89"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9ece6a"/>
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <text x="55" y="52" font-size="24" letter-spacing="1" fill="#565f89">PR #1867 · Remove dead clippy ratchet in proxy</text>
+
+  <!-- Thesis -->
+  <text x="55" y="100" font-size="34" fill="#e6e9f5">claude-portal's crate-wide unwrap allow suppressed nothing — every</text>
+  <text x="55" y="140" font-size="34" fill="#e6e9f5">remaining site is test-only; deleting it makes the deny real again.</text>
+  <line x1="55" y1="165" x2="1945" y2="165" stroke="#3d4666" stroke-width="1"/>
+
+  <!-- Panel labels + center divider -->
+  <text x="55" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#f7768e">BEFORE</text>
+  <text x="1040" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#9ece6a">AFTER</text>
+  <line x1="1000" y1="190" x2="1000" y2="1135" stroke="#3d4666" stroke-width="1.5" stroke-dasharray="2 6"/>
+
+  <!-- ==================== BEFORE panel: x 55–945 ==================== -->
+
+  <g>
+    <rect x="80" y="250" width="810" height="200" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="290" font-size="26" fill="#7aa2f7">proxy/src/main.rs:1–3 · crate allow</text>
+    <text x="104" y="330" font-size="23" fill="#f7768e">#![allow(clippy::unwrap_used, expect_used)]</text>
+    <text x="104" y="366" font-size="23" fill="#f7768e">comment claims production unwraps remain</text>
+    <text x="104" y="402" font-size="22" fill="#565f89">covers all 8 modules of the binary crate</text>
+  </g>
+
+  <line x1="485" y1="450" x2="485" y2="490" stroke="#565f89" stroke-width="1.5" marker-end="url(#arr-dim)"/>
+
+  <g>
+    <rect x="80" y="500" width="810" height="265" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="540" font-size="26" fill="#c0caf5">all 11 sites are inside cfg(test) mods</text>
+    <text x="104" y="580" font-size="23" fill="#f7768e">– main.rs:878,882,894 http_api_url…unwrap()</text>
+    <text x="104" y="616" font-size="23" fill="#f7768e">– shim.rs:873–884 interrupt_line…expect</text>
+    <text x="104" y="652" font-size="23" fill="#f7768e">– util.rs:132–138 base64_url_decode…unwrap()</text>
+    <text x="104" y="688" font-size="22" fill="#565f89">exempt via clippy.toml allow-unwrap-in-tests</text>
+    <text x="104" y="724" font-size="22" fill="#565f89">the allow suppresses zero production lints</text>
+  </g>
+
+  <g>
+    <rect x="80" y="785" width="810" height="145" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="831" font-size="26" fill="#c0caf5">the deny never fires for this crate</text>
+    <text x="104" y="871" font-size="23" fill="#f7768e">a new production unwrap would pass silently</text>
+    <text x="104" y="907" font-size="22" fill="#565f89">the ratchet protects nothing</text>
+  </g>
+
+  <!-- ==================== AFTER panel: x 1040–1945 ==================== -->
+
+  <g>
+    <rect x="1065" y="250" width="810" height="200" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="1089" y="290" font-size="26" fill="#7aa2f7">proxy/src/main.rs · allow deleted</text>
+    <text x="1089" y="330" font-size="23" fill="#9ece6a">4 lines removed, nothing else touched</text>
+    <text x="1089" y="366" font-size="23" fill="#a9b1d6">stale comment goes with the allow</text>
+    <text x="1089" y="402" font-size="22" fill="#565f89">mod auth; is the new line 1</text>
+  </g>
+
+  <line x1="1470" y1="450" x2="1470" y2="490" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <g>
+    <rect x="1065" y="500" width="810" height="265" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
+    <text x="1089" y="540" font-size="26" fill="#c0caf5">enforcement verified, not assumed</text>
+    <text x="1089" y="580" font-size="23" fill="#9ece6a">+ RUSTFLAGS=-Dwarnings clippy clean</text>
+    <text x="1089" y="616" font-size="23" fill="#9ece6a">+ cargo test -p claude-portal: 7 passed</text>
+    <text x="1089" y="652" font-size="23" fill="#9ece6a">+ next production unwrap fails CI</text>
+    <text x="1089" y="688" font-size="22" fill="#565f89">test unwraps stay exempt via clippy.toml</text>
+    <text x="1089" y="724" font-size="22" fill="#565f89">same cleanup as the frontend ratchets</text>
+  </g>
+
+  <g>
+    <rect x="1065" y="785" width="810" height="145" fill="#1e202e" stroke="#9ece6a" stroke-width="1.5"/>
+    <text x="1089" y="831" font-size="26" fill="#c0caf5">workspace deny enforced for claude-portal</text>
+    <text x="1089" y="871" font-size="23" fill="#9ece6a">future slips become compile errors</text>
+    <text x="1089" y="907" font-size="22" fill="#565f89">CI clippy lane repeats the proof</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="55" y="1172" font-size="22" fill="#565f89">Sibling crates (launcher, session-lib, shared) still carry live allows — each needs its own cleanup.</text>
+</svg>
