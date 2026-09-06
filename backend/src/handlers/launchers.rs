@@ -21,7 +21,7 @@ use crate::auth::CurrentUserId;
 use crate::errors::AppError;
 use crate::handlers::responses::EmptyResponse;
 use crate::handlers::websocket::SessionManager;
-use crate::models::{NewSessionMember, NewSessionWithId};
+use crate::models::{jsonb_string_vec, NewSessionMember, NewSessionWithId};
 use crate::AppState;
 
 /// GET /api/launchers - List connected launchers for the current user
@@ -307,8 +307,7 @@ pub async fn fork_session(
     };
     let name = normalize_custom_name(Some(&req.name))
         .unwrap_or_else(|| format!("{} (fork)", source.session_name));
-    let mut claude_args: Vec<String> =
-        serde_json::from_value(source.claude_args.clone()).unwrap_or_default();
+    let mut claude_args: Vec<String> = jsonb_string_vec(&source.claude_args);
     if let Some(model) = req.model.filter(|model| !model.trim().is_empty()) {
         claude_args = apply_model_override(claude_args, agent_type, model);
     }
