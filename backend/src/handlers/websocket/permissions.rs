@@ -204,10 +204,8 @@ pub fn replay_pending_permission(db_pool: &DbPool, session_id: Uuid, tx: &WebCli
             session_id, pending.tool_name, pending.request_id
         );
 
-        let suggestions: Vec<shared::PermissionSuggestion> = pending
-            .permission_suggestions
-            .and_then(|v| serde_json::from_value(v).ok())
-            .unwrap_or_default();
+        let suggestions: Vec<shared::PermissionSuggestion> =
+            crate::models::jsonb_opt_or_default(pending.permission_suggestions);
 
         let _ = tx.send(ServerToClient::PermissionRequest {
             request_id: pending.request_id,
