@@ -28,7 +28,6 @@ use diesel::prelude::*;
 use diesel::sql_types::{BigInt, Double, Nullable, Text, Timestamptz};
 use serde::Deserialize;
 use shared::api::{MetricBucket, MetricBucketsResponse, TurnMetricsResponse};
-use shared::AgentType;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -412,7 +411,7 @@ pub async fn list_aggregated_turn_metrics(
             let stop_reason_counts = reason_index.remove(&key).unwrap_or_default();
             MetricBucket {
                 bucket_start: row.bucket_start,
-                agent_type: row.agent_type.parse().unwrap_or(AgentType::Claude),
+                agent_type: row.agent_type.parse().unwrap_or_default(),
                 model: row.model,
                 service_tier: row.service_tier,
                 turn_count: row.turn_count,
@@ -439,6 +438,7 @@ pub async fn list_aggregated_turn_metrics(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shared::AgentType;
 
     #[test]
     fn parse_bucket_defaults_to_day() {

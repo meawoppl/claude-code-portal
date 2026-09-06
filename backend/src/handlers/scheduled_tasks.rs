@@ -13,7 +13,7 @@ use shared::api::{
     CreateScheduledTaskRequest, ScheduledTaskInfo, ScheduledTaskListResponse,
     ScheduledTaskOccurrence, UpcomingScheduledTasksResponse, UpdateScheduledTaskRequest,
 };
-use shared::{AgentType, ScheduledTaskConfig, ScheduledTaskFields, ServerToLauncher};
+use shared::{ScheduledTaskConfig, ScheduledTaskFields, ServerToLauncher};
 use std::{str::FromStr, sync::Arc};
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -36,7 +36,7 @@ fn task_to_fields(t: &ScheduledTask) -> ScheduledTaskFields {
         working_directory: t.working_directory.clone(),
         prompt: t.prompt.clone(),
         claude_args: serde_json::from_value(t.claude_args.clone()).unwrap_or_default(),
-        agent_type: t.agent_type.parse().unwrap_or(AgentType::Claude),
+        agent_type: t.agent_type.parse().unwrap_or_default(),
         max_runtime_minutes: t.max_runtime_minutes,
         session_mode: t.session_mode.parse().unwrap_or_default(),
     }
@@ -93,7 +93,7 @@ fn upcoming_for_task(
             task_id: task.id,
             task_name: task.name.clone(),
             hostname: task.hostname.clone(),
-            agent_type: task.agent_type.parse().unwrap_or(AgentType::Claude),
+            agent_type: task.agent_type.parse().unwrap_or_default(),
             scheduled_for: next_utc.to_rfc3339(),
         });
         cursor = next;

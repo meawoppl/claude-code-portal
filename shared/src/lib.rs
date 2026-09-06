@@ -1421,6 +1421,14 @@ mod tests {
     }
 
     #[test]
+    fn agent_type_default_is_claude() {
+        // DB/wire parse fallbacks use `unwrap_or_default()` — pin that the
+        // default is Claude so an unknown agent string can never silently
+        // route a session to a different agent.
+        assert_eq!(AgentType::default(), AgentType::Claude);
+    }
+
+    #[test]
     fn session_role_wire_and_capabilities() {
         assert_eq!(SessionRole::Owner.as_str(), "owner");
         assert_eq!(SessionRole::Editor.as_str(), "editor");
