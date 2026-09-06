@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1200"
+     font-family="'Segoe UI', 'Noto Sans', 'DejaVu Sans', ui-sans-serif, system-ui, sans-serif">
+  <rect x="0" y="0" width="2000" height="1200" fill="#16161e"/>
+
+  <defs>
+    <marker id="arr-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#565f89"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9ece6a"/>
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <text x="55" y="52" font-size="24" letter-spacing="1" fill="#565f89">PR #1871 · Dedupe JSONB decode-or-default into models helper</text>
+
+  <!-- Thesis -->
+  <text x="55" y="100" font-size="34" fill="#e6e9f5">Four tolerant JSONB reads each spelled out the same and_then/ok/unwrap chain —</text>
+  <text x="55" y="140" font-size="34" fill="#e6e9f5">now models::jsonb_opt_or_default owns it; all four sites are one-liners.</text>
+  <line x1="55" y1="165" x2="1945" y2="165" stroke="#3d4666" stroke-width="1"/>
+
+  <!-- Panel labels + center divider -->
+  <text x="55" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#f7768e">BEFORE</text>
+  <text x="1040" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#9ece6a">AFTER</text>
+  <line x1="1000" y1="190" x2="1000" y2="1135" stroke="#3d4666" stroke-width="1.5" stroke-dasharray="2 6"/>
+
+  <!-- ==================== BEFORE panel: x 55–945 ==================== -->
+
+  <g>
+    <rect x="80" y="250" width="810" height="235" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="290" font-size="26" fill="#7aa2f7">push/dispatcher.rs:170 · resolve_recipient</text>
+    <text x="104" y="330" font-size="23" fill="#f7768e">stored.and_then(|v| serde_json::from_value(v).ok())</text>
+    <text x="104" y="366" font-size="23" fill="#f7768e">.unwrap_or_default() // NULL or stale → default</text>
+    <text x="104" y="402" font-size="23" fill="#a9b1d6">users.notification_prefs → NotificationPrefs</text>
+    <text x="104" y="438" font-size="22" fill="#565f89">handlers/push.rs get_prefs repeats it verbatim</text>
+  </g>
+
+  <line x1="485" y1="485" x2="485" y2="525" stroke="#565f89" stroke-width="1.5" marker-end="url(#arr-dim)"/>
+
+  <g>
+    <rect x="80" y="545" width="810" height="200" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="585" font-size="26" fill="#7aa2f7">handlers/push.rs · db_tests read_prefs</text>
+    <text x="104" y="625" font-size="23" fill="#f7768e">same 3-line chain, pasted a third time</text>
+    <text x="104" y="661" font-size="23" fill="#f7768e">test helper drifts from the handler it mirrors</text>
+    <text x="104" y="697" font-size="22" fill="#565f89">a fifth reader means a fifth pasted chain</text>
+  </g>
+
+  <g>
+    <rect x="80" y="765" width="810" height="165" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="811" font-size="26" fill="#c0caf5">permissions.rs:208 · replay pending request</text>
+    <text x="104" y="851" font-size="23" fill="#f7768e">fourth copy on a different column and type</text>
+    <text x="104" y="887" font-size="23" fill="#a9b1d6">permission_suggestions → Vec&lt;PermissionSuggestion&gt;</text>
+  </g>
+
+  <!-- ==================== AFTER panel: x 1040–1945 ==================== -->
+
+  <g>
+    <rect x="1065" y="250" width="810" height="200" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
+    <text x="1089" y="290" font-size="26" fill="#7aa2f7">models.rs · jsonb_opt_or_default</text>
+    <text x="1089" y="330" font-size="23" fill="#9ece6a">pub fn jsonb_opt_or_default&lt;T&gt;(Option&lt;Value&gt;) -&gt; T</text>
+    <text x="1089" y="366" font-size="23" fill="#a9b1d6">T: Default + DeserializeOwned; NULL/garbage → default</text>
+    <text x="1089" y="402" font-size="22" fill="#565f89">one owner for the tolerant-read idiom</text>
+  </g>
+
+  <line x1="1470" y1="450" x2="1470" y2="490" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <g>
+    <rect x="1065" y="500" width="810" height="265" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="1089" y="540" font-size="26" fill="#c0caf5">four one-line call sites</text>
+    <text x="1089" y="580" font-size="23" fill="#9ece6a">resolve_recipient · get_prefs · read_prefs</text>
+    <text x="1089" y="616" font-size="23" fill="#a9b1d6">all three prefs readers share the fallback</text>
+    <text x="1089" y="652" font-size="23" fill="#9ece6a">replay-permissions keeps its Vec annotation</text>
+    <text x="1089" y="688" font-size="23" fill="#a9b1d6">generic over T, so both shapes are covered</text>
+    <text x="1089" y="724" font-size="22" fill="#565f89">+30 / -13 lines across the four files</text>
+  </g>
+
+  <g>
+    <rect x="1065" y="785" width="810" height="145" fill="#1e202e" stroke="#9ece6a" stroke-width="1.5"/>
+    <text x="1089" y="831" font-size="26" fill="#c0caf5">pinned by a new unit test</text>
+    <text x="1089" y="871" font-size="23" fill="#9ece6a">jsonb_opt_or_default_decodes_or_falls_back</text>
+    <text x="1089" y="907" font-size="22" fill="#565f89">decode · NULL · null · garbage; 320 lib tests green</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="55" y="1172" font-size="22" fill="#565f89">No behavior change — identical fallback semantics, one owner for the idiom.</text>
+</svg>
