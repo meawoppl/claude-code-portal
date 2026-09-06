@@ -217,6 +217,14 @@ impl AgentType {
         }
     }
 
+    /// Parse a stored/transmitted agent-type string, falling back to the
+    /// default (`Claude`) on unknown or garbage input. The DB keeps
+    /// `agent_type` as text, so every read path needs the same tolerant
+    /// decode — one helper instead of a dozen `parse().unwrap_or(_)` spells.
+    pub fn parse_or_default(s: &str) -> Self {
+        s.parse().unwrap_or_default()
+    }
+
     /// Human-facing label ("Claude", "Codex", "Muse") for dropdowns, chips,
     /// and settings titles. Single source of truth so the frontend never
     /// re-matches the enum just to capitalize the wire name.
@@ -1418,6 +1426,19 @@ mod tests {
         assert_eq!(AgentType::Claude.display_name(), "Claude");
         assert_eq!(AgentType::Codex.display_name(), "Codex");
         assert_eq!(AgentType::Muse.display_name(), "Muse");
+    }
+
+    #[test]
+    fn agent_type_parse_or_default_tolerates_garbage() {
+        // Every variant parses (case-insensitively); unknown/empty input
+        // falls back to the default (Claude), matching the old
+        // `parse().unwrap_or(_)` behavior at every DB read site.
+        assert_eq!(AgentType::parse_or_default("claude"), AgentType::Claude);
+        assert_eq!(AgentType::parse_or_default("codex"), AgentType::Codex);
+        assert_eq!(AgentType::parse_or_default("muse"), AgentType::Muse);
+        assert_eq!(AgentType::parse_or_default("Muse"), AgentType::Muse);
+        assert_eq!(AgentType::parse_or_default("bogus"), AgentType::Claude);
+        assert_eq!(AgentType::parse_or_default(""), AgentType::Claude);
     }
 
     #[test]

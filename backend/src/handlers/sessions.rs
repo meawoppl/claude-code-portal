@@ -346,10 +346,7 @@ pub async fn resume_session(
     let auth_token = crate::handlers::launchers::mint_launch_token(&app_state, session.user_id)?;
     let request_id = Uuid::new_v4();
     let claude_args = jsonb_string_vec(&session.claude_args);
-    let agent_type = session
-        .agent_type
-        .parse()
-        .unwrap_or(shared::AgentType::Claude);
+    let agent_type = shared::AgentType::parse_or_default(&session.agent_type);
 
     use crate::schema::sessions;
     diesel::update(sessions::table.find(session_id))

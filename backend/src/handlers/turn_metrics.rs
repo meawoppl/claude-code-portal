@@ -412,7 +412,7 @@ pub async fn list_aggregated_turn_metrics(
             let stop_reason_counts = reason_index.remove(&key).unwrap_or_default();
             MetricBucket {
                 bucket_start: row.bucket_start,
-                agent_type: row.agent_type.parse().unwrap_or(AgentType::Claude),
+                agent_type: AgentType::parse_or_default(&row.agent_type),
                 model: row.model,
                 service_tier: row.service_tier,
                 turn_count: row.turn_count,
