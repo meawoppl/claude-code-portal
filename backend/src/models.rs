@@ -319,6 +319,18 @@ pub struct NewPushSubscription {
     pub device_label: Option<String>,
 }
 
+/// Decode an optional JSONB column into `T`, falling back to `T::default()`
+/// when the column is NULL or the stored value no longer parses (e.g. an
+/// older payload shape). Keeps tolerant reads of `users.notification_prefs`,
+/// `pending_permission_requests.permission_suggestions`, etc. in one place.
+pub fn jsonb_opt_or_default<T>(v: Option<serde_json::Value>) -> T
+where
+    T: Default + serde::de::DeserializeOwned,
+{
+    v.and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default()
+}
+
 // ============================================================================
 // Pending Permission Request Models
 // ============================================================================
@@ -787,5 +799,18 @@ mod tests {
         // skips-with-log rather than mis-routing a legacy/corrupt row.
         assert_eq!(push_sub("mms").platform_kind(), None);
         assert_eq!(push_sub("").platform_kind(), None);
+    }
+
+    #[test]
+    fn jsonb_opt_or_default_tolerates_null_and_bad_shapes() {
+        // NULL column → default.
+        let none: Vec<String> = jsonb_opt_or_default(None);
+        assert!(none.is_empty());
+        // Well-formed value decodes.
+        let some: Vec<String> = jsonb_opt_or_default(Some(serde_json::json!(["a", "b"])));
+        assert_eq!(some, vec!["a".to_string(), "b".to_string()]);
+        // Stale shape (object where a list is expected) → default, not panic.
+        let stale: Vec<String> = jsonb_opt_or_default(Some(serde_json::json!({"old": true})));
+        assert!(stale.is_empty());
     }
 }

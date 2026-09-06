@@ -168,9 +168,7 @@ fn resolve_recipient(
         .first::<(Uuid, String, Option<serde_json::Value>)>(conn)
         .optional()?;
     Ok(row.map(|(user_id, name, stored)| {
-        let prefs = stored
-            .and_then(|v| serde_json::from_value(v).ok())
-            .unwrap_or_default();
+        let prefs = crate::models::jsonb_opt_or_default(stored);
         (user_id, name, prefs)
     }))
 }

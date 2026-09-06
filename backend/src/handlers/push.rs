@@ -170,9 +170,7 @@ pub async fn get_prefs(
         .select(users::notification_prefs)
         .first(&mut conn)?;
 
-    let prefs = stored
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
+    let prefs = crate::models::jsonb_opt_or_default(stored);
 
     Ok(Json(prefs))
 }
@@ -223,9 +221,7 @@ mod db_tests {
             .select(users::notification_prefs)
             .first(conn)
             .expect("select notification_prefs");
-        stored
-            .and_then(|v| serde_json::from_value(v).ok())
-            .unwrap_or_default()
+        crate::models::jsonb_opt_or_default(stored)
     }
 
     #[test]
