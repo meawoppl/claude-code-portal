@@ -1,6 +1,14 @@
 pub(super) const MATH_OPEN: char = '\u{E000}';
 pub(super) const MATH_CLOSE: char = '\u{E001}';
 
+/// The char at byte offset `i`, or `None` if `i` is past the end or not on a
+/// char boundary. The scanner only ever advances to boundaries (ASCII skips
+/// and `len_utf8` steps), so `None` is unreachable — the `else { break }` at
+/// each call site just keeps a corrupt-index bug from becoming a panic.
+fn char_at(text: &str, i: usize) -> Option<char> {
+    text.get(i..)?.chars().next()
+}
+
 /// Scan `text` for math regions (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`)
 /// outside of inline-code spans and fenced code blocks, and replace each
 /// occurrence with a private-use placeholder of the form
@@ -23,9 +31,7 @@ pub(super) fn extract_math_placeholders(text: &str) -> (String, Vec<String>) {
             continue;
         }
         if in_code_fence {
-            let Some(c) = text.get(i..).and_then(|tail| tail.chars().next()) else {
-                break;
-            };
+            let Some(c) = char_at(text, i) else { break };
             output.push(c);
             i += c.len_utf8();
             continue;
@@ -38,9 +44,7 @@ pub(super) fn extract_math_placeholders(text: &str) -> (String, Vec<String>) {
             continue;
         }
         if in_inline_code {
-            let Some(c) = text.get(i..).and_then(|tail| tail.chars().next()) else {
-                break;
-            };
+            let Some(c) = char_at(text, i) else { break };
             output.push(c);
             i += c.len_utf8();
             continue;
@@ -101,9 +105,7 @@ pub(super) fn extract_math_placeholders(text: &str) -> (String, Vec<String>) {
             }
         }
 
-        let Some(c) = text.get(i..).and_then(|tail| tail.chars().next()) else {
-            break;
-        };
+        let Some(c) = char_at(text, i) else { break };
         output.push(c);
         i += c.len_utf8();
     }
