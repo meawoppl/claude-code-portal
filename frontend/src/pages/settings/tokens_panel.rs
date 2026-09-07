@@ -33,8 +33,7 @@ pub fn count_expiring_tokens(tokens: &[ProxyTokenInfo]) -> usize {
             t.expires_at
                 .as_deref()
                 .and_then(days_until_expiration)
-                .map(|d| (0..=7).contains(&d))
-                .unwrap_or(false)
+                .is_some_and(|d| (0..=7).contains(&d))
         })
         .count()
 }
