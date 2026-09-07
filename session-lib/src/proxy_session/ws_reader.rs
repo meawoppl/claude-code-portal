@@ -5,16 +5,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
 use super::{GracefulShutdown, PermissionResponseData, PortalInput, PortalInputAck, WsRead};
-
-fn truncate(s: &str, max_chars: usize) -> String {
-    let mut chars = s.chars();
-    let prefix: String = chars.by_ref().take(max_chars).collect();
-    if chars.next().is_some() {
-        format!("{prefix}...")
-    } else {
-        prefix
-    }
-}
+use shared::fmt::truncate_str as truncate;
 
 /// Events sent through the file upload channel from the WS reader to the main loop
 pub enum FileUploadEvent {

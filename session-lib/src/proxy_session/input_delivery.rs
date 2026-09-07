@@ -19,16 +19,7 @@ use super::{
 };
 use crate::agent::Agent;
 use crate::session::Session;
-
-fn truncate(s: &str, max_chars: usize) -> String {
-    let mut chars = s.chars();
-    let prefix: String = chars.by_ref().take(max_chars).collect();
-    if chars.next().is_some() {
-        format!("{prefix}...")
-    } else {
-        prefix
-    }
-}
+use shared::fmt::truncate_str as truncate;
 
 /// Deliver one user input to the agent. Returns `Some(ConnectionResult)` to end
 /// the connection (delivery failure), or `None` to continue the loop.
