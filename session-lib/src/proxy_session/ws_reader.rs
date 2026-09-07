@@ -4,7 +4,17 @@ use shared::{SendMode, ServerToProxy};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
-use super::{truncate, GracefulShutdown, PermissionResponseData, WsRead};
+use super::{GracefulShutdown, PermissionResponseData, PortalInput, PortalInputAck, WsRead};
+
+fn truncate(s: &str, max_chars: usize) -> String {
+    let mut chars = s.chars();
+    let prefix: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{prefix}...")
+    } else {
+        prefix
+    }
+}
 
 /// Events sent through the file upload channel from the WS reader to the main loop
 pub enum FileUploadEvent {
@@ -25,27 +35,27 @@ pub enum FileDownloadEvent {
 }
 
 /// Tracks state for a file being received in chunks
-pub(crate) struct FileReceiveState {
-    pub(crate) filename: String,
-    pub(crate) total_chunks: u32,
-    pub(crate) total_size: u64,
-    pub(crate) received_chunks: u32,
-    pub(crate) received_bytes: u64,
-    pub(crate) file_handle: Option<tokio::fs::File>,
-    pub(crate) start_time: std::time::Instant,
-    pub(crate) last_log_percent: u32,
+pub struct FileReceiveState {
+    pub filename: String,
+    pub total_chunks: u32,
+    pub total_size: u64,
+    pub received_chunks: u32,
+    pub received_bytes: u64,
+    pub file_handle: Option<tokio::fs::File>,
+    pub start_time: std::time::Instant,
+    pub last_log_percent: u32,
     /// Bytes are written here and renamed to `filename` only on completion,
     /// so a consumer (the agent) can never read a truncated file (#939).
-    pub(crate) temp_path: std::path::PathBuf,
-    pub(crate) final_path: std::path::PathBuf,
-    pub(crate) disposition: shared::FileUploadDisposition,
+    pub temp_path: std::path::PathBuf,
+    pub final_path: std::path::PathBuf,
+    pub disposition: shared::FileUploadDisposition,
 }
 
 /// A portal input classified by send mode: a plain user input or a
 /// wiggum-mode activation carrying the original prompt.
 pub enum RoutedPortalInput {
-    Input(super::PortalInput),
-    Wiggum(super::PortalInput),
+    Input(PortalInput),
+    Wiggum(PortalInput),
 }
 
 /// Convert a `ClaudeInput`/`SequencedInput` payload into a routed portal
@@ -53,7 +63,7 @@ pub enum RoutedPortalInput {
 pub fn classify_portal_input(
     content: serde_json::Value,
     send_mode: Option<SendMode>,
-    ack: Option<super::PortalInputAck>,
+    ack: Option<PortalInputAck>,
     client_msg_id: Option<uuid::Uuid>,
 ) -> RoutedPortalInput {
     let (text, display_event) = match content {
@@ -66,7 +76,7 @@ pub fn classify_portal_input(
             None => (other.to_string(), None),
         },
     };
-    let input = super::PortalInput {
+    let input = PortalInput {
         text,
         display_event,
         ack,
@@ -83,10 +93,10 @@ pub fn classify_portal_input(
 fn route_portal_input(
     content: serde_json::Value,
     send_mode: Option<SendMode>,
-    ack: Option<super::PortalInputAck>,
+    ack: Option<PortalInputAck>,
     client_msg_id: Option<uuid::Uuid>,
-    input_tx: &mpsc::UnboundedSender<super::PortalInput>,
-    wiggum_tx: &mpsc::UnboundedSender<super::PortalInput>,
+    input_tx: &mpsc::UnboundedSender<PortalInput>,
+    wiggum_tx: &mpsc::UnboundedSender<PortalInput>,
 ) -> WsMessageResult {
     let label = if ack.is_some() { "seq_input" } else { "input" };
     let seq_part = ack
@@ -119,7 +129,7 @@ fn route_portal_input(
 }
 
 /// Result from handling a WebSocket text message
-pub(super) enum WsMessageResult {
+pub enum WsMessageResult {
     /// Continue processing messages
     Continue,
     /// Disconnect (error or other reason)
@@ -134,12 +144,12 @@ pub(super) enum WsMessageResult {
 ///
 /// Bundles every `mpsc`/`oneshot` sender used by [`spawn_ws_reader`] so the
 /// spawn signature stays small. Field names mirror the call-site locals.
-pub(super) struct WsReaderChannels {
-    pub input_tx: mpsc::UnboundedSender<super::PortalInput>,
+pub struct WsReaderChannels {
+    pub input_tx: mpsc::UnboundedSender<PortalInput>,
     pub perm_tx: mpsc::UnboundedSender<PermissionResponseData>,
     pub ack_tx: mpsc::UnboundedSender<u64>,
     pub disconnect_tx: tokio::sync::oneshot::Sender<()>,
-    pub wiggum_tx: mpsc::UnboundedSender<super::PortalInput>,
+    pub wiggum_tx: mpsc::UnboundedSender<PortalInput>,
     pub graceful_shutdown_tx: mpsc::UnboundedSender<GracefulShutdown>,
     pub session_terminated_tx: tokio::sync::oneshot::Sender<()>,
     pub file_upload_tx: mpsc::UnboundedSender<FileUploadEvent>,
@@ -148,11 +158,11 @@ pub(super) struct WsReaderChannels {
 }
 
 /// Spawn the WebSocket reader task
-pub(super) fn spawn_ws_reader(
+pub fn spawn_ws_reader(
     mut ws_read: WsRead,
     channels: WsReaderChannels,
-    heartbeat: session_lib::heartbeat::HeartbeatTracker,
-    tunnel: std::sync::Arc<session_lib::tunnel::TunnelManager>,
+    heartbeat: crate::heartbeat::HeartbeatTracker,
+    tunnel: std::sync::Arc<crate::tunnel::TunnelManager>,
 ) -> tokio::task::JoinHandle<()> {
     let WsReaderChannels {
         input_tx,
@@ -218,11 +228,11 @@ pub(super) fn spawn_ws_reader(
 #[allow(clippy::too_many_arguments)]
 async fn handle_ws_message(
     proxy_msg: ServerToProxy,
-    input_tx: &mpsc::UnboundedSender<super::PortalInput>,
+    input_tx: &mpsc::UnboundedSender<PortalInput>,
     perm_tx: &mpsc::UnboundedSender<PermissionResponseData>,
     ack_tx: &mpsc::UnboundedSender<u64>,
-    wiggum_tx: &mpsc::UnboundedSender<super::PortalInput>,
-    heartbeat: &session_lib::heartbeat::HeartbeatTracker,
+    wiggum_tx: &mpsc::UnboundedSender<PortalInput>,
+    heartbeat: &crate::heartbeat::HeartbeatTracker,
     file_upload_tx: &mpsc::UnboundedSender<FileUploadEvent>,
     file_download_tx: &mpsc::UnboundedSender<FileDownloadEvent>,
     interrupt_tx: &mpsc::UnboundedSender<()>,
@@ -248,7 +258,7 @@ async fn handle_ws_message(
             return route_portal_input(
                 content,
                 send_mode,
-                Some(super::PortalInputAck { session_id, seq }),
+                Some(PortalInputAck { session_id, seq }),
                 client_msg_id,
                 input_tx,
                 wiggum_tx,
@@ -457,7 +467,7 @@ mod tests {
         // optimistic-row advance / pending-input replay.
         let session_id = uuid::Uuid::nil();
         let client_msg_id = uuid::Uuid::from_u128(7);
-        let ack = super::super::PortalInputAck {
+        let ack = PortalInputAck {
             session_id,
             seq: 42,
         };
@@ -480,7 +490,7 @@ mod tests {
     #[test]
     fn classify_wiggum_preserves_ack_and_client_msg_id() {
         let client_msg_id = uuid::Uuid::from_u128(9);
-        let ack = super::super::PortalInputAck {
+        let ack = PortalInputAck {
             session_id: uuid::Uuid::nil(),
             seq: 5,
         };

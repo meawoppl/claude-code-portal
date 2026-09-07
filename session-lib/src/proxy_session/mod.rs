@@ -8,12 +8,41 @@
 //! moved item so its internal call sites are unchanged.
 
 pub mod heartbeat_watchdog;
+pub mod permission_bridge;
 pub mod portal_reminder;
+pub mod ws_reader;
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use shared::{ProxyToServer, ServerToProxy, SessionEndpoint};
+
+/// Permission response data routed from the portal to an agent session.
+#[derive(Debug)]
+pub struct PermissionResponseData {
+    pub request_id: String,
+    pub allow: bool,
+    pub input: Option<serde_json::Value>,
+    pub permissions: Vec<claude_codes::io::PermissionSuggestion>,
+    pub reason: Option<String>,
+}
+
+/// Portal-originated user input plus optional backend acknowledgement metadata.
+pub struct PortalInput {
+    pub text: String,
+    pub display_event: Option<serde_json::Value>,
+    pub ack: Option<PortalInputAck>,
+    pub client_msg_id: Option<uuid::Uuid>,
+}
+
+pub struct PortalInputAck {
+    pub session_id: uuid::Uuid,
+    pub seq: i64,
+}
+
+pub struct GracefulShutdown {
+    pub reconnect_delay_ms: u64,
+}
 
 /// The native WebSocket connection to the backend session endpoint.
 pub type NativeConnection = ws_bridge::native_client::Connection<SessionEndpoint>;

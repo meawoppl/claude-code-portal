@@ -4,10 +4,8 @@ mod git_metadata;
 mod input_delivery;
 mod media_display;
 mod output_forwarder;
-mod permission_bridge;
 mod session_event;
 mod wiggum;
-mod ws_reader;
 
 // Hoisted to session-lib (#1657): these serve every agent under the proxy.
 // Re-exported here so internal call sites keep their `super::` paths.
@@ -15,8 +13,8 @@ use session_lib::proxy_session::heartbeat_watchdog;
 pub(crate) use session_lib::proxy_session::portal_reminder;
 pub(crate) use session_lib::proxy_session::portal_reminder::inject_portal_reminder;
 
+pub use session_lib::proxy_session::ws_reader::{classify_portal_input, RoutedPortalInput};
 pub use wiggum::wiggum_prompt;
-pub use ws_reader::{classify_portal_input, RoutedPortalInput};
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -37,12 +35,15 @@ pub use media_display::MediaDisplaySink;
 
 use git_metadata::{get_open_prs, get_pr_url, GitMetadataState, GitRefreshTrigger};
 use output_forwarder::spawn_output_forwarder;
-use wiggum::WiggumState;
-use ws_reader::{
+use session_lib::proxy_session::ws_reader::{
     spawn_ws_reader, FileDownloadEvent, FileReceiveState, FileUploadEvent, WsReaderChannels,
 };
+use wiggum::WiggumState;
 
-pub use session_lib::proxy_session::{ConnectionResult, NativeConnection, SharedWsWrite, WsRead};
+pub use session_lib::proxy_session::{
+    ConnectionResult, GracefulShutdown, NativeConnection, PermissionResponseData, PortalInput,
+    PortalInputAck, SharedWsWrite, WsRead,
+};
 
 /// Sink for codex thread-id persistence. The proxy crate owns the
 /// `ProxyConfig` JSON file; this callback lets the session loop hand the
@@ -187,39 +188,6 @@ pub enum RegisterError {
     /// A transient failure (connection dropped, send failed). The caller
     /// should reconnect after backing off for the given duration.
     Transient(Duration),
-}
-
-/// Permission response data (from frontend to Claude)
-#[derive(Debug)]
-pub struct PermissionResponseData {
-    pub request_id: String,
-    pub allow: bool,
-    pub input: Option<serde_json::Value>,
-    pub permissions: Vec<claude_codes::io::PermissionSuggestion>,
-    pub reason: Option<String>,
-}
-
-/// Portal-originated user input plus optional backend ack metadata.
-pub struct PortalInput {
-    pub text: String,
-    /// Optional typed portal event that the agent I/O task should synthesize
-    /// into the transcript instead of a plain user-text echo.
-    pub display_event: Option<serde_json::Value>,
-    pub ack: Option<PortalInputAck>,
-    /// Browser-assigned delivery-tracking id (#939). When present, the main
-    /// loop emits `InputProgressAck` at `ProxyReceived` (dequeue) and
-    /// `AgentAccepted` (after the agent accepts the input).
-    pub client_msg_id: Option<Uuid>,
-}
-
-pub struct PortalInputAck {
-    pub session_id: Uuid,
-    pub seq: i64,
-}
-
-/// Signal for graceful server shutdown with recommended reconnect delay
-pub struct GracefulShutdown {
-    pub reconnect_delay_ms: u64,
 }
 
 /// State that persists across WebSocket reconnections for a session.
@@ -1098,7 +1066,11 @@ async fn run_main_loop<A: Agent>(
             }
 
             Some(perm_response) = state.perm_rx.recv() => {
-                permission_bridge::handle_permission_response(claude_session, perm_response).await;
+                session_lib::proxy_session::permission_bridge::handle_permission_response(
+                    claude_session,
+                    perm_response,
+                )
+                .await;
             }
 
             Some(()) = state.interrupt_rx.recv() => {

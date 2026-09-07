@@ -7,20 +7,19 @@
 
 use tracing::{debug, warn};
 
-use session_lib::agent::Agent;
-use session_lib::io::PermissionResponse as LibPermissionResponse;
-use session_lib::session::Session;
-
-use crate::Permission;
+use crate::agent::Agent;
+use crate::io::PermissionResponse as LibPermissionResponse;
+use crate::session::Session;
+use claude_codes::Permission;
 
 use super::PermissionResponseData;
 
 /// Forward a frontend permission response to the agent.
-pub(super) async fn handle_permission_response<A: Agent>(
+pub async fn handle_permission_response<A: Agent>(
     claude_session: &mut Session<A>,
     perm_response: PermissionResponseData,
 ) {
-    debug!("sending permission response to claude: {:?}", perm_response);
+    debug!("sending permission response to agent: {:?}", perm_response);
 
     // Build the library's neutral PermissionResponse.
     let lib_response = if perm_response.allow {
