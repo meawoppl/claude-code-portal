@@ -69,44 +69,54 @@ pub enum ClaudeMessage {
     /// portal was rendering its own errors as unrecognized frames.
     LocalError(shared::ErrorMessage),
     OptimisticUser(shared::UserFrame),
-    Unknown,
 }
 
 impl ClaudeMessage {
+    /// Strictly typed parse: `Ok` only for wire shapes this renderer actually
+    /// owns. Anything else — future `ClaudeOutput` variants without a
+    /// renderer, foreign agent frames, malformed JSON — is `Err`, so
+    /// `AgentFrame::parse` falls through to the Codex/Muse parsers and finally
+    /// the loud RawJson bubble. There is deliberately no silent catch-all
+    /// (#1675): the old `Unknown` sentinel let a new wire shape vanish into a
+    /// nondescript bubble with no signal that a renderer was missing.
     pub fn parse(json: &str) -> Result<Self, serde_json::Error> {
+        use serde::de::Error;
         if let Ok(output) = serde_json::from_str::<shared::ClaudeOutput>(json) {
-            return Ok(Self::from_output(output));
+            return Self::from_output(output)
+                .ok_or_else(|| serde_json::Error::custom("ClaudeOutput variant has no renderer"));
         }
 
         let value: serde_json::Value = serde_json::from_str(json)?;
-        Ok(Self::from_value(value))
+        Self::from_value(value)
+            .ok_or_else(|| serde_json::Error::custom("not a claude or portal-local frame"))
     }
 
     /// Shared dispatch for a typed [`shared::ClaudeOutput`], used by both
     /// [`Self::parse`] and the [`serde::Deserialize`] impl so the two can
     /// never drift apart (a new wire variant added in one path only would
     /// render in some transcripts and raw-bubble in others).
-    fn from_output(output: shared::ClaudeOutput) -> Self {
+    fn from_output(output: shared::ClaudeOutput) -> Option<Self> {
         match output {
-            shared::ClaudeOutput::System(msg) => Self::System(msg),
-            shared::ClaudeOutput::User(msg) => Self::User(msg),
-            shared::ClaudeOutput::Assistant(msg) => Self::Assistant(msg),
-            shared::ClaudeOutput::Result(msg) => Self::Result(msg),
-            shared::ClaudeOutput::Error(msg) => Self::Error(msg),
-            shared::ClaudeOutput::RateLimitEvent(msg) => Self::RateLimitEvent(msg),
-            shared::ClaudeOutput::ConversationReset(msg) => Self::ConversationReset(msg),
+            shared::ClaudeOutput::System(msg) => Some(Self::System(msg)),
+            shared::ClaudeOutput::User(msg) => Some(Self::User(msg)),
+            shared::ClaudeOutput::Assistant(msg) => Some(Self::Assistant(msg)),
+            shared::ClaudeOutput::Result(msg) => Some(Self::Result(msg)),
+            shared::ClaudeOutput::Error(msg) => Some(Self::Error(msg)),
+            shared::ClaudeOutput::RateLimitEvent(msg) => Some(Self::RateLimitEvent(msg)),
+            shared::ClaudeOutput::ConversationReset(msg) => Some(Self::ConversationReset(msg)),
             // Wildcard: control frames plus the 2.1.160 wire additions
             // (stream_event, tool_progress, transcript variants, …) that
-            // have no dedicated renderer yet.
-            _ => Self::Unknown,
+            // have no dedicated renderer yet. `None` → the caller falls back
+            // to the RawJson bubble, which is loud on purpose.
+            _ => None,
         }
     }
 
     /// A non-`ClaudeOutput` frame is either portal-authored (a
     /// [`shared::LocalFrame`]) or foreign — the raw-bubble fallback reserved
     /// for agent shapes the renderer does not type yet.
-    fn from_value(value: serde_json::Value) -> Self {
-        parse_local_frame(&value).unwrap_or(Self::Unknown)
+    fn from_value(value: serde_json::Value) -> Option<Self> {
+        parse_local_frame(&value)
     }
 }
 
@@ -115,11 +125,14 @@ impl<'de> Deserialize<'de> for ClaudeMessage {
     where
         D: Deserializer<'de>,
     {
+        use serde::de::Error;
         let value = serde_json::Value::deserialize(deserializer)?;
         if let Ok(output) = serde_json::from_value::<shared::ClaudeOutput>(value.clone()) {
-            return Ok(Self::from_output(output));
+            return Self::from_output(output)
+                .ok_or_else(|| D::Error::custom("ClaudeOutput variant has no renderer"));
         }
-        Ok(Self::from_value(value))
+        Self::from_value(value)
+            .ok_or_else(|| D::Error::custom("not a claude or portal-local frame"))
     }
 }
 

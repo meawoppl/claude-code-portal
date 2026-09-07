@@ -238,12 +238,9 @@ fn every_local_frame_the_portal_can_author_renders() {
     for frame in frames {
         let tag = frame.message_type();
         let json = frame.to_json();
-        let parsed = ClaudeMessage::parse(&json)
+        // Since #1675 an unrenderable frame is a parse Err (loud RawJson via
+        // AgentFrame), so parsing successfully IS the assertion.
+        let _parsed = ClaudeMessage::parse(&json)
             .unwrap_or_else(|e| panic!("{tag} frame must parse: {e} ({json})"));
-        assert!(
-            !matches!(parsed, ClaudeMessage::Unknown),
-            "{tag} frame fell through to Unknown — it would render as a raw \
-             \"Unrecognized Message\" bubble: {json}"
-        );
     }
 }

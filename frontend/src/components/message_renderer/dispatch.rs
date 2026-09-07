@@ -87,10 +87,9 @@ pub(crate) fn render_frame(ctx: FrameRenderContext<'_>) -> Html {
             AgentFrame::Claude(ClaudeMessage::ConversationReset(msg)) => {
                 renderers::render_conversation_reset(&msg)
             }
-            AgentFrame::Claude(ClaudeMessage::Unknown)
-            | AgentFrame::Codex(_)
-            | AgentFrame::Muse(_)
-            | AgentFrame::RawJson => render_raw_json(json),
+            AgentFrame::Codex(_) | AgentFrame::Muse(_) | AgentFrame::RawJson => {
+                render_raw_json(json)
+            }
         },
         FrameRenderer::Codex => match frame {
             AgentFrame::Codex(event) => crate::components::codex_renderer::render_codex_frame(

@@ -231,8 +231,8 @@ impl ActivityTag {
 }
 
 /// Wire `type` tag for a typed [`ClaudeMessage`] variant, expressed as an
-/// [`ActivityTag`]. Returns `Unknown` only for the actual `Unknown` variant —
-/// every other Claude shape maps to a real tag.
+/// [`ActivityTag`]. Total: every parseable Claude shape maps to a real tag
+/// (unparseable frames never construct a `ClaudeMessage` since #1675).
 pub(super) fn message_type_tag(m: &ClaudeMessage) -> ActivityTag {
     match m {
         ClaudeMessage::System(_) => ActivityTag::System,
@@ -244,7 +244,6 @@ pub(super) fn message_type_tag(m: &ClaudeMessage) -> ActivityTag {
         ClaudeMessage::RateLimitEvent(_) => ActivityTag::RateLimit,
         ClaudeMessage::ConversationReset(_) => ActivityTag::System,
         ClaudeMessage::LocalError(_) => ActivityTag::Error,
-        ClaudeMessage::Unknown => ActivityTag::Unknown,
     }
 }
 
@@ -380,10 +379,7 @@ pub(super) fn classify_output_msg_type(output: &str) -> ActivityTag {
         return tag;
     }
     if let Ok(parsed) = ClaudeMessage::parse(output) {
-        let tag = message_type_tag(&parsed);
-        if tag != ActivityTag::Unknown {
-            return tag;
-        }
+        return message_type_tag(&parsed);
     }
     if let Some(tag) = classify_codex_event(output) {
         return tag;
