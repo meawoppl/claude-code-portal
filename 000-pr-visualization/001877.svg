@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1200"
+     font-family="'Segoe UI', 'Noto Sans', 'DejaVu Sans', ui-sans-serif, system-ui, sans-serif">
+  <rect x="0" y="0" width="2000" height="1200" fill="#16161e"/>
+
+  <defs>
+    <marker id="arr-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#565f89"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9ece6a"/>
+    </marker>
+    <marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f7768e"/>
+    </marker>
+  </defs>
+
+  <text x="55" y="52" font-size="24" letter-spacing="1" fill="#565f89">PR #1877 · Abort the data-plane task with its connection; complete tunnel teardown</text>
+
+  <text x="55" y="100" font-size="34" fill="#e6e9f5">Every reconnect leaked a parked data-plane task holding one fd; at launchd's 256-fd limit</text>
+  <text x="55" y="140" font-size="34" fill="#e6e9f5">getaddrinfo failed as a fake DNS outage. The task now dies with the connection it serves.</text>
+  <line x1="55" y1="165" x2="1945" y2="165" stroke="#3d4666" stroke-width="1"/>
+
+  <text x="55" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#f7768e">BEFORE</text>
+  <text x="1040" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#9ece6a">AFTER</text>
+  <line x1="1000" y1="190" x2="1000" y2="1135" stroke="#3d4666" stroke-width="1.5" stroke-dasharray="2 6"/>
+
+  <!-- ==================== BEFORE ==================== -->
+  <g>
+    <rect x="80" y="250" width="840" height="170" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="104" y="292" font-size="26" fill="#7aa2f7">control socket reconnects — register grants a ticket</text>
+    <text x="104" y="330" font-size="23" fill="#a9b1d6">tokio::spawn(run_data_plane(...)) — JoinHandle dropped</text>
+    <text x="104" y="364" font-size="21" fill="#f7768e">cleanup aborts output_task + reader_task; nothing owns the data plane</text>
+    <text x="104" y="394" font-size="21" fill="#565f89">tunnel.shutdown() never touched the data-plane socket either</text>
+  </g>
+
+  <line x1="500" y1="420" x2="500" y2="486" stroke="#f7768e" stroke-width="1.5" stroke-dasharray="4 6" marker-end="url(#arr-red)"/>
+
+  <g>
+    <rect x="80" y="490" width="840" height="190" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="532" font-size="26" fill="#c0caf5">the orphan never exits</text>
+    <text x="104" y="570" font-size="23" fill="#f7768e">run_data_plane returns only when ITS socket ends — a healthy idle</text>
+    <text x="104" y="604" font-size="23" fill="#f7768e">WebSocket never errors, so the task parks on read.recv() forever</text>
+    <text x="104" y="638" font-size="21" fill="#565f89">it also pins the old TunnelManager Arc — nothing collects; +1 fd per reconnect</text>
+  </g>
+
+  <line x1="500" y1="680" x2="500" y2="922" stroke="#f7768e" stroke-width="1.5" stroke-dasharray="4 6" marker-end="url(#arr-red)"/>
+  <text x="520" y="790" font-size="21" fill="#565f89">observed: 234 backend sockets on one pid,</text>
+  <text x="520" y="820" font-size="21" fill="#565f89">119 ESTABLISHED + 115 CLOSED, 507 attaches</text>
+
+  <g>
+    <rect x="80" y="930" width="840" height="150" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="976" font-size="26" fill="#c0caf5">254/256 fds → resolver starves → fake DNS outage</text>
+    <text x="104" y="1014" font-size="23" fill="#f7768e">"nodename nor servname provided" on every connect, forever</text>
+    <text x="104" y="1048" font-size="21" fill="#565f89">macOS getaddrinfo needs an fd to reach mDNSResponder; restart-only recovery</text>
+  </g>
+
+  <!-- ==================== AFTER ==================== -->
+  <g>
+    <rect x="1065" y="250" width="860" height="170" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
+    <text x="1089" y="292" font-size="26" fill="#9ece6a">the JoinHandle is kept: data_plane_task</text>
+    <text x="1089" y="330" font-size="23" fill="#a9b1d6">cleanup: output_task.abort() · reader_task.abort() ·</text>
+    <text x="1089" y="364" font-size="23" fill="#9ece6a">data_plane_task.abort() — the task dies with its connection</text>
+    <text x="1089" y="394" font-size="21" fill="#565f89">the next register issues a fresh ticket and dials a fresh socket</text>
+  </g>
+
+  <line x1="1495" y1="420" x2="1495" y2="486" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <g>
+    <rect x="1065" y="490" width="860" height="190" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
+    <text x="1089" y="532" font-size="26" fill="#9ece6a">TunnelManager::shutdown() is now complete</text>
+    <text x="1089" y="570" font-size="23" fill="#a9b1d6">it also detaches the data-plane writer, releasing the socket's</text>
+    <text x="1089" y="604" font-size="23" fill="#a9b1d6">write half whoever owns the reader task</text>
+    <text x="1089" y="638" font-size="21" fill="#565f89">teardown no longer reads as complete while leaving the largest resource</text>
+  </g>
+
+  <line x1="1495" y1="680" x2="1495" y2="922" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <text x="1520" y="790" font-size="21" fill="#565f89">launchd plist: SoftResourceLimits</text>
+  <text x="1520" y="820" font-size="21" fill="#565f89">NumberOfFiles 4096 — headroom, not a fix</text>
+
+  <g>
+    <rect x="1065" y="930" width="860" height="150" fill="#1e202e" stroke="#9ece6a" stroke-width="1.5"/>
+    <text x="1089" y="976" font-size="26" fill="#c0caf5">fd count stays flat across reconnects</text>
+    <text x="1089" y="1014" font-size="23" fill="#9ece6a">one control socket + at most one data socket per live connection</text>
+    <text x="1089" y="1048" font-size="21" fill="#565f89">a stale data plane is bounded to the current connection and reaped next teardown</text>
+  </g>
+
+  <text x="55" y="1172" font-size="22" fill="#565f89">No idle-timeout added to the data-plane loop — it would kill healthy-but-quiet planes; existing installs get the plist limit on their next service install.</text>
+</svg>
