@@ -3,6 +3,12 @@ use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Decode a JSONB string-array column (e.g. `claude_args`) into `Vec<String>`,
+/// tolerating a malformed/absent value as empty.
+pub fn jsonb_string_vec(v: &serde_json::Value) -> Vec<String> {
+    serde_json::from_value(v.clone()).unwrap_or_default()
+}
+
 #[derive(Debug, Queryable, Selectable, Serialize, Deserialize, Clone)]
 #[diesel(table_name = crate::schema::users)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -643,7 +649,7 @@ impl TurnMetric {
             // session is gone. Freshly inserted rows always carry one.
             session_id: self.session_id.unwrap_or_default(),
             user_message_id: self.user_message_id,
-            agent_type: self.agent_type.parse().unwrap_or(shared::AgentType::Claude),
+            agent_type: shared::AgentType::parse_or_default(&self.agent_type),
             model: self.model,
             service_tier: self.service_tier,
             started_at: self.started_at,
@@ -787,5 +793,15 @@ mod tests {
         // skips-with-log rather than mis-routing a legacy/corrupt row.
         assert_eq!(push_sub("mms").platform_kind(), None);
         assert_eq!(push_sub("").platform_kind(), None);
+    }
+
+    #[test]
+    fn jsonb_string_vec_decodes_array_and_tolerates_garbage() {
+        assert_eq!(
+            jsonb_string_vec(&serde_json::json!(["--model", "opus"])),
+            vec!["--model".to_string(), "opus".to_string()]
+        );
+        assert!(jsonb_string_vec(&serde_json::json!(null)).is_empty());
+        assert!(jsonb_string_vec(&serde_json::json!({"oops": 1})).is_empty());
     }
 }

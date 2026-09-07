@@ -22,7 +22,7 @@ use crate::{
     auth::CurrentUserId,
     errors::AppError,
     handlers::responses::EmptyResponse,
-    models::{NewScheduledTask, ScheduledTask, ScheduledTaskChangeset, Session},
+    models::{jsonb_string_vec, NewScheduledTask, ScheduledTask, ScheduledTaskChangeset, Session},
     schema::scheduled_tasks,
     AppState,
 };
@@ -35,8 +35,8 @@ fn task_to_fields(t: &ScheduledTask) -> ScheduledTaskFields {
         timezone: t.timezone.clone(),
         working_directory: t.working_directory.clone(),
         prompt: t.prompt.clone(),
-        claude_args: serde_json::from_value(t.claude_args.clone()).unwrap_or_default(),
-        agent_type: t.agent_type.parse().unwrap_or(AgentType::Claude),
+        claude_args: jsonb_string_vec(&t.claude_args),
+        agent_type: AgentType::parse_or_default(&t.agent_type),
         max_runtime_minutes: t.max_runtime_minutes,
         session_mode: t.session_mode.parse().unwrap_or_default(),
     }
@@ -93,7 +93,7 @@ fn upcoming_for_task(
             task_id: task.id,
             task_name: task.name.clone(),
             hostname: task.hostname.clone(),
-            agent_type: task.agent_type.parse().unwrap_or(AgentType::Claude),
+            agent_type: AgentType::parse_or_default(&task.agent_type),
             scheduled_for: next_utc.to_rfc3339(),
         });
         cursor = next;

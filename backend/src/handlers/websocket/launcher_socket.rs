@@ -1156,12 +1156,8 @@ fn reconcile_desired_sessions(app_state: &AppState, launcher_id: Uuid, user_id: 
             .session_manager
             .register_launch_session(request_id, session.id);
 
-        let claude_args =
-            serde_json::from_value::<Vec<String>>(session.claude_args.clone()).unwrap_or_default();
-        let agent_type = session
-            .agent_type
-            .parse()
-            .unwrap_or(shared::AgentType::Claude);
+        let claude_args = crate::models::jsonb_string_vec(&session.claude_args);
+        let agent_type = shared::AgentType::parse_or_default(&session.agent_type);
 
         let pending_fork = session.fork_launch_pending;
         let create_worktree = pending_fork && session.fork_create_worktree;
