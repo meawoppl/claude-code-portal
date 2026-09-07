@@ -109,7 +109,7 @@ impl AgentFrame {
                 }
                 return Self::Claude(ClaudeMessage::LocalError(error));
             }
-            Ok(ClaudeMessage::Unknown) | Err(_) => {}
+            Err(_) => {}
             Ok(message) => return Self::Claude(message),
         }
 
@@ -201,7 +201,6 @@ impl ClaudeMessage {
             // the reader, only a different wire shape.
             Self::LocalError(_) => AgentFrameKind::ClaudeError,
             Self::OptimisticUser(_) => AgentFrameKind::OptimisticUser,
-            Self::Unknown => AgentFrameKind::RawJson,
         }
     }
 }
