@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1200"
+     font-family="'Segoe UI', 'Noto Sans', 'DejaVu Sans', ui-sans-serif, system-ui, sans-serif">
+  <rect x="0" y="0" width="2000" height="1200" fill="#16161e"/>
+
+  <defs>
+    <marker id="arr-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#565f89"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9ece6a"/>
+    </marker>
+    <marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f7768e"/>
+    </marker>
+  </defs>
+
+  <text x="55" y="52" font-size="24" letter-spacing="1" fill="#565f89">PR #1882 · Emit turn telemetry for Muse sessions</text>
+
+  <text x="55" y="100" font-size="34" fill="#e6e9f5">Muse sessions produced no telemetry at all — invisible in the performance views; the io task</text>
+  <text x="55" y="140" font-size="34" fill="#e6e9f5">now projects the journal through the same TurnTracker the other agents use, honestly.</text>
+  <line x1="55" y1="165" x2="1945" y2="165" stroke="#3d4666" stroke-width="1"/>
+
+  <text x="55" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#f7768e">BEFORE</text>
+  <text x="1040" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#9ece6a">AFTER</text>
+  <line x1="1000" y1="190" x2="1000" y2="1135" stroke="#3d4666" stroke-width="1.5" stroke-dasharray="2 6"/>
+
+  <!-- ==================== BEFORE ==================== -->
+  <g>
+    <rect x="80" y="250" width="840" height="180" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="104" y="292" font-size="26" fill="#7aa2f7">muse_io_task — records in, events out, nothing kept</text>
+    <text x="104" y="330" font-size="23" fill="#a9b1d6">run_turn streamed the journal to the classifier and stopped there</text>
+    <text x="104" y="364" font-size="21" fill="#565f89">no TurnTracker, no TurnOutcome, no TurnMetricsReady — the machinery</text>
+    <text x="104" y="394" font-size="21" fill="#565f89">claude and codex both run was simply never wired for muse</text>
+  </g>
+
+  <line x1="500" y1="430" x2="500" y2="496" stroke="#f7768e" stroke-width="1.5" stroke-dasharray="4 6" marker-end="url(#arr-red)"/>
+
+  <g>
+    <rect x="80" y="500" width="840" height="170" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="542" font-size="26" fill="#c0caf5">muse absent from every metrics surface</text>
+    <text x="104" y="580" font-size="23" fill="#f7768e">no rows in turn_metrics, nothing in performance or history views</text>
+    <text x="104" y="614" font-size="21" fill="#565f89">cross-agent comparisons silently excluded a whole agent</text>
+    <text x="104" y="644" font-size="21" fill="#565f89">no per-turn duration, TTFT, tool counts, or failure states recorded</text>
+  </g>
+
+  <g>
+    <rect x="80" y="930" width="840" height="150" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="104" y="976" font-size="26" fill="#c0caf5">what the muse wire can and cannot say</text>
+    <text x="104" y="1014" font-size="23" fill="#a9b1d6">has: model, timing, tool results, terminal state</text>
+    <text x="104" y="1048" font-size="23" fill="#a9b1d6">lacks: token usage, cost, context window/occupancy</text>
+  </g>
+
+  <!-- ==================== AFTER ==================== -->
+  <g>
+    <rect x="1065" y="250" width="860" height="230" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
+    <text x="1089" y="292" font-size="26" fill="#9ece6a">journal records → the agent-neutral projection</text>
+    <text x="1089" y="330" font-size="23" fill="#a9b1d6">run.model.configured → model · first run.output.delta → TTFT</text>
+    <text x="1089" y="364" font-size="23" fill="#a9b1d6">tool.result → tool_call_count · run.terminal.* → stop_reason</text>
+    <text x="1089" y="398" font-size="23" fill="#a9b1d6">non-completed terminal → is_error · tracker owns the clocks</text>
+    <text x="1089" y="432" font-size="21" fill="#565f89">TurnTracker::start per user input; finalize emits TurnMetricsReady —</text>
+    <text x="1089" y="462" font-size="21" fill="#565f89">the exact path claude and codex already ride to the backend</text>
+  </g>
+
+  <line x1="1495" y1="480" x2="1495" y2="546" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <g>
+    <rect x="1065" y="550" width="860" height="170" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="1089" y="592" font-size="26" fill="#c0caf5">absent means absent — no fabricated zeroes-as-data</text>
+    <text x="1089" y="630" font-size="23" fill="#9ece6a">tokens 0 (unreported), cost None, window None, snapshot None</text>
+    <text x="1089" y="664" font-size="21" fill="#565f89">model-less runs (echo test provider) emit nothing at all,</text>
+    <text x="1089" y="694" font-size="21" fill="#565f89">mirroring claude's model-less drop — views key on the model</text>
+  </g>
+
+  <line x1="1495" y1="720" x2="1495" y2="922" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <g>
+    <rect x="1065" y="930" width="860" height="150" fill="#1e202e" stroke="#9ece6a" stroke-width="1.5"/>
+    <text x="1089" y="976" font-size="26" fill="#c0caf5">muse joins the performance views</text>
+    <text x="1089" y="1014" font-size="23" fill="#9ece6a">live and replayed sessions produce identical rows</text>
+    <text x="1089" y="1048" font-size="21" fill="#565f89">tests: projection, failed-terminal error case, model-less drop</text>
+  </g>
+
+  <text x="55" y="1172" font-size="22" fill="#565f89">Token/cost columns for muse stay honestly empty until Meta puts usage on the wire — the projection picks it up the day the journal carries it.</text>
+</svg>

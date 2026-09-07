@@ -22,6 +22,8 @@ use muse_codes::{ExecRun, MuseExecBuilder, MusePayload, MuseRecord, Provider};
 use session_lib::adapter::AgentOutputClassifier;
 use session_lib::io::{IoCommand, IoEvent};
 use session_lib::snapshot::SessionConfig;
+use session_lib::{TurnOutcome, TurnTracker};
+use std::time::Instant;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::classifier::MuseClassifier;
@@ -39,14 +41,31 @@ pub async fn muse_io_task(
     // and avoids re-learning state mid-stream on a respawn boundary.
     let mut classifier = MuseClassifier::default();
 
+    // Per-turn performance metrics (#1798), same machinery as claude/codex:
+    // `start`ed on each user input, first-token latched on the first streamed
+    // output, finalized on `run.terminal.*`. Muse's wire carries no token
+    // usage or cost, so those fields stay at their explicit "not reported"
+    // values (zeros / None) rather than fabricated numbers — what muse does
+    // measure (model identity, timing, tool calls, terminal state) flows into
+    // the same views as the other agents.
+    let mut turn_tracker = TurnTracker::new(config.session_id);
+
     while let Some(command) = command_rx.recv().await {
         match command {
             IoCommand::UserInput {
                 text, delivered, ..
             } => {
                 let mut delivered = delivered;
-                let outcome =
-                    run_turn(&config, &text, &mut classifier, &event_tx, &mut delivered).await;
+                turn_tracker.start(Instant::now(), chrono::Utc::now());
+                let outcome = run_turn(
+                    &config,
+                    &text,
+                    &mut classifier,
+                    &mut turn_tracker,
+                    &event_tx,
+                    &mut delivered,
+                )
+                .await;
                 // Compatibility fallback for a Muse version that completes a
                 // run without emitting the typed acceptance record. Current
                 // Muse releases resolve this earlier at `turn.input.user`.
@@ -83,6 +102,7 @@ async fn run_turn(
     config: &SessionConfig,
     text: &str,
     classifier: &mut MuseClassifier,
+    turn_tracker: &mut TurnTracker,
     event_tx: &mpsc::UnboundedSender<IoEvent>,
     delivered: &mut Option<oneshot::Sender<Result<(), String>>>,
 ) -> Result<(), muse_codes::Error> {
@@ -91,8 +111,29 @@ async fn run_turn(
     let mut run = ExecRun::spawn(&builder).await?;
     let _ = event_tx.send(IoEvent::AgentStarted { pid: run.pid() });
 
+    // Turn-scoped telemetry inputs, filled from the journal as it streams.
+    let mut model: Option<String> = None;
+
     while let Some(record) = run.next_record().await? {
-        let terminal = matches!(record.typed_payload(), Ok(MusePayload::RunTerminal(_)));
+        let mut terminal = false;
+        match record.typed_payload() {
+            Ok(MusePayload::ModelConfigured(configured)) => {
+                model = Some(configured.model_id.clone());
+            }
+            Ok(MusePayload::RunOutputDelta(_)) => {
+                // First streamed model output latches TTFT; later deltas feed
+                // the inter-token-gap stat.
+                turn_tracker.record_content_frame(Instant::now());
+            }
+            Ok(MusePayload::ToolResult(_)) => {
+                turn_tracker.record_tool_call();
+            }
+            Ok(MusePayload::RunTerminal(t)) => {
+                terminal = true;
+                finalize_turn_metrics(turn_tracker, model.take(), &t, event_tx);
+            }
+            _ => {}
+        }
         acknowledge_delivery_if_accepted(&record, delivered);
         emit(classifier, &record, event_tx);
         if terminal {
@@ -100,6 +141,48 @@ async fn run_turn(
         }
     }
     Ok(())
+}
+
+/// Project a finished muse run into the agent-neutral [`TurnOutcome`] and emit
+/// the resulting metrics (#1798).
+///
+/// What muse's wire measures maps directly: model identity from
+/// `run.model.configured`, wall-clock/TTFT/tool-call counts from the tracker,
+/// terminal state onto `stop_reason`/`is_error`. What it does NOT measure —
+/// token usage, cost, context window/occupancy — is reported explicitly as
+/// absent (zeros for the non-optional token fields, `None` elsewhere), never
+/// fabricated. Runs that never configured a model (the echo test provider) are
+/// dropped like claude's model-less results: the performance views key on the
+/// model, and a row without one is unattributable noise.
+fn finalize_turn_metrics(
+    turn_tracker: &mut TurnTracker,
+    model: Option<String>,
+    terminal: &muse_codes::RunTerminal,
+    event_tx: &mpsc::UnboundedSender<IoEvent>,
+) {
+    let outcome = TurnOutcome {
+        agent_type: shared::AgentType::Muse,
+        model,
+        service_tier: None,
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_creation_tokens: 0,
+        cache_read_tokens: 0,
+        thinking_tokens: 0,
+        subagent_tokens: 0,
+        context_snapshot_tokens: None,
+        stop_reason: Some(terminal.terminal.clone()),
+        is_error: terminal.terminal != "completed",
+        total_cost_usd: None,
+        model_context_window: None,
+    };
+    if let Some(metrics) = turn_tracker.finalize(Instant::now(), chrono::Utc::now(), outcome) {
+        if metrics.has_known_model() {
+            let _ = event_tx.send(IoEvent::TurnMetricsReady(Box::new(metrics)));
+        } else {
+            tracing::debug!("Muse run ended without run.model.configured; dropping turn metrics");
+        }
+    }
 }
 
 /// Resolve Portal's delivery signal when Muse journals the user's input into
@@ -161,6 +244,77 @@ fn emit(
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    fn run_terminal(terminal: &str) -> muse_codes::RunTerminal {
+        serde_json::from_value(serde_json::json!({
+            "kind": format!("run.terminal.{terminal}"),
+            "command_id": "cmd-1",
+            "run_stream": {"kind": "run", "id": "r-1"},
+            "terminal": terminal,
+            "reason": null,
+        }))
+        .expect("RunTerminal fixture")
+    }
+
+    /// #1798: a completed muse run projects into the agent-neutral metrics —
+    /// model + timing + tool calls + terminal state carried; token/cost fields
+    /// explicitly absent (zero / None), never fabricated.
+    #[test]
+    fn muse_run_projects_into_turn_metrics() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut tracker = TurnTracker::new(uuid::Uuid::nil());
+        tracker.start(Instant::now(), chrono::Utc::now());
+        tracker.record_content_frame(Instant::now());
+        tracker.record_tool_call();
+        tracker.record_tool_call();
+
+        finalize_turn_metrics(
+            &mut tracker,
+            Some("muse-spark-1.3".to_string()),
+            &run_terminal("completed"),
+            &tx,
+        );
+
+        let IoEvent::TurnMetricsReady(metrics) = rx.try_recv().expect("metrics emitted") else {
+            panic!("expected TurnMetricsReady");
+        };
+        assert_eq!(metrics.agent_type, shared::AgentType::Muse);
+        assert_eq!(metrics.model.as_deref(), Some("muse-spark-1.3"));
+        assert_eq!(metrics.stop_reason.as_deref(), Some("completed"));
+        assert!(!metrics.is_error);
+        assert_eq!(metrics.tool_call_count, 2);
+        assert!(metrics.ttft_ms.is_some(), "content frame latched TTFT");
+        // Not measured by the muse wire — explicitly absent, not fabricated.
+        assert_eq!(metrics.input_tokens, 0);
+        assert_eq!(metrics.total_cost_usd, None);
+        assert_eq!(metrics.model_context_window, None);
+        assert_eq!(metrics.context_snapshot_tokens, None);
+    }
+
+    /// A failed terminal marks the turn as an error, and a run that never
+    /// configured a model (the echo provider) emits nothing.
+    #[test]
+    fn failed_terminal_and_modelless_runs() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut tracker = TurnTracker::new(uuid::Uuid::nil());
+
+        tracker.start(Instant::now(), chrono::Utc::now());
+        finalize_turn_metrics(
+            &mut tracker,
+            Some("muse-spark-1.3".to_string()),
+            &run_terminal("failed"),
+            &tx,
+        );
+        let IoEvent::TurnMetricsReady(metrics) = rx.try_recv().expect("metrics emitted") else {
+            panic!("expected TurnMetricsReady");
+        };
+        assert!(metrics.is_error);
+        assert_eq!(metrics.stop_reason.as_deref(), Some("failed"));
+
+        tracker.start(Instant::now(), chrono::Utc::now());
+        finalize_turn_metrics(&mut tracker, None, &run_terminal("completed"), &tx);
+        assert!(rx.try_recv().is_err(), "model-less run emits no metrics");
+    }
 
     fn corpus_record(payload_type: &str) -> MuseRecord {
         include_str!("../tests/corpus_echo_turn.jsonl")
