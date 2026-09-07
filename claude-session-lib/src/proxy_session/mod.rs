@@ -1,7 +1,6 @@
 //! Proxy session management and WebSocket connection handling.
 
 mod git_metadata;
-mod input_delivery;
 mod media_display;
 mod output_forwarder;
 mod session_event;
@@ -12,6 +11,7 @@ mod wiggum;
 use session_lib::proxy_session::heartbeat_watchdog;
 pub(crate) use session_lib::proxy_session::portal_reminder;
 pub(crate) use session_lib::proxy_session::portal_reminder::inject_portal_reminder;
+pub use session_lib::proxy_session::{ack_portal_input, emit_input_progress};
 
 pub use session_lib::proxy_session::ws_reader::{classify_portal_input, RoutedPortalInput};
 pub use wiggum::wiggum_prompt;
@@ -372,7 +372,7 @@ pub async fn run_connection_loop<A: Agent>(
         session.first_connection = false;
 
         match result {
-            ConnectionResult::ClaudeExited => {
+            ConnectionResult::AgentExited => {
                 info!("Claude process exited, shutting down");
                 session.persist_buffer().await;
                 return Ok(LoopResult::NormalExit);
@@ -938,43 +938,6 @@ async fn recv_option(rx: &mut tokio::sync::oneshot::Receiver<()>) -> Option<()> 
     rx.await.ok()
 }
 
-/// Emit an `InputProgressAck` delivery-stage signal for a tracked input, if it
-/// carried a `client_msg_id` (#939). The backend relays it to web clients.
-pub(super) async fn emit_input_progress(
-    ws_write: &SharedWsWrite,
-    session_id: Uuid,
-    client_msg_id: Option<Uuid>,
-    stage: shared::InputDeliveryStage,
-) {
-    let Some(client_msg_id) = client_msg_id else {
-        return;
-    };
-    let msg = ProxyToServer::InputProgressAck {
-        session_id,
-        client_msg_id,
-        stage,
-    };
-    let mut ws = ws_write.lock().await;
-    if let Err(e) = ws.send(msg).await {
-        error!("Failed to send InputProgressAck: {}", e);
-    }
-}
-
-/// Send an `InputAck` for a portal input, if it carried ack metadata.
-pub async fn ack_portal_input(ws_write: &SharedWsWrite, ack: Option<PortalInputAck>) {
-    let Some(ack) = ack else {
-        return;
-    };
-    let msg = ProxyToServer::InputAck {
-        session_id: ack.session_id,
-        ack_seq: ack.seq,
-    };
-    let mut ws = ws_write.lock().await;
-    if let Err(e) = ws.send(msg).await {
-        error!("Failed to send InputAck: {}", e);
-    }
-}
-
 /// Run the main select loop
 ///
 /// The Claude session internally uses a dedicated drain task to continuously
@@ -1022,14 +985,22 @@ async fn run_main_loop<A: Agent>(
             }
 
             Some(input) = input_rx.recv() => {
-                if let Some(result) = input_delivery::handle_input(
+                if let Some(result) = session_lib::proxy_session::input_delivery::handle_input(
                     &state.ws_write,
                     state.session_id,
-                    &state.working_directory,
-                    &state.git_metadata,
                     &state.reminder_pending,
                     claude_session,
                     input,
+                    || git_metadata::check_and_send_branch_update_if_branch_changed(
+                        &state.ws_write,
+                        state.session_id,
+                        &state.working_directory,
+                        &state.git_metadata,
+                    ),
+                    |text| crate::io_task::claude_user_echo_value(
+                        text.to_string(),
+                        state.session_id,
+                    ),
                 )
                 .await
                 {
