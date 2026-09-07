@@ -728,6 +728,18 @@ fn custom_answer_input(props: &CustomAnswerInputProps) -> Html {
 See `frontend/src/pages/dashboard/permission_dialog.rs` (`CustomAnswerInput`) for
 the live example.
 
+### Diagram / SVG backgrounds
+
+Every SVG an agent produces — transcript-only or checked into the repo — gets
+an **explicit opaque background rect in `#1a1b26`** (the portal backdrop
+color), never transparency. A transparent SVG looks right in the portal
+transcript and nowhere else: GitHub's light theme, docs sites, editor
+previews, and bare browser tabs all composite it onto white, where the
+light-gray-on-dark palette is near-invisible (#1648). Painting the backdrop
+costs a few bytes and renders identically in the transcript, so there is no
+case where transparency wins. For matplotlib, set the figure/axes facecolor
+to `#1a1b26` instead of `transparent=True`.
+
 ### Documentation Describes the Current System
 
 Reference documentation and code comments must describe the system as it works
