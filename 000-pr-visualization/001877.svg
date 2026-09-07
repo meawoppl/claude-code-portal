@@ -40,7 +40,7 @@
     <text x="104" y="532" font-size="26" fill="#c0caf5">the orphan never exits</text>
     <text x="104" y="570" font-size="23" fill="#f7768e">run_data_plane returns only when ITS socket ends — a healthy idle</text>
     <text x="104" y="604" font-size="23" fill="#f7768e">WebSocket never errors, so the task parks on read.recv() forever</text>
-    <text x="104" y="638" font-size="21" fill="#565f89">it also pins the old TunnelManager Arc — nothing collects; +1 fd per reconnect</text>
+    <text x="104" y="638" font-size="21" fill="#565f89">it also pins the old TunnelManager Arc — +1 fd per reconnect</text>
   </g>
 
   <line x1="500" y1="680" x2="500" y2="922" stroke="#f7768e" stroke-width="1.5" stroke-dasharray="4 6" marker-end="url(#arr-red)"/>
@@ -81,7 +81,7 @@
     <rect x="1065" y="930" width="860" height="150" fill="#1e202e" stroke="#9ece6a" stroke-width="1.5"/>
     <text x="1089" y="976" font-size="26" fill="#c0caf5">fd count stays flat across reconnects</text>
     <text x="1089" y="1014" font-size="23" fill="#9ece6a">one control socket + at most one data socket per live connection</text>
-    <text x="1089" y="1048" font-size="21" fill="#565f89">a stale data plane is bounded to the current connection and reaped next teardown</text>
+    <text x="1089" y="1048" font-size="21" fill="#565f89">a stale data plane is bounded to this connection; reaped next teardown</text>
   </g>
 
   <text x="55" y="1172" font-size="22" fill="#565f89">No idle-timeout added to the data-plane loop — it would kill healthy-but-quiet planes; existing installs get the plist limit on their next service install.</text>
