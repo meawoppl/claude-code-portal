@@ -12,10 +12,11 @@ agent-portal is a web-based proxy system for Claude Code sessions built with:
 
 ### Related Projects
 
-We maintain **[meawoppl/rust-code-agent-sdks](https://github.com/meawoppl/rust-claude-codes)** — a workspace containing two Rust crates for parsing code agent CLI output:
+We maintain **[meawoppl/rust-code-agent-sdks](https://github.com/meawoppl/rust-code-agent-sdks)** — a workspace of typed Rust SDKs for parsing code-agent CLI output. This repo consumes three of its crates (pinned versions live in the root `Cargo.toml` — deliberately not repeated here, where they rot):
 
-- **`claude-codes`** (v2.1.220) — Types for Claude Code's JSON protocol (`ClaudeOutput`, `ResultMessage`, `UsageInfo`, `RateLimitEvent`, etc.). Used by the proxy to deserialize Claude's stdout.
-- **`codex-codes`** (v0.146.2) — Types for OpenAI Codex CLI's JSONL protocol (`ThreadEvent`, `ThreadItem`, `Usage`, etc.). Phase 1 integration complete (AgentType, DB schema); see [docs/CODEX_SUPPORT.md](docs/CODEX_SUPPORT.md) for the full plan.
+- **`claude-codes`** — Types for Claude Code's JSON protocol (`ClaudeOutput`, `ResultMessage`, `UsageInfo`, `RateLimitEvent`, …). Used by the proxy to deserialize Claude's stdout, plus its `auth` login flow.
+- **`codex-codes`** — Types for OpenAI Codex CLI's JSONL protocol (`ThreadEvent`, `ThreadItem`, `Usage`, …). See [docs/CODEX_SUPPORT.md](docs/CODEX_SUPPORT.md).
+- **`muse-codes`** — Types for Meta Muse Code's journal-record protocol (`MuseRecord`, `MusePayload`, the model catalog). See [docs/MUSE_SUPPORT.md](docs/MUSE_SUPPORT.md).
 
 ## Architecture Quick Reference
 
@@ -27,10 +28,15 @@ agent-portal/
 ├── backend/             # Axum server (native only)
 ├── frontend/            # Yew WASM app (WASM target)
 ├── proxy/               # CLI wrapper "claude-portal" (native only)
-├── session-lib/         # Agent-agnostic session-management core (Agent trait, Session<A>)
+├── session-lib/         # Agent-agnostic session core (Agent trait, Session<A>, proxy_session)
 ├── claude-session-lib/  # Claude backend for session-lib (ClaudeAgent, owns claude CLI process)
 ├── codex-session-lib/   # Codex backend for session-lib (CodexAgent, owns codex app-server process)
+├── muse-session-lib/    # Muse backend for session-lib (spawn-per-turn `muse exec` driver)
 ├── launcher/            # Persistent daemon "agent-portal" (native only)
+├── archive-format/      # Session-archive format + stores (shared by backend and viewer)
+├── viewer-frontend/     # Standalone archive viewer (WASM)
+├── portal-stt/          # Speech-to-text provider integrations
+├── mobile/              # Native mobile shell (Tauri)
 ├── portal-auth/         # Shared OAuth device flow client
 └── portal-update/       # Shared auto-update logic
 ```
