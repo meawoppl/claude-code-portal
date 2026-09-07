@@ -52,9 +52,12 @@ runs:
       if: runner.os == 'macOS'
       shell: bash
       run: |
+        # No --default-toolchain: rustup resolves the toolchain from the
+        # repo-root rust-toolchain.toml (the single source of truth), so this
+        # lane can't drift from the dtolnay-based Linux lanes.
         rm -rf "$HOME/.cargo" "$HOME/.rustup"
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-          | sh -s -- -y --default-toolchain 1.96.0 --profile minimal
+          | sh -s -- -y --profile minimal
         if [ -n "${{ inputs.components }}" ]; then
           "$HOME/.cargo/bin/rustup" component add $(echo "${{ inputs.components }}" | tr ',' ' ')
         fi

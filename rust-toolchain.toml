@@ -1,0 +1,7 @@
+# Single source of truth for the repo's Rust toolchain (previously pinned as
+# `1.96.0` in four places across the CI YAML). Both `rustup` and
+# `dtolnay/rust-toolchain` honor this file when no explicit toolchain is given,
+# so local dev shells and every CI lane converge automatically. To bump the
+# toolchain, change `channel` here only.
+[toolchain]
+channel = "1.96.0"
