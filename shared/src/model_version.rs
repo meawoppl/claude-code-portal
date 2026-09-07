@@ -101,25 +101,20 @@ const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
 /// Window for models flagged as 1M-context.
 const MILLION_CONTEXT_WINDOW: u64 = 1_000_000;
 
-/// Models the CLI's capability table marks `native_1m` — a 1M window with **no
-/// `[1m]` tag required.
+/// Models the CLI's capability table marked `native_1m` — a 1M window with
+/// **no `[1m]` tag required.
 ///
-/// Transcribed from the model-capability table in the Claude Code 2.1.220
-/// binary, where each of these carries `context: { window: 1e6, native_1m: true }`.
-/// This matters far more than the tagged case: `claude-opus-4-8` and the other
-/// current-generation ids are here, so without this table the gauge reported
-/// **5x too full for essentially every modern model** (#1517 / #1529).
-///
-/// TODO(SDK rust-code-agent-sdks#250): a hand-maintained table is exactly what
-/// that issue asks upstream to remove — delete this and read the capability from
-/// `claude-codes` once it exposes one. Tracked locally in #1533.
-///
-/// Caveat we cannot see from a model id: the CLI additionally gates native-1M on
-/// entitlement/provider (`IP` consults `native_1m_3p` per provider and an
-/// account check). These ids all list `native_1m_3p: { bedrock: true,
-/// vertex: true }`, so the gap is narrow — but on a provider without the
-/// entitlement this over-states the window (reads emptier than reality) instead
-/// of the pre-fix under-statement.
+/// **FROZEN legacy-fallback data (#1533) — do not maintain.** Live Claude
+/// turns carry the CLI's own resolved window on the wire
+/// (`ResultMessage.model_usage[model].context_window` →
+/// `TurnMetrics.model_context_window`), which supersedes this table for all
+/// new data: a newly shipped 1M model reports its own window, entitlement and
+/// provider gating included, with no transcription step. This list exists
+/// solely so rows recorded *before* proxies forwarded that value keep a
+/// sensible gauge; it was transcribed from the Claude Code 2.1.220 binary
+/// (each id carrying `context: { window: 1e6, native_1m: true }`) and is
+/// deliberately never updated for newer CLIs — models released after the
+/// wire-forwarding era never need it.
 const NATIVE_1M_MODELS: &[&str] = &[
     "claude-fable-5",
     "claude-opus-4-7",
@@ -169,13 +164,13 @@ fn has_one_million_tag(model_id: &str) -> bool {
 /// 4. `CLAUDE_CODE_MAX_CONTEXT_TOKENS`, for non-`claude-` ids only,
 /// 5. otherwise 200k.
 ///
-/// **Known gaps vs. the CLI** (see #1517 and the upstream ask in
-/// `rust-code-agent-sdks#250`): steps 2–4 are only partially reachable from a
-/// model id. `native_1m` is covered by the transcribed [`NATIVE_1M_MODELS`]
-/// table rather than a real capability lookup, so a *newly shipped* 1M model is
-/// missed until that list is updated; the per-request 1M
-/// beta *header* isn't visible here at all; and the env override is read from
-/// the backend's environment, which is the proxy host's only in single-host
+/// **Known gaps vs. the CLI** (#1517/#1529/#1533 — acceptable for a fallback):
+/// steps 2–4 are only partially reachable from a model id. `native_1m` is
+/// covered by the frozen [`NATIVE_1M_MODELS`] list, so 1M models newer than
+/// the freeze are missed here (they never need this path — their turns carry
+/// the wire window); the per-request 1M beta *header* isn't visible here at
+/// all; and the env override is read from the environment of whichever host
+/// evaluates this fn, which matches the agent host only in single-host
 /// deployments. Those cases under-report the window (a session reads fuller
 /// than it is) rather than over-reporting it.
 pub fn context_window_for(model_id: &str) -> Option<u64> {
@@ -337,9 +332,9 @@ mod tests {
         assert_eq!(context_window_for("claude-opus-4-6"), Some(200_000));
     }
 
-    /// Natively-1M models are 1M without needing the tag. Only the by-name case
-    /// is knowable from an id (the `native_1m` capability table isn't available
-    /// here — see the fn docs and rust-code-agent-sdks#250).
+    /// Natively-1M models are 1M without needing the tag, via the frozen
+    /// legacy list (see the fn docs — live turns carry the wire window and
+    /// never consult it).
     #[test]
     fn context_window_honors_natively_one_million_models() {
         assert_eq!(context_window_for("claude-mythos-preview"), Some(1_000_000));
