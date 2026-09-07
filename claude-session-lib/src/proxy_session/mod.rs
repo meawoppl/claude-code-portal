@@ -1,22 +1,20 @@
 //! Proxy session management and WebSocket connection handling.
 
 mod git_metadata;
-mod input_delivery;
 mod media_display;
 mod output_forwarder;
-mod permission_bridge;
 mod session_event;
 mod wiggum;
-mod ws_reader;
 
 // Hoisted to session-lib (#1657): these serve every agent under the proxy.
 // Re-exported here so internal call sites keep their `super::` paths.
 use session_lib::proxy_session::heartbeat_watchdog;
 pub(crate) use session_lib::proxy_session::portal_reminder;
 pub(crate) use session_lib::proxy_session::portal_reminder::inject_portal_reminder;
+pub use session_lib::proxy_session::{ack_portal_input, emit_input_progress};
 
+pub use session_lib::proxy_session::ws_reader::{classify_portal_input, RoutedPortalInput};
 pub use wiggum::wiggum_prompt;
-pub use ws_reader::{classify_portal_input, RoutedPortalInput};
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -37,12 +35,15 @@ pub use media_display::MediaDisplaySink;
 
 use git_metadata::{get_open_prs, get_pr_url, GitMetadataState, GitRefreshTrigger};
 use output_forwarder::spawn_output_forwarder;
-use wiggum::WiggumState;
-use ws_reader::{
+use session_lib::proxy_session::ws_reader::{
     spawn_ws_reader, FileDownloadEvent, FileReceiveState, FileUploadEvent, WsReaderChannels,
 };
+use wiggum::WiggumState;
 
-pub use session_lib::proxy_session::{ConnectionResult, NativeConnection, SharedWsWrite, WsRead};
+pub use session_lib::proxy_session::{
+    ConnectionResult, GracefulShutdown, NativeConnection, PermissionResponseData, PortalInput,
+    PortalInputAck, SharedWsWrite, WsRead,
+};
 
 /// Sink for codex thread-id persistence. The proxy crate owns the
 /// `ProxyConfig` JSON file; this callback lets the session loop hand the
@@ -167,7 +168,7 @@ impl Default for Backoff {
 
 /// Result from the connection loop
 pub enum LoopResult {
-    /// Normal exit (Claude process ended)
+    /// Normal exit (agent process ended)
     NormalExit,
     /// Session not found - caller should restart with fresh session
     SessionNotFound,
@@ -187,39 +188,6 @@ pub enum RegisterError {
     /// A transient failure (connection dropped, send failed). The caller
     /// should reconnect after backing off for the given duration.
     Transient(Duration),
-}
-
-/// Permission response data (from frontend to Claude)
-#[derive(Debug)]
-pub struct PermissionResponseData {
-    pub request_id: String,
-    pub allow: bool,
-    pub input: Option<serde_json::Value>,
-    pub permissions: Vec<claude_codes::io::PermissionSuggestion>,
-    pub reason: Option<String>,
-}
-
-/// Portal-originated user input plus optional backend ack metadata.
-pub struct PortalInput {
-    pub text: String,
-    /// Optional typed portal event that the agent I/O task should synthesize
-    /// into the transcript instead of a plain user-text echo.
-    pub display_event: Option<serde_json::Value>,
-    pub ack: Option<PortalInputAck>,
-    /// Browser-assigned delivery-tracking id (#939). When present, the main
-    /// loop emits `InputProgressAck` at `ProxyReceived` (dequeue) and
-    /// `AgentAccepted` (after the agent accepts the input).
-    pub client_msg_id: Option<Uuid>,
-}
-
-pub struct PortalInputAck {
-    pub session_id: Uuid,
-    pub seq: i64,
-}
-
-/// Signal for graceful server shutdown with recommended reconnect delay
-pub struct GracefulShutdown {
-    pub reconnect_delay_ms: u64,
 }
 
 /// State that persists across WebSocket reconnections for a session.
@@ -404,8 +372,8 @@ pub async fn run_connection_loop<A: Agent>(
         session.first_connection = false;
 
         match result {
-            ConnectionResult::ClaudeExited => {
-                info!("Claude process exited, shutting down");
+            ConnectionResult::AgentExited => {
+                info!("Agent process exited, shutting down");
                 session.persist_buffer().await;
                 return Ok(LoopResult::NormalExit);
             }
@@ -970,43 +938,6 @@ async fn recv_option(rx: &mut tokio::sync::oneshot::Receiver<()>) -> Option<()> 
     rx.await.ok()
 }
 
-/// Emit an `InputProgressAck` delivery-stage signal for a tracked input, if it
-/// carried a `client_msg_id` (#939). The backend relays it to web clients.
-pub(super) async fn emit_input_progress(
-    ws_write: &SharedWsWrite,
-    session_id: Uuid,
-    client_msg_id: Option<Uuid>,
-    stage: shared::InputDeliveryStage,
-) {
-    let Some(client_msg_id) = client_msg_id else {
-        return;
-    };
-    let msg = ProxyToServer::InputProgressAck {
-        session_id,
-        client_msg_id,
-        stage,
-    };
-    let mut ws = ws_write.lock().await;
-    if let Err(e) = ws.send(msg).await {
-        error!("Failed to send InputProgressAck: {}", e);
-    }
-}
-
-/// Send an `InputAck` for a portal input, if it carried ack metadata.
-pub async fn ack_portal_input(ws_write: &SharedWsWrite, ack: Option<PortalInputAck>) {
-    let Some(ack) = ack else {
-        return;
-    };
-    let msg = ProxyToServer::InputAck {
-        session_id: ack.session_id,
-        ack_seq: ack.seq,
-    };
-    let mut ws = ws_write.lock().await;
-    if let Err(e) = ws.send(msg).await {
-        error!("Failed to send InputAck: {}", e);
-    }
-}
-
 /// Run the main select loop
 ///
 /// The Claude session internally uses a dedicated drain task to continuously
@@ -1054,14 +985,22 @@ async fn run_main_loop<A: Agent>(
             }
 
             Some(input) = input_rx.recv() => {
-                if let Some(result) = input_delivery::handle_input(
+                if let Some(result) = session_lib::proxy_session::input_delivery::handle_input(
                     &state.ws_write,
                     state.session_id,
-                    &state.working_directory,
-                    &state.git_metadata,
                     &state.reminder_pending,
                     claude_session,
                     input,
+                    || git_metadata::check_and_send_branch_update_if_branch_changed(
+                        &state.ws_write,
+                        state.session_id,
+                        &state.working_directory,
+                        &state.git_metadata,
+                    ),
+                    |text| crate::io_task::claude_user_echo_value(
+                        text.to_string(),
+                        state.session_id,
+                    ),
                 )
                 .await
                 {
@@ -1098,7 +1037,11 @@ async fn run_main_loop<A: Agent>(
             }
 
             Some(perm_response) = state.perm_rx.recv() => {
-                permission_bridge::handle_permission_response(claude_session, perm_response).await;
+                session_lib::proxy_session::permission_bridge::handle_permission_response(
+                    claude_session,
+                    perm_response,
+                )
+                .await;
             }
 
             Some(()) = state.interrupt_rx.recv() => {

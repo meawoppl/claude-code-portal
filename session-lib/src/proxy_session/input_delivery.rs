@@ -13,33 +13,32 @@ use tokio::sync::oneshot;
 use tracing::{debug, error};
 use uuid::Uuid;
 
-use session_lib::agent::Agent;
-use session_lib::session::Session;
-
-use super::git_metadata::{check_and_send_branch_update_if_branch_changed, GitMetadataState};
 use super::{
-    ack_portal_input, emit_input_progress, truncate, ConnectionResult, PortalInput, PortalInputAck,
-    SharedWsWrite,
+    ack_portal_input, emit_input_progress, portal_reminder, ConnectionResult, PortalInput,
+    PortalInputAck, SharedWsWrite,
 };
+use crate::agent::Agent;
+use crate::session::Session;
+use shared::fmt::truncate_str as truncate;
 
 /// Deliver one user input to the agent. Returns `Some(ConnectionResult)` to end
 /// the connection (delivery failure), or `None` to continue the loop.
-pub(super) async fn handle_input<A: Agent>(
+pub async fn handle_input<A, Refresh, RefreshFuture, Display>(
     ws_write: &SharedWsWrite,
     session_id: Uuid,
-    working_directory: &str,
-    git_metadata: &GitMetadataState,
     reminder_pending: &AtomicBool,
     claude_session: &mut Session<A>,
     input: PortalInput,
-) -> Option<ConnectionResult> {
-    check_and_send_branch_update_if_branch_changed(
-        ws_write,
-        session_id,
-        working_directory,
-        git_metadata,
-    )
-    .await;
+    refresh_git: Refresh,
+    default_display: Display,
+) -> Option<ConnectionResult>
+where
+    A: Agent,
+    Refresh: FnOnce() -> RefreshFuture,
+    RefreshFuture: std::future::Future<Output = ()>,
+    Display: FnOnce(&str) -> serde_json::Value,
+{
+    refresh_git().await;
 
     debug!("sending to agent process: {}", truncate(&input.text, 100));
 
@@ -47,10 +46,10 @@ pub(super) async fn handle_input<A: Agent>(
     // `swap` makes the claim atomic, so a burst of queued inputs prefixes
     // exactly one of them.
     let (text, display_event) = if reminder_pending.swap(false, Ordering::SeqCst) {
-        super::portal_reminder::fold_session_start_reminder(
+        portal_reminder::fold_session_start_reminder(
             input.text,
             input.display_event,
-            |text| crate::io_task::claude_user_echo_value(text.to_string(), session_id),
+            default_display,
         )
     } else {
         (input.text, input.display_event)
@@ -79,7 +78,7 @@ pub(super) async fn handle_input<A: Agent>(
                 shared::InputDeliveryStage::Failed,
             )
             .await;
-            return Some(ConnectionResult::ClaudeExited);
+            return Some(ConnectionResult::AgentExited);
         }
     };
     spawn_delivery_completion(

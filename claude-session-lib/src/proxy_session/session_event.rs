@@ -1,8 +1,8 @@
 //! Session-event arm of the proxy connection loop (#1165 item 3).
 //!
-//! Extracted from the `run_main_loop` `select!` so the god-loop reads as thin
-//! dispatch (parallels [`input_delivery::handle_input`](super::input_delivery)
-//! and [`wiggum::handle_wiggum_activation`](super::wiggum)). Dispatches one
+//! Claude-specific tail of event dispatch. Agent-neutral side channels are
+//! handled first by [`session_lib::proxy_session::session_event`]; this module
+//! retains raw-output behavior and Wiggum. Dispatches one
 //! [`SessionEvent`] from `claude_session.next_event()`:
 //!
 //! - Non-Claude `RawOutput`: the simple codex path (git refresh, buffer, send,
@@ -107,107 +107,21 @@ pub(super) async fn handle_next_event<A: Agent>(
         }
     }
 
-    // Per-turn metrics: forward as a typed `TurnMetricsReport` envelope. Doesn't
-    // go through the output buffer because it's not part of the message-replay
-    // path — a missed metrics row is acceptable (next turn replaces it on the
-    // dashboard) but we still want low-latency delivery.
-    if let Some(SessionEvent::TurnMetricsReady(metrics)) = event {
-        let msg = ProxyToServer::TurnMetricsReport(metrics);
-        let mut ws = state.ws_write.lock().await;
-        if ws.send(msg).await.is_err() {
-            error!("Failed to send turn metrics report");
-            return Some(ConnectionResult::Disconnected(
-                state.connection_start.elapsed(),
-            ));
-        }
-        return None;
-    }
-
-    // Ephemeral tool-progress heartbeat: forward as a typed side-channel,
-    // mirroring `TurnMetricsReport` above. Deliberately bypasses the output
-    // buffer — heartbeats are live-status only and must never be persisted or
-    // replayed. The backend fans it out to web clients (never to the DB).
-    if let Some(SessionEvent::ToolProgress {
-        tool_use_id,
-        parent_tool_use_id,
-        tool_name,
-        elapsed_time_seconds,
-        subagent_type,
-        subagent_retry,
-    }) = event
+    let event = match session_lib::proxy_session::session_event::dispatch(
+        event,
+        &state.ws_write,
+        state.session_id,
+        state.connection_start,
+        state.codex_thread_id_sink.as_deref(),
+    )
+    .await
     {
-        let msg = ProxyToServer::ToolProgress {
-            session_id: state.session_id,
-            tool_use_id,
-            parent_tool_use_id,
-            tool_name,
-            elapsed_time_seconds,
-            subagent_type,
-            subagent_retry,
-        };
-        let mut ws = state.ws_write.lock().await;
-        if ws.send(msg).await.is_err() {
-            error!("Failed to send tool-progress heartbeat");
-            return Some(ConnectionResult::Disconnected(
-                state.connection_start.elapsed(),
-            ));
+        session_lib::proxy_session::session_event::DispatchResult::Handled => return None,
+        session_lib::proxy_session::session_event::DispatchResult::Disconnect(result) => {
+            return Some(result);
         }
-        return None;
-    }
-
-    // Neutral ephemeral live-status (muse's streamed deltas / task status):
-    // forward as a typed side-channel exactly like `ToolProgress` above.
-    // Deliberately bypasses the output buffer — live-status only, never
-    // persisted or replayed. The backend fans it out to web clients (never to
-    // the DB); if nobody is listening it evaporates.
-    if let Some(SessionEvent::Ephemeral(payload)) = event {
-        let msg = ProxyToServer::Ephemeral {
-            session_id: state.session_id,
-            payload,
-        };
-        let mut ws = state.ws_write.lock().await;
-        if ws.send(msg).await.is_err() {
-            error!("Failed to send ephemeral live-status frame");
-            return Some(ConnectionResult::Disconnected(
-                state.connection_start.elapsed(),
-            ));
-        }
-        return None;
-    }
-
-    // Codex app-server thread id: hand it to the persistence sink (the proxy's
-    // ProxyConfig writer) so the next resume of this session can call
-    // `thread/resume` with it. Emitted once per spawn by codex-session-lib.
-    // No-op for claude sessions (claude doesn't emit it).
-    if let Some(SessionEvent::CodexThreadId(thread_id)) = event {
-        if let Some(sink) = state.codex_thread_id_sink.as_ref() {
-            sink(thread_id);
-        }
-        return None;
-    }
-
-    if let Some(SessionEvent::SessionLimitReached {
-        session_id,
-        reset_at,
-        source_message,
-        prompt,
-    }) = event
-    {
-        let msg = ProxyToServer::SessionLimitReached(shared::SessionLimitContinuationFields {
-            session_id,
-            reset_at,
-            source_message,
-            prompt,
-        });
-        let mut ws = state.ws_write.lock().await;
-        if ws.send(msg).await.is_err() {
-            error!("Failed to send session-limit continuation candidate");
-            return Some(ConnectionResult::Disconnected(
-                state.connection_start.elapsed(),
-            ));
-        }
-        return None;
-    }
+        session_lib::proxy_session::session_event::DispatchResult::Unhandled(event) => event,
+    };
 
     handle_session_event_with_wiggum(
         event,

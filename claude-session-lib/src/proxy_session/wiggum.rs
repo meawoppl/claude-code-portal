@@ -77,7 +77,7 @@ pub struct WiggumState {
 /// Wiggum-activation arm of the proxy connection loop (#1165 item 3).
 ///
 /// Extracted from the `run_main_loop` `select!` so the god-loop reads as thin
-/// dispatch (parallels [`input_delivery::handle_input`](super::input_delivery)).
+/// dispatch (parallels [`session_lib::proxy_session::input_delivery::handle_input`]).
 /// Sets [`WiggumState`] atomically with sending the first iteration's prompt,
 /// emitting the [`InputDeliveryStage`](shared::InputDeliveryStage) progress
 /// events (#939) along the way. Returns `Some(ConnectionResult)` to end the
@@ -173,7 +173,7 @@ pub(super) async fn handle_wiggum_activation<A: Agent>(
             shared::InputDeliveryStage::Failed,
         )
         .await;
-        return Some(ConnectionResult::ClaudeExited);
+        return Some(ConnectionResult::AgentExited);
     }
     emit_input_progress(
         ws_write,
@@ -304,7 +304,7 @@ pub(super) async fn handle_session_event_with_wiggum<A: Agent>(
                         {
                             error!("Failed to resend wiggum prompt: {}", e);
                             *wiggum_state = None;
-                            return Some(ConnectionResult::ClaudeExited);
+                            return Some(ConnectionResult::AgentExited);
                         }
                     }
                 }
@@ -375,7 +375,7 @@ pub(super) async fn handle_session_event_with_wiggum<A: Agent>(
         }
         Some(SessionEvent::Exited { code }) => {
             info!("Claude session exited with code {}", code);
-            Some(ConnectionResult::ClaudeExited)
+            Some(ConnectionResult::AgentExited)
         }
         Some(SessionEvent::TurnMetricsReady(_)) => {
             // Handled in run_main_loop before calling this function
@@ -425,12 +425,12 @@ pub(super) async fn handle_session_event_with_wiggum<A: Agent>(
                 }
                 eprintln!();
             }
-            Some(ConnectionResult::ClaudeExited)
+            Some(ConnectionResult::AgentExited)
         }
         None => {
             // Session has ended
             info!("Claude session ended");
-            Some(ConnectionResult::ClaudeExited)
+            Some(ConnectionResult::AgentExited)
         }
     }
 }
