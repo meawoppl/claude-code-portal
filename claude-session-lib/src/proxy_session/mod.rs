@@ -1,17 +1,19 @@
 //! Proxy session management and WebSocket connection handling.
 
 mod git_metadata;
-mod heartbeat_watchdog;
 mod input_delivery;
 mod media_display;
 mod output_forwarder;
 mod permission_bridge;
-mod portal_reminder;
 mod session_event;
 mod wiggum;
 mod ws_reader;
 
-pub(crate) use portal_reminder::inject_portal_reminder;
+// Hoisted to session-lib (#1657): these serve every agent under the proxy.
+// Re-exported here so internal call sites keep their `super::` paths.
+use session_lib::proxy_session::heartbeat_watchdog;
+pub(crate) use session_lib::proxy_session::portal_reminder;
+pub(crate) use session_lib::proxy_session::portal_reminder::inject_portal_reminder;
 
 pub use wiggum::wiggum_prompt;
 pub use ws_reader::{classify_portal_input, RoutedPortalInput};
@@ -40,14 +42,7 @@ use ws_reader::{
     spawn_ws_reader, FileDownloadEvent, FileReceiveState, FileUploadEvent, WsReaderChannels,
 };
 
-/// Type alias for the native WebSocket connection
-pub type NativeConnection = ws_bridge::native_client::Connection<SessionEndpoint>;
-
-/// Type alias for the shared WebSocket write half
-pub type SharedWsWrite = Arc<tokio::sync::Mutex<ws_bridge::WsSender<ProxyToServer>>>;
-
-/// Type alias for the WebSocket read half
-pub type WsRead = ws_bridge::WsReceiver<ServerToProxy>;
+pub use session_lib::proxy_session::{ConnectionResult, NativeConnection, SharedWsWrite, WsRead};
 
 /// Sink for codex thread-id persistence. The proxy crate owns the
 /// `ProxyConfig` JSON file; this callback lets the session loop hand the
@@ -168,24 +163,6 @@ impl Default for Backoff {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Result from a single WebSocket connection attempt
-pub enum ConnectionResult {
-    /// Claude process exited normally
-    ClaudeExited,
-    /// WebSocket disconnected, includes how long the connection was up
-    Disconnected(Duration),
-    /// Session not found error - need to restart with fresh session
-    SessionNotFound,
-    /// Server is shutting down gracefully, includes suggested reconnect delay
-    ServerShutdown(Duration),
-    /// Session was terminated by the server (do not reconnect)
-    SessionTerminated,
-    /// The backend rejected registration (revoked/expired token, unauthorized).
-    /// Reconnecting with the same token can never succeed, so the proxy must
-    /// stop rather than hammer the backend forever (#1045).
-    RegistrationRejected,
 }
 
 /// Result from the connection loop

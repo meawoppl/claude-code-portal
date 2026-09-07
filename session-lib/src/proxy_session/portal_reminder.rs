@@ -8,7 +8,7 @@
 //! the portal), and the reminder's value is the agent recovering its
 //! affordance knowledge after a fresh start / compaction.
 //!
-//! The reminder body lives in `claude-session-lib/portal_reminder.md` as a
+//! The reminder body lives in `session-lib/portal_reminder.md` as a
 //! readable markdown file and is baked into the binary via `include_str!`.
 //! Operators can override at runtime by pointing `PORTAL_REMINDER_FILE` at a
 //! readable path; on a missing or unreadable override we log a warning and
@@ -16,8 +16,8 @@
 
 use tracing::{error, info, warn};
 
-use session_lib::agent::Agent;
-use session_lib::session::Session;
+use crate::agent::Agent;
+use crate::session::Session;
 
 /// Bundled fallback body (relative to this file).
 const DEFAULT_BODY: &str = include_str!("../../portal_reminder.md");
@@ -77,17 +77,18 @@ fn agent_facing(body: &str) -> String {
 /// starts with `<system-reminder>`, and both the claude and codex echo paths
 /// suppress synthesized echoes for exactly that prefix — without an explicit
 /// display event the user's own message would vanish from the transcript.
-pub(super) fn fold_session_start_reminder(
+///
+/// `default_display` supplies the event when the caller has none — the
+/// agent-specific "echo the user's own text" synthesizer. Taken as a closure
+/// (rather than calling one agent's synthesizer here) because this module is
+/// agent-agnostic (#1657); it runs only when `display_event` is `None`, with
+/// the ORIGINAL text, before the reminder prefix is applied.
+pub fn fold_session_start_reminder(
     text: String,
     display_event: Option<serde_json::Value>,
-    session_id: uuid::Uuid,
+    default_display: impl FnOnce(&str) -> serde_json::Value,
 ) -> (String, Option<serde_json::Value>) {
-    let display_event = display_event.or_else(|| {
-        Some(crate::io_task::claude_user_echo_value(
-            text.clone(),
-            session_id,
-        ))
-    });
+    let display_event = display_event.or_else(|| Some(default_display(&text)));
     let prefixed = format!("{}\n\n{}", agent_facing(&load_reminder_body()), text);
     (prefixed, display_event)
 }
@@ -112,14 +113,17 @@ pub async fn inject_portal_reminder<A: Agent>(claude_session: &mut Session<A>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
 
     /// The agent must receive the reminder AND the user's words, in that
     /// order, from a single input — the point of folding rather than sending
     /// the reminder as a turn of its own.
     #[test]
     fn fold_prefixes_the_reminder_and_keeps_the_prompt() {
-        let (text, _) = fold_session_start_reminder("do the thing".to_string(), None, Uuid::nil());
+        let (text, _) = fold_session_start_reminder(
+            "do the thing".to_string(),
+            None,
+            |t| serde_json::json!({"echo": t}),
+        );
 
         assert!(text.starts_with("<system-reminder>"));
         assert!(text.contains("Agent Portal version"));
@@ -134,8 +138,11 @@ mod tests {
     /// carrying the user's own words, their message would silently vanish.
     #[test]
     fn fold_supplies_a_display_event_so_the_user_message_still_renders() {
-        let (_, display) =
-            fold_session_start_reminder("hello agent".to_string(), None, Uuid::nil());
+        let (_, display) = fold_session_start_reminder(
+            "hello agent".to_string(),
+            None,
+            |t| serde_json::json!({"type": "user", "text": t}),
+        );
 
         let display = display.expect("a display event is required, not optional");
         assert_eq!(display["type"], "user");
@@ -154,11 +161,10 @@ mod tests {
     #[test]
     fn fold_preserves_an_existing_display_event() {
         let provenance = serde_json::json!({"type": "portal", "content": [{"agent": "codex"}]});
-        let (text, display) = fold_session_start_reminder(
-            "relayed".to_string(),
-            Some(provenance.clone()),
-            Uuid::nil(),
-        );
+        let (text, display) =
+            fold_session_start_reminder("relayed".to_string(), Some(provenance.clone()), |_| {
+                unreachable!("display provided")
+            });
 
         assert_eq!(display, Some(provenance));
         assert!(text.ends_with("relayed"));

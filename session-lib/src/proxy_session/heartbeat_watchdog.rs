@@ -6,7 +6,7 @@
 //! `ws_write` on a half-dead socket can't starve the `select!` and strand the
 //! session "shown but not connected" (#926).
 
-use session_lib::heartbeat::HeartbeatTracker;
+use crate::heartbeat::HeartbeatTracker;
 use shared::ProxyToServer;
 use tracing::warn;
 
@@ -15,7 +15,7 @@ use super::{ConnectionResult, SharedWsWrite};
 /// Run one heartbeat tick. Returns `Some(ConnectionResult::Disconnected)` to
 /// force a reconnect (expired, send failed, or send wedged), or `None` to
 /// continue the loop.
-pub(super) async fn tick(
+pub async fn tick(
     heartbeat: &HeartbeatTracker,
     ws_write: &SharedWsWrite,
     connection_start: std::time::Instant,
@@ -39,7 +39,7 @@ pub(super) async fn tick(
         let mut ws = ws_write.lock().await;
         ws.send(ProxyToServer::Heartbeat).await
     };
-    match tokio::time::timeout(session_lib::heartbeat::HEARTBEAT_TIMEOUT, send).await {
+    match tokio::time::timeout(crate::heartbeat::HEARTBEAT_TIMEOUT, send).await {
         Ok(Ok(())) => None,
         Ok(Err(e)) => {
             warn!("Heartbeat send failed ({e}), forcing reconnect");
@@ -48,7 +48,7 @@ pub(super) async fn tick(
         Err(_) => {
             warn!(
                 "Heartbeat send blocked >{}s (dead socket), forcing reconnect",
-                session_lib::heartbeat::HEARTBEAT_TIMEOUT.as_secs()
+                crate::heartbeat::HEARTBEAT_TIMEOUT.as_secs()
             );
             Some(ConnectionResult::Disconnected(connection_start.elapsed()))
         }

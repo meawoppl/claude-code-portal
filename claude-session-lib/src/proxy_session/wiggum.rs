@@ -144,7 +144,7 @@ pub(super) async fn handle_wiggum_activation<A: Agent>(
             let (text, display) = super::portal_reminder::fold_session_start_reminder(
                 framed,
                 Some(display),
-                session_id,
+                |text| claude_user_echo_value(text.to_string(), session_id),
             );
             (
                 text,

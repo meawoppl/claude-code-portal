@@ -50,7 +50,7 @@ pub(super) async fn handle_input<A: Agent>(
         super::portal_reminder::fold_session_start_reminder(
             input.text,
             input.display_event,
-            session_id,
+            |text| crate::io_task::claude_user_echo_value(text.to_string(), session_id),
         )
     } else {
         (input.text, input.display_event)

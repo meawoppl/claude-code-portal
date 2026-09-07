@@ -36,6 +36,7 @@ pub mod io;
 pub mod output_buffer;
 pub mod paths;
 pub mod probe;
+pub mod proxy_session;
 pub mod session;
 pub mod snapshot;
 pub mod tunnel;
