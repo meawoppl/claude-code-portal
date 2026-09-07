@@ -324,6 +324,15 @@ fn generate_plist(binary_path: &str) -> String {
     <string>{log_dir}/stderr.log</string>
     <key>ThrottleInterval</key>
     <integer>5</integer>
+    <!-- launchd jobs default to a 256-fd soft limit (shells get ~1M), which a
+         long-lived daemon full of sockets can exhaust; on macOS getaddrinfo
+         then fails with a misleading "nodename nor servname" error (#1859).
+         The fd leak itself is fixed; this keeps any future one survivable. -->
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>4096</integer>
+    </dict>
 </dict>
 </plist>
 "#,

@@ -374,6 +374,10 @@ impl TunnelManager {
         if let Some(prober) = self.prober.lock().unwrap_or_else(|e| e.into_inner()).take() {
             prober.abort();
         }
+        // Release the data-plane writer too: teardown must be complete on its
+        // own, whoever owns the reader task. Leaving the write half attached
+        // pins the socket's fd for as long as the manager lives (#1859).
+        self.detach_data_plane().await;
         let streams = self.streams.lock().await;
         for handle in streams.values() {
             let _ = handle.inbox.send(StreamMsg::Close);

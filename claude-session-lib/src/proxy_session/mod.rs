@@ -876,16 +876,21 @@ async fn run_message_loop<A: Agent>(
     let tunnel = session_lib::tunnel::TunnelManager::new(ws_write.clone());
 
     // Bring up the binary data plane, if the backend issued a ticket (#1506).
-    // Detached: forward bytes must never gate session startup, and every
-    // failure inside just leaves tunneling on the control socket.
-    if let Some((ticket, sizing)) = tunnel_data_grant {
+    // Spawned so forward bytes never gate session startup, but tied to THIS
+    // connection's lifetime: the handle is aborted in cleanup below. Before
+    // #1859 it was fire-and-forget, and the task only returns when its own
+    // socket ends — so every reconnect-with-grant parked another task on a
+    // healthy idle socket, leaking one fd per reconnect until the process hit
+    // RLIMIT_NOFILE and every connect failed with a bogus "nodename nor
+    // servname provided" resolver error.
+    let data_plane_task = tunnel_data_grant.map(|(ticket, sizing)| {
         tokio::spawn(session_lib::tunnel::run_data_plane(
             tunnel.clone(),
             config.backend_url.clone(),
             ticket,
             sizing,
-        ));
-    }
+        ))
+    });
 
     // Heartbeat tracker for dead connection detection
     let heartbeat = session_lib::heartbeat::HeartbeatTracker::new();
@@ -972,6 +977,11 @@ async fn run_message_loop<A: Agent>(
     // Clean up
     output_task.abort();
     reader_task.abort();
+    // The old data plane must die with its connection — the next register
+    // issues a fresh ticket and dials a fresh socket (#1859).
+    if let Some(task) = data_plane_task {
+        task.abort();
+    }
     tunnel.shutdown().await;
 
     result
