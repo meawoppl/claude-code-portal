@@ -1446,6 +1446,10 @@ mod tests {
             " viewer ".parse::<SessionRole>().unwrap(),
             SessionRole::Viewer
         );
+
+        // UI select parsing falls back to `unwrap_or_default()` — pin that the
+        // default is Viewer so a bad option value can never escalate a role.
+        assert_eq!(SessionRole::default(), SessionRole::Viewer);
     }
 
     #[test]

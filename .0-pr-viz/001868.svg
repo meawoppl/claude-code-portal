@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1200"
+     font-family="'Segoe UI', 'Noto Sans', 'DejaVu Sans', ui-sans-serif, system-ui, sans-serif">
+  <rect x="0" y="0" width="2000" height="1200" fill="#16161e"/>
+
+  <defs>
+    <marker id="arr-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#565f89"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9ece6a"/>
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <text x="55" y="52" font-size="24" letter-spacing="1" fill="#565f89">PR #1868 · Default SessionRole fallback in share dialog</text>
+
+  <!-- Thesis -->
+  <text x="55" y="100" font-size="34" fill="#e6e9f5">ShareDialog restated its Viewer fallback at both role selects; now</text>
+  <text x="55" y="140" font-size="34" fill="#e6e9f5">the type's Default owns it, so every parse site follows one source.</text>
+  <line x1="55" y1="165" x2="1945" y2="165" stroke="#3d4666" stroke-width="1"/>
+
+  <!-- Panel labels + center divider -->
+  <text x="55" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#f7768e">BEFORE</text>
+  <text x="1040" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#9ece6a">AFTER</text>
+  <line x1="1000" y1="190" x2="1000" y2="1135" stroke="#3d4666" stroke-width="1.5" stroke-dasharray="2 6"/>
+
+  <!-- ==================== BEFORE panel: x 55–945 ==================== -->
+
+  <g>
+    <rect x="80" y="250" width="810" height="200" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="290" font-size="26" fill="#7aa2f7">share_dialog.rs:244 · add-form select</text>
+    <text x="104" y="330" font-size="23" fill="#f7768e">select.value().parse().unwrap_or(Viewer)</text>
+    <text x="104" y="366" font-size="23" fill="#f7768e">fallback restated at the call site</text>
+    <text x="104" y="402" font-size="22" fill="#565f89">UpdateRole message carries SessionRole</text>
+  </g>
+
+  <line x1="485" y1="450" x2="485" y2="490" stroke="#565f89" stroke-width="1.5" marker-end="url(#arr-dim)"/>
+
+  <g>
+    <rect x="80" y="500" width="810" height="265" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="540" font-size="26" fill="#7aa2f7">share_dialog.rs:335 · member-row select</text>
+    <text x="104" y="580" font-size="23" fill="#f7768e">select.value().parse().unwrap_or(Viewer)</text>
+    <text x="104" y="616" font-size="23" fill="#f7768e">same fallback, pasted a second time</text>
+    <text x="104" y="652" font-size="23" fill="#a9b1d6">ChangeRole(user_id, role) — per-member row</text>
+    <text x="104" y="688" font-size="22" fill="#565f89">Owner rows render a label, no select</text>
+    <text x="104" y="724" font-size="22" fill="#565f89">identical behavior, two spellings of why</text>
+  </g>
+
+  <g>
+    <rect x="80" y="785" width="810" height="145" fill="#1e202e" stroke="#f7768e" stroke-width="1.5"/>
+    <text x="104" y="831" font-size="26" fill="#c0caf5">two sources of truth for one default</text>
+    <text x="104" y="871" font-size="23" fill="#f7768e">changing the default means editing every site</text>
+    <text x="104" y="907" font-size="22" fill="#565f89">drift risk, not a bug — identical today</text>
+  </g>
+
+  <!-- ==================== AFTER panel: x 1040–1945 ==================== -->
+
+  <g>
+    <rect x="1065" y="250" width="810" height="200" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
+    <text x="1089" y="290" font-size="26" fill="#7aa2f7">shared/lib.rs:394 · SessionRole</text>
+    <text x="1089" y="330" font-size="23" fill="#9ece6a">derive(Default) + #[default] Viewer</text>
+    <text x="1089" y="366" font-size="23" fill="#a9b1d6">fallback defined once, on the type</text>
+    <text x="1089" y="402" font-size="22" fill="#565f89">already there — the call sites ignored it</text>
+  </g>
+
+  <line x1="1470" y1="450" x2="1470" y2="490" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <g>
+    <rect x="1065" y="500" width="810" height="265" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="1089" y="540" font-size="26" fill="#c0caf5">both selects: unwrap_or_default()</text>
+    <text x="1089" y="580" font-size="23" fill="#9ece6a">+ :244 add form — identical behavior</text>
+    <text x="1089" y="616" font-size="23" fill="#9ece6a">+ :335 member row — identical behavior</text>
+    <text x="1089" y="652" font-size="23" fill="#a9b1d6">pinned: default() == Viewer in role test</text>
+    <text x="1089" y="688" font-size="22" fill="#565f89">backend Unknown fallbacks untouched</text>
+    <text x="1089" y="724" font-size="22" fill="#565f89">API boundary keeps explicit Unknown</text>
+  </g>
+
+  <g>
+    <rect x="1065" y="785" width="810" height="145" fill="#1e202e" stroke="#9ece6a" stroke-width="1.5"/>
+    <text x="1089" y="831" font-size="26" fill="#c0caf5">one source of truth for the fallback</text>
+    <text x="1089" y="871" font-size="23" fill="#9ece6a">future default change flows to both sites</text>
+    <text x="1089" y="907" font-size="22" fill="#565f89">682 frontend + shared role tests green</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="55" y="1172" font-size="22" fill="#565f89">Only the two Viewer-fallback sites migrate — any future role parse must still choose its fallback explicitly.</text>
+</svg>

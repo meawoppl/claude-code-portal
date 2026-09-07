@@ -238,7 +238,7 @@ impl Component for ShareDialog {
 
         let on_role_change = ctx.link().callback(|e: Event| {
             let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
-            ShareDialogMsg::UpdateRole(select.value().parse().unwrap_or(SessionRole::Viewer))
+            ShareDialogMsg::UpdateRole(select.value().parse().unwrap_or_default())
         });
 
         let on_add_click = ctx.link().callback(|_| ShareDialogMsg::AddMember);
@@ -329,7 +329,7 @@ impl ShareDialog {
                 let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
                 link.send_message(ShareDialogMsg::ChangeRole(
                     user_id,
-                    select.value().parse().unwrap_or(SessionRole::Viewer),
+                    select.value().parse().unwrap_or_default(),
                 ));
             })
         };
