@@ -257,7 +257,7 @@ pub fn admin_page(props: &AdminPageProps) -> Html {
             let confirm_inner = confirm_action.clone();
 
             let target_user = users_inner.iter().find(|u| u.id == user_id).cloned();
-            let is_currently_admin = target_user.as_ref().map(|u| u.is_admin).unwrap_or(false);
+            let is_currently_admin = target_user.as_ref().is_some_and(|u| u.is_admin);
             let action_text = if is_currently_admin {
                 "Remove admin privileges from this user?"
             } else {
@@ -297,7 +297,7 @@ pub fn admin_page(props: &AdminPageProps) -> Html {
             let ban_reason_input = ban_reason_input.clone();
 
             let target_user = users_inner.iter().find(|u| u.id == user_id).cloned();
-            let is_currently_disabled = target_user.as_ref().map(|u| u.disabled).unwrap_or(false);
+            let is_currently_disabled = target_user.as_ref().is_some_and(|u| u.disabled);
 
             if is_currently_disabled {
                 // Unbanning - use simple confirmation
