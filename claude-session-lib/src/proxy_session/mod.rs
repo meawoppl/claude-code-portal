@@ -168,7 +168,7 @@ impl Default for Backoff {
 
 /// Result from the connection loop
 pub enum LoopResult {
-    /// Normal exit (Claude process ended)
+    /// Normal exit (agent process ended)
     NormalExit,
     /// Session not found - caller should restart with fresh session
     SessionNotFound,
@@ -373,7 +373,7 @@ pub async fn run_connection_loop<A: Agent>(
 
         match result {
             ConnectionResult::AgentExited => {
-                info!("Claude process exited, shutting down");
+                info!("Agent process exited, shutting down");
                 session.persist_buffer().await;
                 return Ok(LoopResult::NormalExit);
             }

@@ -1,8 +1,8 @@
 //! Session-event arm of the proxy connection loop (#1165 item 3).
 //!
-//! Extracted from the `run_main_loop` `select!` so the god-loop reads as thin
-//! dispatch (parallels [`input_delivery::handle_input`](super::input_delivery)
-//! and [`wiggum::handle_wiggum_activation`](super::wiggum)). Dispatches one
+//! Claude-specific tail of event dispatch. Agent-neutral side channels are
+//! handled first by [`session_lib::proxy_session::session_event`]; this module
+//! retains raw-output behavior and Wiggum. Dispatches one
 //! [`SessionEvent`] from `claude_session.next_event()`:
 //!
 //! - Non-Claude `RawOutput`: the simple codex path (git refresh, buffer, send,

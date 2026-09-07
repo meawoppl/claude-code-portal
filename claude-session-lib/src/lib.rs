@@ -6,10 +6,9 @@
 //!
 //! Claude-specific backend for [`session_lib`]: defines [`ClaudeAgent`] (the
 //! per-agent dispatch type) and the `claude_io_task` that owns the `claude`
-//! CLI process. Also re-houses the `proxy_session` connection loop used by
-//! the `claude-portal` proxy binary — that loop is claude-specific (wiggum
-//! mode, portal-reminder injection, image upload, stream-json output
-//! forwarding) and isn't getting split until a future PR.
+//! CLI process. Its `proxy_session` module retains the Claude-specific
+//! connection orchestration (Wiggum, image handling, and typed Claude output);
+//! protocol-neutral routing and delivery live in `session_lib::proxy_session`.
 
 pub mod agent;
 pub mod auth;
