@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1200"
+     font-family="'Segoe UI', 'Noto Sans', 'DejaVu Sans', ui-sans-serif, system-ui, sans-serif">
+  <rect x="0" y="0" width="2000" height="1200" fill="#16161e"/>
+
+  <defs>
+    <marker id="arr-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#565f89"/>
+    </marker>
+    <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9ece6a"/>
+    </marker>
+  </defs>
+
+  <text x="55" y="52" font-size="24" letter-spacing="1" fill="#565f89">PR #1884 · Refresh AGENTS.md's related-projects and workspace map</text>
+
+  <text x="55" y="100" font-size="34" fill="#e6e9f5">AGENTS.md pinned SDK versions that rot on every bump and drew a workspace five crates smaller</text>
+  <text x="55" y="140" font-size="34" fill="#e6e9f5">than reality; the rot vector is removed and the map matches the tree.</text>
+  <line x1="55" y1="165" x2="1945" y2="165" stroke="#3d4666" stroke-width="1"/>
+
+  <text x="55" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#f7768e">BEFORE</text>
+  <text x="1040" y="212" font-size="22" font-weight="700" letter-spacing="4" fill="#9ece6a">AFTER</text>
+  <line x1="1000" y1="190" x2="1000" y2="1135" stroke="#3d4666" stroke-width="1.5" stroke-dasharray="2 6"/>
+
+  <!-- ==================== BEFORE ==================== -->
+  <g>
+    <rect x="80" y="250" width="840" height="180" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="104" y="292" font-size="26" fill="#7aa2f7">Related Projects — versions baked into prose</text>
+    <text x="104" y="330" font-size="23" fill="#a9b1d6">"claude-codes (v2.1.220)" · "codex-codes (v0.146.2)"</text>
+    <text x="104" y="364" font-size="23" fill="#a9b1d6">muse-codes: consumed by the workspace, absent from the doc</text>
+    <text x="104" y="398" font-size="21" fill="#565f89">every SDK bump silently re-falsifies the paragraph — tracker #1165</text>
+  </g>
+
+  <g>
+    <rect x="80" y="480" width="840" height="230" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="104" y="522" font-size="26" fill="#7aa2f7">workspace diagram — five crates behind the tree</text>
+    <text x="104" y="560" font-size="23" fill="#a9b1d6">missing: muse-session-lib · archive-format · viewer-frontend ·</text>
+    <text x="104" y="594" font-size="23" fill="#a9b1d6">portal-stt · mobile</text>
+    <text x="104" y="628" font-size="21" fill="#565f89">an agent orienting from the map plans around a workspace that</text>
+    <text x="104" y="658" font-size="21" fill="#565f89">stopped existing months of merges ago</text>
+  </g>
+
+  <g>
+    <rect x="80" y="930" width="840" height="150" fill="#1e202e" stroke="#3d4666" stroke-width="1.5"/>
+    <text x="104" y="976" font-size="26" fill="#c0caf5">docs describing a past system</text>
+    <text x="104" y="1014" font-size="23" fill="#a9b1d6">exactly the drift #1165 item 10's refresh half exists to clear</text>
+    <text x="104" y="1048" font-size="21" fill="#565f89">the repo's own policy: documentation describes the current system</text>
+  </g>
+
+  <!-- ==================== AFTER ==================== -->
+  <g>
+    <rect x="1065" y="250" width="860" height="180" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
+    <text x="1089" y="292" font-size="26" fill="#9ece6a">versions live in exactly one place</text>
+    <text x="1089" y="330" font-size="23" fill="#a9b1d6">the section names the crates and points at Cargo.toml for pins —</text>
+    <text x="1089" y="364" font-size="23" fill="#a9b1d6">"deliberately not repeated here, where they rot"</text>
+    <text x="1089" y="398" font-size="21" fill="#565f89">muse-codes listed with its docs pointer; the rot vector is gone for good</text>
+  </g>
+
+  <line x1="1495" y1="430" x2="1495" y2="496" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <g>
+    <rect x="1065" y="500" width="860" height="210" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
+    <text x="1089" y="542" font-size="26" fill="#9ece6a">the map matches the tree</text>
+    <text x="1089" y="580" font-size="23" fill="#a9b1d6">+ muse-session-lib (spawn-per-turn muse driver)</text>
+    <text x="1089" y="614" font-size="23" fill="#a9b1d6">+ archive-format · viewer-frontend · portal-stt · mobile</text>
+    <text x="1089" y="648" font-size="21" fill="#565f89">session-lib's line notes its new proxy_session home (#1657)</text>
+  </g>
+
+  <line x1="1495" y1="710" x2="1495" y2="922" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <text x="1520" y="810" font-size="21" fill="#565f89">tracker #1165 gets a verified</text>
+  <text x="1520" y="840" font-size="21" fill="#565f89">per-item status audit as a comment</text>
+
+  <g>
+    <rect x="1065" y="930" width="860" height="150" fill="#1e202e" stroke="#9ece6a" stroke-width="1.5"/>
+    <text x="1089" y="976" font-size="26" fill="#c0caf5">orientation docs an agent can trust</text>
+    <text x="1089" y="1014" font-size="23" fill="#9ece6a">items 1/3/8 verified landed; 4/5/6/7 honestly marked in progress or open</text>
+    <text x="1089" y="1048" font-size="21" fill="#565f89">docs-only PR — no behavior anywhere near this diff</text>
+  </g>
+
+  <text x="55" y="1172" font-size="22" fill="#565f89">Item 10's code half stays open on the tracker: the serde_json::Value DB columns (claude_args, open_prs, sound_config) are real work, not a docs ride-along.</text>
+</svg>
