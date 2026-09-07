@@ -39,6 +39,15 @@ pub const LAUNCHER_CAPABILITY_RESTART: &str = "launcher.restart";
 /// undecodable frame (#1366).
 pub const LAUNCHER_CAPABILITY_HEARTBEAT_ACK: &str = "launcher.heartbeat_ack";
 
+/// Default git-worktree branch shape for unnamed worktree launches:
+/// `session-<YYYYMMDD-HHMMSS>`. Single source of truth shared by the backend
+/// (which mints the display name before the launcher runs) and the launcher
+/// (which falls back to it when no branch is supplied), so the two can never
+/// drift apart and leave the rail showing a name that matches no branch.
+pub const WORKTREE_BRANCH_PREFIX: &str = "session-";
+/// `chrono` format string for [`WORKTREE_BRANCH_PREFIX`] timestamps.
+pub const WORKTREE_BRANCH_TIME_FORMAT: &str = "%Y%m%d-%H%M%S";
+
 /// Tokyo-Night data-visualization palette shared by charts, sparklines, and
 /// terminal colors. CSS theme tokens remain in the stylesheets where the
 /// browser can resolve them directly.
