@@ -68,7 +68,7 @@
   </g>
 
   <line x1="1495" y1="670" x2="1495" y2="922" stroke="#9ece6a" stroke-width="1.5" marker-end="url(#arr-green)"/>
-  <text x="1520" y="790" font-size="21" fill="#565f89">item 3 (_mt synthetic set): version-pinned</text>
+  <text x="1520" y="790" font-size="21" fill="#565f89">item 3 (_mt set): version-pinned</text>
   <text x="1520" y="820" font-size="21" fill="#565f89">by design, bounded, self-correcting</text>
 
   <g>
