@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Generic proxy routing moves into session-lib</title>
+  <desc id="desc">WebSocket routing and permission bridging move from the Claude-specific crate into the shared session crate without changing the wire.</desc>
+  <rect width="960" height="540" fill="#1a1b26"/>
+  <text x="480" y="62" text-anchor="middle" fill="#c0caf5" font-family="sans-serif" font-size="28" font-weight="700">Agent-neutral proxy routing</text>
+  <rect x="65" y="145" width="300" height="245" rx="20" fill="#24283b" stroke="#f7768e" stroke-width="3"/>
+  <text x="215" y="190" text-anchor="middle" fill="#f7768e" font-family="sans-serif" font-size="22" font-weight="700">claude-session-lib</text>
+  <text x="215" y="235" text-anchor="middle" fill="#9aa5ce" font-family="sans-serif" font-size="18">agent implementation</text>
+  <text x="215" y="270" text-anchor="middle" fill="#9aa5ce" font-family="sans-serif" font-size="18">Claude output + Wiggum</text>
+  <text x="215" y="305" text-anchor="middle" fill="#9aa5ce" font-family="sans-serif" font-size="18">connection orchestration</text>
+  <path d="M390 267 H555" stroke="#7dcfff" stroke-width="5" marker-end="url(#arrow)"/>
+  <text x="472" y="245" text-anchor="middle" fill="#7dcfff" font-family="sans-serif" font-size="17">hoist</text>
+  <rect x="595" y="120" width="300" height="295" rx="20" fill="#24283b" stroke="#9ece6a" stroke-width="3"/>
+  <text x="745" y="165" text-anchor="middle" fill="#9ece6a" font-family="sans-serif" font-size="22" font-weight="700">session-lib</text>
+  <text x="745" y="215" text-anchor="middle" fill="#c0caf5" font-family="monospace" font-size="17">ws_reader</text>
+  <text x="745" y="250" text-anchor="middle" fill="#c0caf5" font-family="monospace" font-size="17">permission_bridge</text>
+  <text x="745" y="285" text-anchor="middle" fill="#c0caf5" font-family="monospace" font-size="17">PortalInput + Ack</text>
+  <text x="745" y="320" text-anchor="middle" fill="#c0caf5" font-family="monospace" font-size="17">file routing</text>
+  <text x="745" y="355" text-anchor="middle" fill="#c0caf5" font-family="monospace" font-size="17">heartbeat dispatch</text>
+  <text x="480" y="480" text-anchor="middle" fill="#bb9af7" font-family="sans-serif" font-size="20">One typed transport path for Claude, Codex, and Muse</text>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#7dcfff"/></marker></defs>
+</svg>
