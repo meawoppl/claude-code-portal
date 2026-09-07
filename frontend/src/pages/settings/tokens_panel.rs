@@ -30,8 +30,7 @@ pub fn count_expiring_tokens(tokens: &[ProxyTokenInfo]) -> usize {
             t.expires_at
                 .as_deref()
                 .and_then(days_until_expiration)
-                .map(|d| (0..=7).contains(&d))
-                .unwrap_or(false)
+                .is_some_and(|d| (0..=7).contains(&d))
         })
         .count()
 }
@@ -62,8 +61,8 @@ fn token_row(props: &TokenRowProps) -> Html {
     let token_id = token.id;
 
     let days_left = token.expires_at.as_deref().and_then(days_until_expiration);
-    let is_expired = days_left.map(|d| d < 0).unwrap_or(false);
-    let is_expiring_soon = days_left.map(|d| (0..=7).contains(&d)).unwrap_or(false);
+    let is_expired = days_left.is_some_and(|d| d < 0);
+    let is_expiring_soon = days_left.is_some_and(|d| (0..=7).contains(&d));
 
     let status_class = if token.revoked {
         "token-status revoked"

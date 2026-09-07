@@ -126,9 +126,7 @@ pub fn probe_muse_sandbox() -> Option<bool> {
 /// label instead of a name, annotated when the credential comes from the
 /// environment rather than the saved file.
 pub fn probe_muse_login() -> shared::AgentLoginStatus {
-    let via_env = std::env::var("META_API_KEY")
-        .map(|v| !v.trim().is_empty())
-        .unwrap_or(false);
+    let via_env = std::env::var("META_API_KEY").is_ok_and(|v| !v.trim().is_empty());
     if via_env {
         return shared::AgentLoginStatus::LoggedIn {
             label: Some("meta".to_string()),

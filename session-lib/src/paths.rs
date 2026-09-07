@@ -77,8 +77,7 @@ fn migrate_between(legacy: &Path, new: &Path) {
     let same = std::fs::canonicalize(legacy)
         .ok()
         .zip(std::fs::canonicalize(new).ok())
-        .map(|(a, b)| a == b)
-        .unwrap_or(false);
+        .is_some_and(|(a, b)| a == b);
     if same {
         return;
     }

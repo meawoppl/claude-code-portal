@@ -389,7 +389,7 @@ impl ServerConfig {
             tracing::info!(
                 "Email access control enabled: domain={:?}, specific_emails={}",
                 allowed_email_domain,
-                allowed_emails.as_ref().map(|e| e.len()).unwrap_or(0)
+                allowed_emails.as_ref().map_or(0, |e| e.len())
             );
         }
 

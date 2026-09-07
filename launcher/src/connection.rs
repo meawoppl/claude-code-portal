@@ -580,7 +580,7 @@ fn list_directory(path: &str, request_id: Uuid) -> LauncherToServer {
         if !filter_lower.is_empty() && !name.to_lowercase().starts_with(&filter_lower) {
             continue;
         }
-        let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+        let is_dir = entry.file_type().is_ok_and(|ft| ft.is_dir());
         if is_dir {
             let under_home = entry
                 .path()
