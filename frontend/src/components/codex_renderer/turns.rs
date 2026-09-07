@@ -24,11 +24,11 @@ pub(super) fn render_turn_completed(
     status: Option<&str>,
     turn_metrics: Option<&shared::TurnMetrics>,
 ) -> Html {
-    let input = usage.map(CodexUsage::input_tokens).unwrap_or(0);
-    let output = usage.map(CodexUsage::output_tokens).unwrap_or(0);
-    let cached = usage.map(CodexUsage::cached_input_tokens).unwrap_or(0);
-    let reasoning = usage.map(CodexUsage::reasoning_output_tokens).unwrap_or(0);
-    let total = usage.map(CodexUsage::total_tokens).unwrap_or(0);
+    let input = usage.map_or(0, CodexUsage::input_tokens);
+    let output = usage.map_or(0, CodexUsage::output_tokens);
+    let cached = usage.map_or(0, CodexUsage::cached_input_tokens);
+    let reasoning = usage.map_or(0, CodexUsage::reasoning_output_tokens);
+    let total = usage.map_or(0, CodexUsage::total_tokens);
     let thread_total = usage.and_then(CodexUsage::thread_total_tokens);
     let context_window = usage.and_then(|u| u.model_context_window);
     let context_snapshot = context_snapshot(input, cached, context_window);

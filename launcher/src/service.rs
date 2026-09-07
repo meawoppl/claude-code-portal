@@ -267,7 +267,7 @@ pub fn logs(lines: u32, follow: bool) -> Result<()> {
 
 #[cfg(target_os = "linux")]
 pub fn is_installed() -> bool {
-    service_file_path().map(|p| p.exists()).unwrap_or(false)
+    service_file_path().is_ok_and(|p| p.exists())
 }
 
 // --- macOS (launchd) ---
@@ -542,7 +542,7 @@ pub fn logs(lines: u32, follow: bool) -> Result<()> {
 
 #[cfg(target_os = "macos")]
 pub fn is_installed() -> bool {
-    plist_path().map(|p| p.exists()).unwrap_or(false)
+    plist_path().is_ok_and(|p| p.exists())
 }
 
 // --- Unsupported platforms ---
