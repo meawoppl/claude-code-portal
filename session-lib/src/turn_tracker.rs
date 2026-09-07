@@ -268,8 +268,11 @@ pub struct TurnOutcome {
     pub stop_reason: Option<String>,
     pub is_error: bool,
     pub total_cost_usd: Option<f64>,
-    /// Context window in tokens as reported by the agent (Codex sends this;
-    /// Claude leaves it `None` and the window is derived from the model id).
+    /// Context window in tokens as reported by the agent. Codex sends it on
+    /// its wire; Claude turns carry the CLI-resolved value from
+    /// `ResultMessage.model_usage` (entitlement/provider/env aware, resolved
+    /// on the agent's own host — #1529). `None` only for agents/turns that
+    /// report nothing, where consumers fall back to the model-id map.
     /// See [`shared::TurnMetrics::model_context_window`].
     pub model_context_window: Option<i64>,
 }

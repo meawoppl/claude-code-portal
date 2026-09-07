@@ -154,10 +154,14 @@ fn has_one_million_tag(model_id: &str) -> bool {
 
 /// Nominal context-window size (in tokens) for a Claude model id.
 ///
-/// Claude's stream-json output reports consumed tokens but *not* the window
-/// size (unlike Codex, which sends `model_context_window` at runtime), so a
-/// context-usage gauge needs a model → window map for Claude turns. Anything
-/// unrecognized returns `None` (caller hides the gauge rather than guess).
+/// **Fallback only.** Live Claude turns carry the CLI's own resolved window
+/// on the wire (`ResultMessage.model_usage[model].context_window`, forwarded
+/// as `TurnMetrics.model_context_window` — #1529), which is authoritative:
+/// it reflects native-1M capability, entitlement/provider gating, and the
+/// agent host's `CLAUDE_CODE_MAX_CONTEXT_TOKENS`. This map serves rows
+/// recorded before proxies forwarded that value, and any turn that reports
+/// nothing. Anything unrecognized returns `None` (caller hides the gauge
+/// rather than guess).
 ///
 /// Mirrors the resolution order the CLI uses (`mZc`, Claude Code 2.1.220):
 ///
