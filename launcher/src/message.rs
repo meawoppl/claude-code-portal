@@ -427,10 +427,10 @@ fn format_peek(data: &PeekMessagesResponse, now: chrono::DateTime<chrono::Utc>) 
         } else {
             "idle"
         },
-        if s.awaiting_permission {
-            " / awaiting permission"
-        } else {
-            ""
+        match data.pending_tool_name.as_deref() {
+            Some(tool) => format!(" / awaiting permission: {tool}"),
+            None if s.awaiting_permission => " / awaiting permission".to_string(),
+            None => String::new(),
         },
         s.hostname,
         s.session_name,
@@ -573,6 +573,7 @@ mod tests {
         s.awaiting_permission = true;
         let data = PeekMessagesResponse {
             session: s,
+            pending_tool_name: Some("Bash".to_string()),
             messages: vec![
                 shared::api::PeekMessage {
                     id: Uuid::nil(),
@@ -593,7 +594,7 @@ mod tests {
         };
         let out = format_peek(&data, now);
         assert!(out.starts_with(
-            "0c24805b  claude / connected / busy / awaiting permission  host  session  /repo"
+            "0c24805b  claude / connected / busy / awaiting permission: Bash  host  session  /repo"
         ));
         assert!(out.contains("Last 2 of 42 messages (oldest first):"));
         assert!(out.contains("[     5m] text        fix the bug"));

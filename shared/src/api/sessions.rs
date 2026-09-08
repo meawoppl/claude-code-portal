@@ -159,6 +159,9 @@ pub struct PeekMessage {
 pub struct PeekMessagesResponse {
     /// Status header for the peeked session (same shape as the list endpoint).
     pub session: AgentSessionInfo,
+    /// Newest pending permission's tool name, when the session is waiting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_tool_name: Option<String>,
     /// Oldest → newest, at most the clamped `limit`.
     #[serde(default)]
     pub messages: Vec<PeekMessage>,

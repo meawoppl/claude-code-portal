@@ -247,11 +247,13 @@ pub async fn peek_agent_messages(
     let busy = connected
         && latest_signal
             .is_some_and(|(agent_type, content)| turn_signal_is_busy(&agent_type, &content));
-    let awaiting_permission = diesel::select(diesel::dsl::exists(
-        pending_permission_requests::table
-            .filter(pending_permission_requests::session_id.eq(target_id)),
-    ))
-    .get_result::<bool>(&mut conn)?;
+    let pending_tool_name = pending_permission_requests::table
+        .filter(pending_permission_requests::session_id.eq(target_id))
+        .order(pending_permission_requests::created_at.desc())
+        .select(pending_permission_requests::tool_name)
+        .first::<String>(&mut conn)
+        .optional()?;
+    let awaiting_permission = pending_tool_name.is_some();
 
     Ok(Json(shared::api::PeekMessagesResponse {
         session: AgentSessionInfo {
@@ -267,6 +269,7 @@ pub async fn peek_agent_messages(
             hostname: session.hostname,
             model: session.last_model,
         },
+        pending_tool_name,
         messages: peek_messages,
         total_messages,
     }))
