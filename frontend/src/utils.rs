@@ -160,6 +160,15 @@ pub fn extract_folder(path: &str) -> &str {
         .unwrap_or(trimmed)
 }
 
+/// Parse a semver-ish "MAJOR.MINOR.PATCH" string into a comparable tuple.
+pub fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = s.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    Some((major, minor, patch))
+}
+
 /// Read a value from browser localStorage, returning `None` when storage is
 /// unavailable (no window, storage disabled) or the key is absent.
 pub fn storage_get(key: &str) -> Option<String> {

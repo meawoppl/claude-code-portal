@@ -18,6 +18,6 @@ mod types;
 
 pub use page::DashboardPage;
 pub use types::{
-    load_group_by_host, load_rail_position, load_vim_mode, save_group_by_host, save_rail_position,
-    save_vim_mode, RailPosition,
+    calculate_backoff, load_group_by_host, load_rail_position, load_vim_mode, save_group_by_host,
+    save_rail_position, save_vim_mode, RailPosition,
 };

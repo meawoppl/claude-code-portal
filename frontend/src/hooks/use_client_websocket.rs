@@ -3,7 +3,8 @@
 #[path = "client_websocket_events.rs"]
 mod client_websocket_events;
 
-use crate::utils::{self, On401};
+use crate::pages::dashboard::calculate_backoff;
+use crate::utils::{self, parse_version, On401};
 use client_websocket_events::handle_server_message;
 use shared::api::TurnMetricsResponse;
 use shared::{AppConfig, ClientEndpoint, TurnMetrics, WsEndpoint};
@@ -45,24 +46,6 @@ pub struct UseClientWebSocket {
     /// launcher connected, disconnected, or was evicted. Consumers hang a
     /// `use_effect_with` on it to refetch `/api/launchers` (#710).
     pub launcher_event_counter: u32,
-}
-
-/// Calculate exponential backoff delay for reconnection attempts.
-fn calculate_backoff(attempt: u32) -> u32 {
-    const INITIAL_MS: u32 = 1000;
-    const MAX_MS: u32 = 30000;
-    INITIAL_MS
-        .saturating_mul(2u32.saturating_pow(attempt.min(5)))
-        .min(MAX_MS)
-}
-
-/// Parse a semver-ish "MAJOR.MINOR.PATCH" string into a comparable tuple.
-fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
-    let mut parts = s.split('.');
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next()?.parse().ok()?;
-    let patch = parts.next()?.parse().ok()?;
-    Some((major, minor, patch))
 }
 
 /// Decide whether `next` is strictly newer than `prev`. Falls back to string
