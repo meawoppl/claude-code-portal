@@ -242,15 +242,6 @@ pub fn save_hidden_sessions(hidden: &HashSet<Uuid>) {
     }
 }
 
-/// Calculate exponential backoff delay for reconnection attempts
-pub fn calculate_backoff(attempt: u32) -> u32 {
-    const INITIAL_MS: u32 = 1000;
-    const MAX_MS: u32 = 30000;
-    INITIAL_MS
-        .saturating_mul(2u32.saturating_pow(attempt.min(5)))
-        .min(MAX_MS)
-}
-
 /// Format permission input for display.
 ///
 /// `input` is a `serde_json::Value` because the cross-agent

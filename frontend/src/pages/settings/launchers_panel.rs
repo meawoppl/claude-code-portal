@@ -3,7 +3,7 @@ use crate::pages::settings::agent_login::AgentLoginModal;
 use crate::pages::settings::agents_panel::{
     render_cell, InstallTarget, LoginTarget, ProbeState, AGENTS,
 };
-use crate::utils::{self, On401};
+use crate::utils::{self, parse_version, On401};
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use gloo_net::http::Request;
 use shared::{AppConfig, LauncherInfo};
@@ -81,15 +81,6 @@ struct UpdateEntry {
     /// Whether this row is tracking an update-and-restart or a bare restart.
     mode: LifecycleMode,
     phase: UpdatePhase,
-}
-
-/// Parse a semver-ish "MAJOR.MINOR.PATCH" string into a comparable tuple.
-fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
-    let mut parts = s.split('.');
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next()?.parse().ok()?;
-    let patch = parts.next()?.parse().ok()?;
-    Some((major, minor, patch))
 }
 
 /// `current >= target` under semver ordering; `false` if either fails to parse.
