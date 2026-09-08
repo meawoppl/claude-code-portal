@@ -49,6 +49,8 @@ tracing-subscriber = { workspace = true }
 
 # Claude Code integration
 claude-codes = { workspace = true }
+codex-codes = { workspace = true }
+muse-codes = { workspace = true }
 
 # Time
 chrono = { workspace = true, features = ["std", "clock"] }

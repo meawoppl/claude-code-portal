@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1200" viewBox="0 0 2000 1200" font-family="Helvetica, Arial, sans-serif">
+  <rect x="0" y="0" width="2000" height="1200" fill="#16161e"/>
+
+  <!-- Thesis -->
+  <text x="1000" y="64" text-anchor="middle" fill="#c0caf5" font-size="34" font-weight="bold">Agents can now peek at a peer session — summarized, read-only, context-safe</text>
+
+  <!-- BEFORE / AFTER labels -->
+  <text x="500" y="126" text-anchor="middle" fill="#f7768e" font-size="26" font-weight="bold" letter-spacing="4">BEFORE</text>
+  <text x="1500" y="126" text-anchor="middle" fill="#9ece6a" font-size="26" font-weight="bold" letter-spacing="4">AFTER</text>
+  <line x1="1000" y1="96" x2="1000" y2="1140" stroke="#565f89" stroke-width="2" stroke-dasharray="8 8"/>
+
+  <!-- BEFORE: only option is to interrupt -->
+  <g>
+    <!-- Agent A -->
+    <rect x="120" y="190" width="230" height="90" rx="12" fill="#1e202e" stroke="#7aa2f7" stroke-width="2"/>
+    <text x="235" y="228" text-anchor="middle" fill="#7aa2f7" font-size="22" font-weight="bold">agent A</text>
+    <text x="235" y="258" text-anchor="middle" fill="#c0caf5" font-size="17">"is B done yet?"</text>
+
+    <!-- Agent B -->
+    <rect x="650" y="190" width="230" height="90" rx="12" fill="#1e202e" stroke="#e0af68" stroke-width="2"/>
+    <text x="765" y="228" text-anchor="middle" fill="#e0af68" font-size="22" font-weight="bold">agent B</text>
+    <text x="765" y="258" text-anchor="middle" fill="#c0caf5" font-size="17">mid-turn, busy</text>
+
+    <!-- message send arrow -->
+    <line x1="350" y1="235" x2="640" y2="235" stroke="#f7768e" stroke-width="3"/>
+    <polygon points="640,235 622,227 622,243" fill="#f7768e"/>
+    <text x="495" y="222" text-anchor="middle" fill="#f7768e" font-size="17" font-style="italic">message send = injects a turn</text>
+
+    <rect x="150" y="330" width="700" height="150" rx="12" fill="#1e202e" stroke="#565f89" stroke-width="1.5"/>
+    <text x="180" y="368" fill="#f7768e" font-size="19" font-weight="bold">The only way to check on a peer was to interrupt it:</text>
+    <text x="180" y="402" fill="#c0caf5" font-size="18">- the question lands as an input turn in B's session</text>
+    <text x="180" y="432" fill="#c0caf5" font-size="18">- B stops what it's doing to answer</text>
+    <text x="180" y="462" fill="#c0caf5" font-size="18">- coordination cost scales with every status check</text>
+
+    <!-- alternative: raw DB dump -->
+    <rect x="150" y="520" width="700" height="400" rx="12" fill="#1e202e" stroke="#565f89" stroke-width="1.5"/>
+    <text x="180" y="558" fill="#f7768e" font-size="19" font-weight="bold">And no safe read path — raw transcript rows are wire JSON:</text>
+    <rect x="180" y="580" width="640" height="300" rx="8" fill="#1e202e" stroke="#3d4666" stroke-width="1"/>
+    <text x="200" y="614" fill="#565f89" font-size="15" font-family="monospace">{"type":"assistant","session_id":"…","message":</text>
+    <text x="200" y="641" fill="#565f89" font-size="15" font-family="monospace">{"id":"msg_01…","role":"assistant","model":"…",</text>
+    <text x="200" y="668" fill="#565f89" font-size="15" font-family="monospace">"content":[{"type":"tool_use","id":"toolu_01…",</text>
+    <text x="200" y="695" fill="#565f89" font-size="15" font-family="monospace">"name":"Bash","input":{"command":"cargo build…",</text>
+    <text x="200" y="722" fill="#565f89" font-size="15" font-family="monospace">"description":"…"}},{"type":"text","text":"Now</text>
+    <text x="200" y="749" fill="#565f89" font-size="15" font-family="monospace">I'll check the…"}],"stop_reason":null,"usage":</text>
+    <text x="200" y="776" fill="#565f89" font-size="15" font-family="monospace">{"input_tokens":4,"cache_creation_input_tokens":</text>
+    <text x="200" y="803" fill="#565f89" font-size="15" font-family="monospace">31245,"cache_read_input_tokens":812004,…}}…</text>
+    <text x="200" y="854" fill="#f7768e" font-size="16" font-style="italic">one message ≈ kilobytes — 50 of these blow up a context window</text>
+  </g>
+
+  <!-- AFTER: peek flow -->
+  <g>
+    <!-- Agent A -->
+    <rect x="1080" y="190" width="230" height="90" rx="12" fill="#1e202e" stroke="#7aa2f7" stroke-width="2"/>
+    <text x="1195" y="228" text-anchor="middle" fill="#7aa2f7" font-size="22" font-weight="bold">agent A</text>
+    <text x="1195" y="258" text-anchor="middle" fill="#c0caf5" font-size="16" font-family="monospace">message peek b31c…</text>
+
+    <!-- Backend summarizer -->
+    <rect x="1400" y="176" width="250" height="118" rx="12" fill="#1e202e" stroke="#bb9af7" stroke-width="2"/>
+    <text x="1525" y="212" text-anchor="middle" fill="#bb9af7" font-size="20" font-weight="bold">backend summarizer</text>
+    <text x="1525" y="240" text-anchor="middle" fill="#c0caf5" font-size="15">typed dispatch on claude /</text>
+    <text x="1525" y="262" text-anchor="middle" fill="#c0caf5" font-size="15">codex / muse wire enums</text>
+    <text x="1525" y="284" text-anchor="middle" fill="#7dcfff" font-size="15">1 line / msg, ≤240 chars</text>
+
+    <!-- Agent B untouched -->
+    <rect x="1740" y="190" width="200" height="90" rx="12" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
+    <text x="1840" y="228" text-anchor="middle" fill="#9ece6a" font-size="22" font-weight="bold">agent B</text>
+    <text x="1840" y="258" text-anchor="middle" fill="#c0caf5" font-size="16">never interrupted</text>
+
+    <!-- arrows -->
+    <line x1="1310" y1="235" x2="1390" y2="235" stroke="#7aa2f7" stroke-width="3"/>
+    <polygon points="1390,235 1372,227 1372,243" fill="#7aa2f7"/>
+    <line x1="1650" y1="235" x2="1730" y2="235" stroke="#565f89" stroke-width="3" stroke-dasharray="6 6"/>
+    <text x="1690" y="220" text-anchor="middle" fill="#565f89" font-size="14">read-only</text>
+
+    <!-- terminal render of peek output -->
+    <rect x="1080" y="330" width="860" height="470" rx="12" fill="#1e202e" stroke="#565f89" stroke-width="1.5"/>
+    <text x="1110" y="368" fill="#9ece6a" font-size="16" font-family="monospace">$ agent-portal message peek b31c22a8 -n 6</text>
+    <text x="1110" y="404" fill="#c0caf5" font-size="16" font-family="monospace">b31c22a8  claude-opus-4-8 / connected / busy  zeus</text>
+    <text x="1110" y="430" fill="#c0caf5" font-size="16" font-family="monospace">  refactor-io-task  ~/repos/agent-portal</text>
+    <text x="1110" y="466" fill="#565f89" font-size="16" font-family="monospace">Last 6 of 132 messages (oldest first):</text>
+    <text x="1110" y="502" fill="#c0caf5" font-size="16" font-family="monospace">  [     8m] <tspan fill="#7aa2f7">text</tspan>        fold io_task into session core</text>
+    <text x="1110" y="532" fill="#c0caf5" font-size="16" font-family="monospace">  [     6m] <tspan fill="#e0af68">tool_use</tspan>    Bash: cargo build -p agent-portal</text>
+    <text x="1110" y="562" fill="#c0caf5" font-size="16" font-family="monospace">  [     5m] <tspan fill="#7dcfff">tool_result</tspan> tool result: Finished dev profile</text>
+    <text x="1110" y="592" fill="#c0caf5" font-size="16" font-family="monospace">  [     3m] <tspan fill="#e0af68">tool_use</tspan>    Edit: session-lib/src/session.rs</text>
+    <text x="1110" y="622" fill="#c0caf5" font-size="16" font-family="monospace">  [     2m] <tspan fill="#7aa2f7">text</tspan>        Tests pass; starting on the docs</text>
+    <text x="1110" y="652" fill="#c0caf5" font-size="16" font-family="monospace">  [    12s] <tspan fill="#9ece6a">turn_end</tspan>    turn complete (14 turns)</text>
+    <line x1="1110" y1="682" x2="1910" y2="682" stroke="#3d4666" stroke-width="2"/>
+    <text x="1110" y="720" fill="#9ece6a" font-size="16">✓ GET /api/agent/sessions/{id}/messages — membership-scoped, ?limit clamped 1–50</text>
+    <text x="1110" y="750" fill="#9ece6a" font-size="16">✓ unknown frames degrade to "[&lt;type&gt; frame]" — never a raw JSON dump</text>
+    <text x="1110" y="780" fill="#9ece6a" font-size="16">✓ portal reminder teaches agents: peek before you send</text>
+  </g>
+
+  <!-- Bottom stats -->
+  <g>
+    <rect x="130" y="1000" width="400" height="90" rx="12" fill="#1e202e" stroke="#7aa2f7" stroke-width="1.5"/>
+    <text x="330" y="1038" text-anchor="middle" fill="#7aa2f7" font-size="18" font-weight="bold">1 endpoint + 1 CLI subcommand</text>
+    <text x="330" y="1068" text-anchor="middle" fill="#c0caf5" font-size="15">same auth as message send</text>
+
+    <rect x="560" y="1000" width="400" height="90" rx="12" fill="#1e202e" stroke="#bb9af7" stroke-width="1.5"/>
+    <text x="760" y="1038" text-anchor="middle" fill="#bb9af7" font-size="18" font-weight="bold">typed, all 3 agent protocols</text>
+    <text x="760" y="1068" text-anchor="middle" fill="#c0caf5" font-size="15">claude · codex · muse enums</text>
+
+    <rect x="1080" y="1000" width="860" height="90" rx="12" fill="#1e202e" stroke="#9ece6a" stroke-width="1.5"/>
+    <text x="1510" y="1038" text-anchor="middle" fill="#9ece6a" font-size="18" font-weight="bold">worst case ≈ 50 lines × 240 chars — bounded context cost</text>
+    <text x="1510" y="1068" text-anchor="middle" fill="#c0caf5" font-size="15">10 unit tests pin the single-line / cap / discriminator-fallback invariants</text>
+  </g>
+
+  <!-- Footer limitation -->
+  <text x="1000" y="1170" text-anchor="middle" fill="#565f89" font-size="16" font-style="italic">Limitation: summaries are lossy by design — a peek shows activity shape, not full content; agents still message for detail.</text>
+</svg>
