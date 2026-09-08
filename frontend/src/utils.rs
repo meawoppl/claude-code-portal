@@ -60,6 +60,13 @@ pub async fn fetch_json<T: DeserializeOwned>(path: &str, on_401: On401) -> Resul
         .map_err(|e| FetchError::Decode(e.to_string()))
 }
 
+/// GET the launcher list (e.g. for install-mode auto-select or version
+/// probes). The path, element type, and 401 policy are identical at every
+/// call site, so they live here instead of being repeated.
+pub async fn fetch_launchers() -> Result<Vec<shared::LauncherInfo>, FetchError> {
+    fetch_json("/api/launchers", On401::Ignore).await
+}
+
 /// Get the base HTTP URL (e.g., "http://localhost:3000" or "https://myapp.com")
 pub fn get_base_url() -> String {
     let Some(window) = window() else {
