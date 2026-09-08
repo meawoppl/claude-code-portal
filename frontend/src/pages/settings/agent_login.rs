@@ -351,10 +351,7 @@ async fn start_login(
 ) -> Result<StartAgentLoginResponse, String> {
     let url = utils::api_url(&format!("/api/launchers/{launcher_id}/agent-login/start"));
     let body = StartAgentLoginRequest { agent_type };
-    let resp = Request::post(&url)
-        .json(&body)
-        .map_err(|e| e.to_string())?
-        .send()
+    let resp = utils::send_json(Request::post(&url), &body)
         .await
         .map_err(|e| e.to_string())?;
     if !resp.ok() {
@@ -374,10 +371,7 @@ async fn submit_code(
         "/api/launchers/{launcher_id}/agent-login/{flow_id}/code"
     ));
     let body = SubmitAgentLoginCodeRequest { code };
-    let resp = Request::post(&url)
-        .json(&body)
-        .map_err(|e| e.to_string())?
-        .send()
+    let resp = utils::send_json(Request::post(&url), &body)
         .await
         .map_err(|e| e.to_string())?;
     if !resp.ok() {
