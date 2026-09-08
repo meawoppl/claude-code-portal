@@ -44,7 +44,8 @@ use super::state::{
 use super::tasks_panel::{derive_task_events, TasksInbound, TasksPanel};
 use super::types::{PendingPermission, WsSender, MAX_MESSAGES_PER_SESSION};
 use super::websocket::{connect_websocket, send_message, WsEvent};
-use crate::pages::dashboard::types::{calculate_backoff, MessageData, MessagesResponse};
+use crate::pages::dashboard::types::{MessageData, MessagesResponse};
+use crate::utils::calculate_backoff;
 
 /// Props for the SessionView component
 #[derive(Properties, PartialEq)]

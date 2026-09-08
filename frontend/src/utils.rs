@@ -160,6 +160,24 @@ pub fn extract_folder(path: &str) -> &str {
         .unwrap_or(trimmed)
 }
 
+/// Parse a semver-ish "MAJOR.MINOR.PATCH" string into a comparable tuple.
+pub fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = s.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    Some((major, minor, patch))
+}
+
+/// Calculate exponential backoff delay for reconnection attempts.
+pub fn calculate_backoff(attempt: u32) -> u32 {
+    const INITIAL_MS: u32 = 1000;
+    const MAX_MS: u32 = 30000;
+    INITIAL_MS
+        .saturating_mul(2u32.saturating_pow(attempt.min(5)))
+        .min(MAX_MS)
+}
+
 /// Read a value from browser localStorage, returning `None` when storage is
 /// unavailable (no window, storage disabled) or the key is absent.
 pub fn storage_get(key: &str) -> Option<String> {
@@ -205,5 +223,21 @@ mod tests {
     #[test]
     fn format_dollars_handles_negative_amounts() {
         assert_eq!(format_dollars(-1_234.5), "$-1,234.50");
+    }
+
+    #[test]
+    fn backoff_doubles_then_caps_at_30s() {
+        assert_eq!(calculate_backoff(0), 1000);
+        assert_eq!(calculate_backoff(1), 2000);
+        assert_eq!(calculate_backoff(2), 4000);
+        assert_eq!(calculate_backoff(5), 30000);
+        assert_eq!(calculate_backoff(99), 30000);
+    }
+
+    #[test]
+    fn parse_version_splits_semver() {
+        assert_eq!(parse_version("2.5.92"), Some((2, 5, 92)));
+        assert_eq!(parse_version("dev"), None);
+        assert_eq!(parse_version("2.5"), None);
     }
 }
