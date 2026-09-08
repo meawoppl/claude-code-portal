@@ -7,7 +7,9 @@
 
 use anyhow::{anyhow, Context, Result};
 
-use shared::api::{AgentSessionsResponse, SendAgentMessageRequest, SendAgentMessageResponse};
+use shared::api::{
+    AgentSessionsResponse, PeekMessagesResponse, SendAgentMessageRequest, SendAgentMessageResponse,
+};
 
 const SHORT_SESSION_ID_LEN: usize = 8;
 
@@ -376,6 +378,102 @@ pub async fn send(agent_id: &str, message: &str) -> Result<()> {
     Ok(())
 }
 
+/// `agent-portal message peek <agent-id>` — a read-only glance at another
+/// session's recent activity. Summaries come pre-capped from the backend
+/// (one line per message), so the output is safe to drop into an agent's
+/// context window.
+pub async fn peek(agent_id: &str, count: i64, json: bool) -> Result<()> {
+    let (base, token) = api_base()?;
+    let client = reqwest::Client::new();
+    let sessions = fetch_sessions(&client, &base, &token).await?;
+    let resolved_agent_id = resolve_session_id(agent_id, &sessions.sessions)?;
+    let limit = count.clamp(1, 50);
+    // Idempotent GET: safe to replay on transport errors, 404, and 5xx.
+    let resp = request_with_retry(true, || {
+        client
+            .get(format!(
+                "{base}/api/agent/sessions/{resolved_agent_id}/messages"
+            ))
+            .query(&[("limit", limit)])
+            .bearer_auth(&token)
+            .send()
+    })
+    .await?;
+    if json {
+        println!("{}", resp.text().await.context("malformed response")?);
+        return Ok(());
+    }
+    let data: PeekMessagesResponse = resp.json().await.context("malformed response")?;
+    println!("{}", format_peek(&data, chrono::Utc::now()));
+    Ok(())
+}
+
+/// Render a peek response: a one-line status header, then one line per
+/// message (oldest first) with a relative age, the coarse kind, and the
+/// backend's capped summary.
+fn format_peek(data: &PeekMessagesResponse, now: chrono::DateTime<chrono::Utc>) -> String {
+    let s = &data.session;
+    let mut out = format!(
+        "{}  {} / {} / {}{}  {}  {}  {}\n",
+        short_session_id(&s.id),
+        full_agent_name(s),
+        if session_is_connected(s) {
+            "connected"
+        } else {
+            "disconnected"
+        },
+        if s.busy.unwrap_or(false) {
+            "busy"
+        } else {
+            "idle"
+        },
+        if s.awaiting_permission {
+            " / awaiting permission"
+        } else {
+            ""
+        },
+        s.hostname,
+        s.session_name,
+        s.working_directory
+    );
+    if data.messages.is_empty() {
+        out.push_str("No messages.");
+        return out;
+    }
+    out.push_str(&format!(
+        "Last {} of {} messages (oldest first):\n",
+        data.messages.len(),
+        data.total_messages
+    ));
+    for m in &data.messages {
+        out.push_str(&format!(
+            "  [{:>7}] {:<11} {}\n",
+            relative_age(&m.created_at, now),
+            m.kind,
+            m.summary
+        ));
+    }
+    out.pop();
+    out
+}
+
+/// Compact relative age (`12s`, `5m`, `3h`, `2d`) for a backend RFC3339
+/// timestamp; the raw timestamp when it doesn't parse.
+fn relative_age(rfc3339: &str, now: chrono::DateTime<chrono::Utc>) -> String {
+    let Ok(then) = chrono::DateTime::parse_from_rfc3339(rfc3339) else {
+        return rfc3339.to_string();
+    };
+    let secs = (now - then.with_timezone(&chrono::Utc))
+        .num_seconds()
+        .max(0);
+    match secs {
+        0..=59 => format!("{secs}s"),
+        60..=3599 => format!("{}m", secs / 60),
+        3600..=86399 => format!("{}h", secs / 3600),
+        _ => format!("{}d", secs / 86400),
+    }
+}
+
 fn short_session_id(id: &uuid::Uuid) -> String {
     id.simple()
         .to_string()
@@ -463,6 +561,57 @@ mod tests {
             awaiting_permission: false,
             last_activity: String::new(),
         }
+    }
+
+    #[test]
+    fn peek_rendering_shows_status_header_and_aged_summaries() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-07T12:00:00Z")
+            .expect("valid timestamp")
+            .with_timezone(&chrono::Utc);
+        let mut s = session("0c24805b-0000-0000-0000-000000000000");
+        s.busy = Some(true);
+        s.awaiting_permission = true;
+        let data = PeekMessagesResponse {
+            session: s,
+            messages: vec![
+                shared::api::PeekMessage {
+                    id: Uuid::nil(),
+                    role: "user".to_string(),
+                    created_at: "2026-09-07T11:55:00Z".to_string(),
+                    summary: "fix the bug".to_string(),
+                    kind: "text".to_string(),
+                },
+                shared::api::PeekMessage {
+                    id: Uuid::nil(),
+                    role: "assistant".to_string(),
+                    created_at: "2026-09-07T11:59:48Z".to_string(),
+                    summary: "Bash: cargo test".to_string(),
+                    kind: "tool_use".to_string(),
+                },
+            ],
+            total_messages: 42,
+        };
+        let out = format_peek(&data, now);
+        assert!(out.starts_with(
+            "0c24805b  claude / connected / busy / awaiting permission  host  session  /repo"
+        ));
+        assert!(out.contains("Last 2 of 42 messages (oldest first):"));
+        assert!(out.contains("[     5m] text        fix the bug"));
+        assert!(out.contains("[    12s] tool_use    Bash: cargo test"));
+    }
+
+    #[test]
+    fn relative_age_buckets_and_tolerates_garbage() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-09-07T12:00:00Z")
+            .expect("valid timestamp")
+            .with_timezone(&chrono::Utc);
+        assert_eq!(relative_age("2026-09-07T11:59:30Z", now), "30s");
+        assert_eq!(relative_age("2026-09-07T09:00:00Z", now), "3h");
+        assert_eq!(relative_age("2026-09-01T12:00:00Z", now), "6d");
+        // Clock skew (future timestamps) clamps to zero rather than going
+        // negative, and unparseable input passes through verbatim.
+        assert_eq!(relative_age("2026-09-07T12:05:00Z", now), "0s");
+        assert_eq!(relative_age("not-a-time", now), "not-a-time");
     }
 
     #[test]

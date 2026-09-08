@@ -131,6 +131,17 @@ enum MessageAction {
         /// Message text
         message: String,
     },
+    /// Peek at a session's recent activity (read-only, one line per message)
+    Peek {
+        /// Target session id (a unique prefix works)
+        agent_id: String,
+        /// Number of recent messages to show (1–50)
+        #[arg(short = 'n', long = "count", default_value_t = 10)]
+        count: i64,
+        /// Print the raw JSON response instead of the readable rendering
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -289,6 +300,11 @@ async fn main() -> anyhow::Result<()> {
                 MessageAction::Send { agent_id, message } => {
                     message::send(&agent_id, &message).await
                 }
+                MessageAction::Peek {
+                    agent_id,
+                    count,
+                    json,
+                } => message::peek(&agent_id, count, json).await,
             };
         }
         Some(Command::Show { file }) => {

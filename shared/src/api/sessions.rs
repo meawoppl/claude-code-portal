@@ -135,6 +135,38 @@ pub struct AgentSessionsResponse {
     pub sessions: Vec<AgentSessionInfo>,
 }
 
+/// One summarized transcript message in a peek (#1406). Deliberately compact:
+/// peeks feed *agent context windows*, so `summary` is a single line hard-capped
+/// server-side — never a raw wire-JSON dump.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PeekMessage {
+    pub id: Uuid,
+    /// Durable message role (`user`, `assistant`, `result`, `portal`, …).
+    pub role: String,
+    /// RFC3339 UTC timestamp.
+    pub created_at: String,
+    /// Single-line human summary of the message content.
+    pub summary: String,
+    /// Coarse content class (`text`, `tool_use`, `tool_result`, `thinking`,
+    /// `image`, `turn_end`, `system`, `unknown`, …) so programmatic consumers
+    /// can filter without re-parsing summaries.
+    pub kind: String,
+}
+
+/// Response for `GET /api/agent/sessions/{id}/messages` — a read-only glance
+/// at a peer session's recent activity (#1406).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PeekMessagesResponse {
+    /// Status header for the peeked session (same shape as the list endpoint).
+    pub session: AgentSessionInfo,
+    /// Oldest → newest, at most the clamped `limit`.
+    #[serde(default)]
+    pub messages: Vec<PeekMessage>,
+    /// Total durable messages retained for the session (for "showing N of M").
+    #[serde(default)]
+    pub total_messages: i64,
+}
+
 /// Body for `POST /api/agent/sessions/{id}/message`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SendAgentMessageRequest {

@@ -154,6 +154,124 @@ fn turn_signal_is_busy(agent_type: &str, content: &str) -> bool {
     }
 }
 
+/// Query for `GET /api/agent/sessions/{id}/messages`.
+#[derive(serde::Deserialize)]
+pub struct PeekQuery {
+    /// Max messages to return; clamped to 1..=50, default 10.
+    #[serde(default)]
+    limit: Option<i64>,
+    /// Only messages strictly newer than this RFC3339 timestamp.
+    #[serde(default)]
+    since: Option<String>,
+}
+
+/// GET /api/agent/sessions/{id}/messages — a read-only glance at a peer
+/// session's recent activity (#1406, `agent-portal message peek`).
+///
+/// Summarization happens server-side ([`super::peek_summary`]) because the
+/// consumer is an *agent context window*: each message becomes one capped
+/// line, so the worst case is ~50 short lines, never a raw transcript dump.
+pub async fn peek_agent_messages(
+    State(app_state): State<Arc<AppState>>,
+    Path(target_id): Path<Uuid>,
+    Query(query): Query<PeekQuery>,
+    headers: HeaderMap,
+    cookies: Cookies,
+) -> Result<Json<shared::api::PeekMessagesResponse>, AppError> {
+    let user_id = resolve_user(&app_state, &headers, &cookies)?;
+    let mut conn = app_state.conn()?;
+    use crate::schema::{messages, pending_permission_requests, session_members, sessions};
+
+    // Authorize: the caller must be a member of the target session.
+    let session: Session = sessions::table
+        .inner_join(session_members::table.on(session_members::session_id.eq(sessions::id)))
+        .filter(sessions::id.eq(target_id))
+        .filter(session_members::user_id.eq(user_id))
+        .select(Session::as_select())
+        .first(&mut conn)
+        .map_err(|_| AppError::NotFound("session"))?;
+
+    let limit = query.limit.unwrap_or(10).clamp(1, 50);
+    let since = query
+        .since
+        .as_deref()
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .map(|dt| dt.naive_utc())
+                .map_err(|_| AppError::BadRequest("since must be an RFC3339 timestamp"))
+        })
+        .transpose()?;
+
+    let mut rows_query = messages::table
+        .filter(messages::session_id.eq(target_id))
+        .into_boxed();
+    if let Some(since) = since {
+        rows_query = rows_query.filter(messages::created_at.gt(since));
+    }
+    let rows: Vec<crate::models::Message> = rows_query
+        .order(messages::created_at.desc())
+        .limit(limit)
+        .load(&mut conn)?;
+
+    let total_messages: i64 = messages::table
+        .filter(messages::session_id.eq(target_id))
+        .count()
+        .get_result(&mut conn)?;
+
+    // Newest-first from the query; the wire contract is oldest → newest.
+    let peek_messages: Vec<shared::api::PeekMessage> = rows
+        .into_iter()
+        .rev()
+        .map(|m| {
+            super::peek_summary::summarize_message(
+                m.id,
+                &m.agent_type,
+                &m.role,
+                &m.content,
+                m.created_at,
+            )
+        })
+        .collect();
+
+    // Status header — same signals as the list endpoint, scoped to one session.
+    let connected = app_state
+        .session_manager
+        .is_proxy_connected(session.id.to_string().as_str());
+    let latest_signal: Option<(String, String)> = messages::table
+        .filter(messages::session_id.eq(target_id))
+        .filter(messages::role.eq_any(["user", "assistant", "result", "unknown", "error"]))
+        .order(messages::created_at.desc())
+        .select((messages::agent_type, messages::content))
+        .first(&mut conn)
+        .optional()?;
+    let busy = connected
+        && latest_signal
+            .is_some_and(|(agent_type, content)| turn_signal_is_busy(&agent_type, &content));
+    let awaiting_permission = diesel::select(diesel::dsl::exists(
+        pending_permission_requests::table
+            .filter(pending_permission_requests::session_id.eq(target_id)),
+    ))
+    .get_result::<bool>(&mut conn)?;
+
+    Ok(Json(shared::api::PeekMessagesResponse {
+        session: AgentSessionInfo {
+            connected: Some(connected),
+            busy: Some(busy),
+            id: session.id,
+            awaiting_permission,
+            last_activity: session.last_activity.and_utc().to_rfc3339(),
+            session_name: session.session_name,
+            working_directory: session.working_directory,
+            agent_type: session.agent_type,
+            status: session.status,
+            hostname: session.hostname,
+            model: session.last_model,
+        },
+        messages: peek_messages,
+        total_messages,
+    }))
+}
+
 /// POST /api/agent/sessions/{id}/message — inject a message into a session as
 /// an input turn (same pipeline as a user typing in the web client).
 pub async fn send_agent_message(

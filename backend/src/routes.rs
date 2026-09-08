@@ -224,6 +224,11 @@ pub fn build_router(app_state: Arc<AppState>) -> anyhow::Result<Router> {
             "/api/agent/sessions/{id}/message",
             post(handlers::agent_comms::send_agent_message),
         )
+        // `agent-portal message peek`: summarized recent activity, read-only.
+        .route(
+            "/api/agent/sessions/{id}/messages",
+            get(handlers::agent_comms::peek_agent_messages),
+        )
         // `agent-portal show <file>`: display media in a session transcript.
         // Raise the request-body limit to the larger of the configured video
         // cap and the reversible-figure carrier cap; the handler enforces the
