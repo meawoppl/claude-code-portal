@@ -674,18 +674,13 @@ pub fn launch_dialog(props: &LaunchDialogProps) -> Html {
         .and_then(|lid| launchers.iter().find(|l| l.launcher_id == lid).cloned());
 
     // Per-agent install hints for the dropdown labels and the inline warning.
-    let claude_label = match agent_installed(&agent_installs, AgentType::Claude) {
-        Some(false) => "Claude (not installed)".to_string(),
-        _ => "Claude".to_string(),
+    let install_label = |agent: AgentType| match agent_installed(&agent_installs, agent) {
+        Some(false) => format!("{} (not installed)", agent.display_name()),
+        _ => agent.display_name().to_string(),
     };
-    let codex_label = match agent_installed(&agent_installs, AgentType::Codex) {
-        Some(false) => "Codex (not installed)".to_string(),
-        _ => "Codex".to_string(),
-    };
-    let muse_label = match agent_installed(&agent_installs, AgentType::Muse) {
-        Some(false) => "Muse (not installed)".to_string(),
-        _ => "Muse".to_string(),
-    };
+    let claude_label = install_label(AgentType::Claude);
+    let codex_label = install_label(AgentType::Codex);
+    let muse_label = install_label(AgentType::Muse);
     let selected_agent_missing = agent_installed(&agent_installs, *agent_type) == Some(false);
     let still_probing = *probing_agents && agent_installs.is_empty();
     let selected_agent_label = agent_type.display_name();

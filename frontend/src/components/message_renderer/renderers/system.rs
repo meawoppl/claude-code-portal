@@ -70,8 +70,8 @@ fn render_init_bar(msg: &shared::SystemMessage, timestamp: Option<&str>) -> Html
         .as_ref()
         .and_then(|m| m.claude_code_version.as_deref())
         .unwrap_or("");
-    let tool_count = init.as_ref().map(|m| m.tools.len()).unwrap_or(0);
-    let mcp_count = init.as_ref().map(|m| m.mcp_servers.len()).unwrap_or(0);
+    let tool_count = init.as_ref().map_or(0, |m| m.tools.len());
+    let mcp_count = init.as_ref().map_or(0, |m| m.mcp_servers.len());
     let fast_mode = init
         .as_ref()
         .and_then(|m| m.fast_mode_state.as_deref())
