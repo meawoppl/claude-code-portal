@@ -550,6 +550,7 @@ mod tests {
             user_message_uuid: None,
             user_message_uuids: Vec::new(),
             queued_turn_count: None,
+            runner_exit: None,
             fast_mode_disabled_reason: None,
         }
     }
