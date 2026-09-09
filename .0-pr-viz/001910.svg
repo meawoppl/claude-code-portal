@@ -14,7 +14,7 @@
 <rect x="80" y="650" width="840" height="245" fill="#1e202e" stroke="#f7768e" stroke-width="2"/>
 <text x="108" y="705" font-size="26" fill="#c0caf5">same guard drifts across edits</text>
 <text x="108" y="760" font-size="23" fill="#a9b1d6">helper exists but only 5 login/install callers use it</text>
-<text x="108" y="810" font-size="23" fill="#f7768e">one fix must land in five places at once</text>
+<text x="108" y="810" font-size="23" fill="#f7768e">one fix must land in four places at once</text>
 <rect x="1065" y="270" width="860" height="300" fill="#1e202e" stroke="#9ece6a" stroke-width="2"/>
 <text x="1093" y="325" font-size="26" fill="#7aa2f7">all four call require_launcher_owner</text>
 <text x="1093" y="380" font-size="23" fill="#a9b1d6">one helper: launcher_owner + 404/403 mapping</text>
